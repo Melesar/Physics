@@ -5,6 +5,7 @@
 
 typedef struct {
     Vector3 position;
+    Vector3 linear_velocity;
     Quaternion orientation;
 
     float mass;

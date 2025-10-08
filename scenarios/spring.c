@@ -2,10 +2,12 @@
 #include "physics.h"
 #include "core.h"
 #include "math.h"
+#include "raymath.h"
 #include "string.h"
 #include "raylib-nuklear.h"
 
 struct object {
+  char* label;
   Mesh mesh;
   Material material;
 };
@@ -22,6 +24,15 @@ rigidbody masses[num_bodies];
 float total_time;
 bool interpolate = true;
 
+static float total_energy(int spring_index) {
+  rigidbody spring = masses[spring_index];
+  float velocity_sqr = Vector3LengthSqr(spring.linear_velocity);
+  float kinetic = 0.5 * spring.mass * velocity_sqr;
+  float elastic = 0.5 * stiffness * spring.position.x * spring.position.x;
+
+  return kinetic + elastic;
+}
+
 void initialize_program(program_config* config) {
   config->camera_mode = CAMERA_CUSTOM;
   config->window_title = "Mass on a spring";
@@ -32,6 +43,7 @@ void initialize_program(program_config* config) {
 void setup_scene() {
   Mesh cubeMesh = GenMeshCube(1, 1, 1);
 
+  char* labels[num_bodies] = { "Exact", "Euler explicit", "Euler implicit" };
   Color colors[num_bodies] = { YELLOW, GREEN, BLUE }; 
   float offsets[num_bodies] = { -2, 0, 2 };
 
@@ -39,7 +51,7 @@ void setup_scene() {
     Material m = LoadMaterialDefault();
     m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
 
-    graphics[i] = (struct object) { cubeMesh, m };
+    graphics[i] = (struct object) { labels[i], cubeMesh, m };
     masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);
   }
 
@@ -52,8 +64,14 @@ void save_state() {
 
 void simulate(float dt) {
   rigidbody* exact = &masses[0];
-  float x = initial_offset * cosf(sqrtf(stiffness / exact->mass) * total_time);
-  exact->position.x = x;
+  float c =  sqrtf(stiffness / exact->mass);
+  exact->position.x = initial_offset * cosf(c * total_time);
+  exact->linear_velocity.x = -c * initial_offset * sinf(c * total_time);
+
+  rigidbody* euler_explicit = &masses[1];
+  float acc = -stiffness * euler_explicit->position.x / euler_explicit->mass;
+  euler_explicit->linear_velocity.x += acc * dt;
+  euler_explicit->position.x += euler_explicit->linear_velocity.x * dt;
 
   total_time += dt;
 }
@@ -76,25 +94,26 @@ void draw(float interpolation) {
   }
 }
 
+static void spring_stats(struct nk_context* ctx, int index) {
+  nk_layout_row_static(ctx, 15, 200, 1);
+  nk_label(ctx, graphics[index].label, NK_TEXT_ALIGN_LEFT);
+
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9);
+  nk_value_float(ctx, "Energy", total_energy(index));
+  nk_layout_row_end(ctx);
+}
+
 void draw_ui(struct nk_context* ctx) {
   if (nk_begin(ctx, "Debug", nk_rect(50, 50, 220, 220), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
-    nk_layout_row_static(ctx, 30, 80, 1);
+    nk_layout_row_static(ctx, 30, 200, 1);
     nk_radio_label(ctx, "Interpolation", &interpolate);
- 
-    // fixed widget window ratio width
-    // nk_layout_row_dynamic(ctx, 30, 2);
-    // if (nk_option_label(ctx, "easy", mode == 1)) mode = 1;
-    // if (nk_option_label(ctx, "hard", mode == 2)) mode = 2;
- 
-    // custom widget pixel width
-    // nk_layout_row_begin(ctx, NK_STATIC, 30, 2);
-    // {
-    //     nk_layout_row_push(ctx, 50);
-    //     nk_label(ctx, "Volume:", NK_TEXT_LEFT);
-    //     nk_layout_row_push(ctx, 110);
-    //     nk_slider_float(ctx, 0, &value, 1.0f, 0.1f);
-    // }
-    // nk_layout_row_end(ctx);
+
+    for(int i = 0; i < num_bodies; ++i) {
+      spring_stats(ctx, i);
+    }
   }
 
   nk_end(ctx);

@@ -2,7 +2,7 @@
 #include "raymath.h"
 
 rigidbody rb_new(Vector3 position, float mass) {
-  return (rigidbody){ position, QuaternionIdentity(), mass };
+  return (rigidbody){ position, (Vector3){0}, QuaternionIdentity(), mass };
 }
 
 Matrix rb_transformation(const rigidbody* rb) {
@@ -16,6 +16,7 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   rigidbody result;
   result.position = Vector3Lerp(from->position, to->position, t);
   result.orientation = QuaternionSlerp(from->orientation, to->orientation, t);
+  result.linear_velocity = Vector3Lerp(from->linear_velocity, to->linear_velocity, t);
   result.mass = Lerp(from->mass, to->mass, t);
 
   return result;
