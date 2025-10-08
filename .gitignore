@@ -1,0 +1,10 @@
+# build files
+obj/
+
+# binaries
+spring
+
+# raylib library
+lib/libraylib.a
+
+.cache/

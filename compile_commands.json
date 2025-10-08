@@ -1,0 +1,36 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "-O2",
+      "-Iinclude",
+      "-c",
+      "-o",
+      "obj/main.o",
+      "core/main.c"
+    ],
+    "directory": "/Users/s.pikhota/Projects/Personal/Physics",
+    "file": "/Users/s.pikhota/Projects/Personal/Physics/core/main.c",
+    "output": "/Users/s.pikhota/Projects/Personal/Physics/obj/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "-O2",
+      "-Iinclude",
+      "-c",
+      "-o",
+      "obj/spring.o",
+      "scenarios/spring.c"
+    ],
+    "directory": "/Users/s.pikhota/Projects/Personal/Physics",
+    "file": "/Users/s.pikhota/Projects/Personal/Physics/scenarios/spring.c",
+    "output": "/Users/s.pikhota/Projects/Personal/Physics/obj/spring.o"
+  }
+]
