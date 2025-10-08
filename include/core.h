@@ -1,7 +1,7 @@
 #ifndef CORE_H
 #define CORE_H
 
-#include "raymath.h"
+#include "raylib-nuklear.h"
 
 typedef struct {
   char* window_title;
@@ -15,6 +15,6 @@ void setup_scene();
 void save_state();
 void simulate(float dt);
 void draw(float interpolation);
-
+void draw_ui(struct nk_context* ctx);
 
 #endif
