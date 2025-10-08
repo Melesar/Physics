@@ -11,3 +11,12 @@ Matrix rb_transformation(const rigidbody* rb) {
       MatrixTranslate(rb->position.x, rb->position.y, rb->position.z)
     );
 }
+
+rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
+  rigidbody result;
+  result.position = Vector3Lerp(from->position, to->position, t);
+  result.orientation = QuaternionSlerp(from->orientation, to->orientation, t);
+  result.mass = Lerp(from->mass, to->mass, t);
+
+  return result;
+}

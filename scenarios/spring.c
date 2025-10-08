@@ -1,11 +1,12 @@
 #include "raylib.h"
 #include "physics.h"
-#include "raymath.h"
+#include "core.h"
+#include "math.h"
+#include "string.h"
 
 struct object {
   Mesh mesh;
   Material material;
-  rigidbody body;
 };
 
 const int num_bodies = 3;
@@ -13,34 +14,57 @@ const int num_bodies = 3;
 const float stiffness = 2;
 const float initial_offset = 5;
 
-struct object masses[num_bodies];
+struct object graphics[num_bodies];
+rigidbody prev_state[num_bodies];
+rigidbody masses[num_bodies];
 
-void setup() {
-  Mesh cubeMesh = GenMeshCube(1, 1, 1);
-  Image yellow = GenImageColor(32, 32, YELLOW);
-  Image green = GenImageColor(32, 32, GREEN);
-  Image blue = GenImageColor(32, 32, BLUE);
+float total_time;
 
-  Material m1 = LoadMaterialDefault();
-  SetMaterialTexture(&m1, MATERIAL_MAP_DIFFUSE, LoadTextureFromImage(yellow));
-
-  Material m2 = LoadMaterialDefault();
-  SetMaterialTexture(&m2, MATERIAL_MAP_DIFFUSE, LoadTextureFromImage(green));
-
-  Material m3 = LoadMaterialDefault();
-  SetMaterialTexture(&m3, MATERIAL_MAP_DIFFUSE, LoadTextureFromImage(blue));
+void initialize_program(program_config* config) {
  
-  masses[0] = (struct object) { cubeMesh, m1, rb_new((Vector3){initial_offset, 0.5, -2}, 1) };
-  masses[1] = (struct object) { cubeMesh, m2, rb_new((Vector3){initial_offset, 0.5, 0}, 1) };
-  masses[2] = (struct object) { cubeMesh, m3, rb_new((Vector3){initial_offset, 0.5, 2}, 1) };
+  config->camera_mode = CAMERA_CUSTOM;
+  config->window_title = "Mass on a spring";
+  config->camera_position = (Vector3) { 2, 7, 10 };
+  config->camera_target = (Vector3) { 2, 0.5, 0 };
+}
+
+void setup_scene() {
+  Mesh cubeMesh = GenMeshCube(1, 1, 1);
+
+  Color colors[num_bodies] = { YELLOW, GREEN, BLUE }; 
+  float offsets[num_bodies] = { -2, 0, 2 };
+
+  for (int i = 0; i < num_bodies; ++i) {
+    Material m = LoadMaterialDefault();
+    m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
+
+    graphics[i] = (struct object) { cubeMesh, m };
+    masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);
+  }
+
+  save_state();
+}
+
+void save_state() {
+  memcpy(prev_state, masses, sizeof(masses));
 }
 
 void simulate(float dt) {
+  rigidbody* exact = &masses[0];
+  float x = initial_offset * cosf(sqrtf(stiffness / exact->mass) * total_time);
+  exact->position.x = x;
+
+  total_time += dt;
 }
 
-void draw() {
+void draw(float interpolation) {
   for (int i = 0; i < num_bodies; ++i) {
-    struct object m = masses[i];
-    DrawMesh(m.mesh, m.material, rb_transformation(&m.body));
+    const rigidbody* current = &masses[i];
+    const rigidbody* prev = &prev_state[i];
+
+    rigidbody body = rb_interpolate(current, prev, interpolation);
+    struct object obj = graphics[i];
+    
+    DrawMesh(obj.mesh, obj.material, rb_transformation(&body));
   }
 }

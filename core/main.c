@@ -1,60 +1,71 @@
 #include "raylib.h"
+#include "core.h"
+#include "raymath.h"
+#include "stdio.h"
 
-void setup();
-
-void simulate(float dt);
-
-void draw();
 
 int main(void)
 {
-    // Initialization
     const int screenWidth = 1920;
     const int screenHeight = 1080;
 
-    InitWindow(screenWidth, screenHeight, "Raylib Prototype - Cube and Ground");
+    const int frameRate = 60;
+    const int simulationRate = 30;
 
-    // Define the camera to look into our 3D world
+    program_config config = { 0 };
+
+    initialize_program(&config);
+
+    InitWindow(screenWidth, screenHeight, config.window_title);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
+    SetExitKey(KEY_F10);
+    SetTargetFPS(frameRate); // Set frame rate
+    SetTraceLogLevel(LOG_DEBUG);
+
     Camera3D camera = { 0 };
-    camera.position = (Vector3){ 4.0f, 4.0f, 4.0f }; // Camera position
-    camera.target = (Vector3){ 0.0f, 1.0f, 0.0f };   // Camera looking at point
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };       // Camera up vector
-    camera.fovy = 45.0f;                             // Field-of-view Y
-    camera.projection = CAMERA_PERSPECTIVE;          // Perspective projection
+    camera.position = config.camera_position;
+    camera.target = config.camera_target;   
+    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.fovy = 45.0f;         
+    camera.projection = CAMERA_PERSPECTIVE;
 
-    SetTargetFPS(60); // Set frame rate
+    setup_scene();
 
-    setup();
+    const float simulationStep = 1.0 / simulationRate;
 
-    // Main game loop
-    while (!WindowShouldClose())    // Detect window close button or ESC key
+    float accum = 0;
+    float deltaTime = 0;
+    while (!WindowShouldClose())
     {
-        // Update
-        UpdateCamera(&camera, CAMERA_FREE); // Move camera around using mouse + WASD
+        UpdateCamera(&camera, config.camera_mode);
 
-        simulate(GetFrameTime());
+        accum += deltaTime;
+        int sim_count = (int)(accum / simulationStep);
 
-        // Draw
+        for (int i = 0; i < sim_count; i++) {
+          save_state();
+          simulate(simulationStep);
+        }
+
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
             BeginMode3D(camera);
 
-                draw();
+                float t = Clamp(accum / simulationStep, 0, 1);
+                draw(t);
 
-                // Draw ground plane
                 DrawPlane((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector2){ 32.0f, 32.0f }, LIGHTGRAY);
-                DrawGrid(32, 1.0f); // Helper grid
+                DrawGrid(32, 1.0f);
 
             EndMode3D();
-
-            DrawText("Move with WASD + Mouse. Press ESC to quit.", 10, 10, 20, DARKGRAY);
-
         EndDrawing();
+
+        accum -= sim_count * simulationStep;
+        deltaTime = GetFrameTime();
     }
 
-    // De-Initialization
-    CloseWindow(); // Close window and OpenGL context
+    CloseWindow();
 
     return 0;
 }

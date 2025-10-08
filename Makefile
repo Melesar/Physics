@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -Wextra -std=c11 -O2 -Iinclude
+CFLAGS = -Wall -Wextra -std=c11 -Iinclude -g
 LDFLAGS = -Llib -framework CoreVideo -framework IOKit -framework Cocoa -framework GLUT -framework OpenGL -lraylib
 
 OBJ_DIR = obj
