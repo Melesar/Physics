@@ -73,6 +73,17 @@ void simulate(float dt) {
   euler_explicit->linear_velocity.x += acc * dt;
   euler_explicit->position.x += euler_explicit->linear_velocity.x * dt;
 
+  rigidbody* euler_implicit = &masses[2];
+  float omsq = stiffness / euler_implicit->mass;
+  float x0 = euler_implicit->position.x;
+  float v0 = euler_implicit->linear_velocity.x;
+  float invDenom = 1 / (1 + dt * dt * omsq);
+  float x = (x0 + dt * v0) * invDenom;
+  float v = (v0 - dt * omsq * x0) * invDenom;
+
+  euler_implicit->position.x = x;
+  euler_implicit->linear_velocity.x = v;
+
   total_time += dt;
 }
 
