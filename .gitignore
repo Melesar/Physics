@@ -3,6 +3,7 @@ obj/
 
 # binaries
 spring
+pendulum
 
 # raylib library
 lib/libraylib.a
