@@ -12,11 +12,19 @@ struct object {
   Material material;
 };
 
+struct motion {
+  int num_turns;
+  int current_direction;
+  double timestamp; 
+  double period;
+};
+
 const int num_bodies = 4;
 
-const float stiffness = 2;
+const float stiffness = 8;
 const float initial_offset = 5;
 
+struct motion motions[num_bodies];
 struct object graphics[num_bodies];
 rigidbody prev_state[num_bodies];
 rigidbody masses[num_bodies];
@@ -53,6 +61,7 @@ void setup_scene() {
 
     graphics[i] = (struct object) { labels[i], cubeMesh, m };
     masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);
+    motions[i] = (struct motion) { .timestamp = GetTime() };
   }
 
   save_state();
@@ -64,7 +73,7 @@ void save_state() {
 
 void simulate(float dt) {
   rigidbody* exact = &masses[0];
-  float c =  sqrtf(stiffness / exact->mass);
+  float c = sqrtf(stiffness / exact->mass);
   exact->position.x = initial_offset * cosf(c * total_time);
   exact->linear_velocity.x = -c * initial_offset * sinf(c * total_time);
 
@@ -103,9 +112,28 @@ void simulate(float dt) {
 
   rk4->position.x += dx;
   rk4->linear_velocity.x += dv;
-
   
   total_time += dt;
+
+  for (int i = 0; i < num_bodies; ++i) {
+    struct motion* m = &motions[i];
+    rigidbody current = masses[i];
+    rigidbody prev = prev_state[i];
+
+    float prev_velocity = prev.linear_velocity.x;
+    float current_velocity = current.linear_velocity.x;
+
+    if (prev_velocity == 0 || (prev_velocity * current_velocity < 0)) {
+      m->num_turns += 1;
+    }
+
+    if (m->num_turns == 2) {
+      double current_time = GetTime();
+      m->period = current_time - m->timestamp;
+      m->timestamp = current_time;
+      m->num_turns = 0;
+    }
+  }
 }
 
 void draw(float interpolation) {
@@ -136,12 +164,20 @@ static void spring_stats(struct nk_context* ctx, int index) {
   nk_layout_row_push(ctx, 0.9);
   nk_value_float(ctx, "Energy", total_energy(index));
   nk_layout_row_end(ctx);
+
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9);
+  nk_value_float(ctx, "Period", motions[index].period);
+  nk_layout_row_end(ctx);
 }
 
 void draw_ui(struct nk_context* ctx) {
   if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 220, 350), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
     nk_layout_row_static(ctx, 30, 200, 1);
     nk_radio_label(ctx, "Interpolation", &interpolate);
+    nk_value_float(ctx, "Period", 2 * PI * sqrt(masses[0].mass / stiffness));
 
     for(int i = 0; i < num_bodies; ++i) {
       spring_stats(ctx, i);
