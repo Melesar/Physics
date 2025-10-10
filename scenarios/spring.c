@@ -12,7 +12,7 @@ struct object {
   Material material;
 };
 
-const int num_bodies = 3;
+const int num_bodies = 4;
 
 const float stiffness = 2;
 const float initial_offset = 5;
@@ -43,9 +43,9 @@ void initialize_program(program_config* config) {
 void setup_scene() {
   Mesh cubeMesh = GenMeshCube(1, 1, 1);
 
-  char* labels[num_bodies] = { "Exact", "Euler explicit", "Euler implicit" };
-  Color colors[num_bodies] = { YELLOW, GREEN, BLUE }; 
-  float offsets[num_bodies] = { -2, 0, 2 };
+  char* labels[num_bodies] = { "Exact", "Euler explicit", "Euler implicit", "RK4" };
+  Color colors[num_bodies] = { YELLOW, GREEN, BLUE, PURPLE }; 
+  float offsets[num_bodies] = { -2, 0, 2, 4 };
 
   for (int i = 0; i < num_bodies; ++i) {
     Material m = LoadMaterialDefault();
@@ -84,6 +84,27 @@ void simulate(float dt) {
   euler_implicit->position.x = x;
   euler_implicit->linear_velocity.x = v;
 
+  rigidbody* rk4 = &masses[3];
+  x0 = rk4->position.x;
+  v0 = rk4->linear_velocity.x;
+
+  float omegasq = -stiffness / rk4->mass;
+  float dv1 = dt * omegasq * x0;
+  float dx1 = dt * v0;
+  float dv2 = dt * omegasq * (x0 + 0.5 * dx1);
+  float dx2 = dt * (v0 + 0.5 * dv1);
+  float dv3 = dt * omegasq * (x0 + 0.5 * dx2);
+  float dx3 = dt * (v0 + 0.5 * dv2);
+  float dv4 = dt * omegasq * (x0 + dx3);
+  float dx4 = dt * (v0 + dv3);
+
+  float dx = (dx1 + 2 * dx2 + 2 * dx3 + dx4) / 6; 
+  float dv = (dv1 + 2 * dv2 + 2 * dv3 + dv4) / 6;
+
+  rk4->position.x += dx;
+  rk4->linear_velocity.x += dv;
+
+  
   total_time += dt;
 }
 
@@ -118,7 +139,7 @@ static void spring_stats(struct nk_context* ctx, int index) {
 }
 
 void draw_ui(struct nk_context* ctx) {
-  if (nk_begin(ctx, "Debug", nk_rect(50, 50, 220, 220), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
+  if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 220, 350), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
     nk_layout_row_static(ctx, 30, 200, 1);
     nk_radio_label(ctx, "Interpolation", &interpolate);
 
