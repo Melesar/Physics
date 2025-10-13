@@ -57,6 +57,7 @@ int main(void) {
   while (!WindowShouldClose()) {
     UpdateCamera(&camera, config.camera_mode);
     UpdateNuklear(ctx);
+    process_inputs();
 
     accum += deltaTime;
     int sim_count = (int)(accum / simulationStep);

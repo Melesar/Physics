@@ -5,16 +5,16 @@
       "-Wall",
       "-Wextra",
       "-std=c11",
-      "-O2",
       "-Iinclude",
+      "-g",
       "-c",
       "-o",
-      "obj/main.o",
-      "core/main.c"
+      "obj/pendulum.o",
+      "scenarios/pendulum.c"
     ],
     "directory": "/Users/s.pikhota/Projects/Personal/Physics",
-    "file": "/Users/s.pikhota/Projects/Personal/Physics/core/main.c",
-    "output": "/Users/s.pikhota/Projects/Personal/Physics/obj/main.o"
+    "file": "/Users/s.pikhota/Projects/Personal/Physics/scenarios/pendulum.c",
+    "output": "/Users/s.pikhota/Projects/Personal/Physics/obj/pendulum.o"
   },
   {
     "arguments": [
@@ -22,8 +22,8 @@
       "-Wall",
       "-Wextra",
       "-std=c11",
-      "-O2",
       "-Iinclude",
+      "-g",
       "-c",
       "-o",
       "obj/spring.o",

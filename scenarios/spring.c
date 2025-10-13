@@ -4,27 +4,13 @@
 #include "math.h"
 #include "raymath.h"
 #include "string.h"
-#include "raylib-nuklear.h"
-
-struct object {
-  char* label;
-  Mesh mesh;
-  Material material;
-};
-
-struct motion {
-  int num_turns;
-  int current_direction;
-  double timestamp; 
-  double period;
-};
 
 const int num_bodies = 4;
 
 const float stiffness = 8;
 const float initial_offset = 5;
 
-struct motion motions[num_bodies];
+oscillation_period periods[num_bodies];
 struct object graphics[num_bodies];
 rigidbody prev_state[num_bodies];
 rigidbody masses[num_bodies];
@@ -61,7 +47,7 @@ void setup_scene() {
 
     graphics[i] = (struct object) { labels[i], cubeMesh, m };
     masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);
-    motions[i] = (struct motion) { .timestamp = GetTime() };
+    periods[i] = oscillation_period_new();
   }
 
   save_state();
@@ -70,6 +56,8 @@ void setup_scene() {
 void save_state() {
   memcpy(prev_state, masses, sizeof(masses));
 }
+
+void process_inputs() {}
 
 void simulate(float dt) {
   rigidbody* exact = &masses[0];
@@ -116,23 +104,7 @@ void simulate(float dt) {
   total_time += dt;
 
   for (int i = 0; i < num_bodies; ++i) {
-    struct motion* m = &motions[i];
-    rigidbody current = masses[i];
-    rigidbody prev = prev_state[i];
-
-    float prev_velocity = prev.linear_velocity.x;
-    float current_velocity = current.linear_velocity.x;
-
-    if (prev_velocity == 0 || (prev_velocity * current_velocity < 0)) {
-      m->num_turns += 1;
-    }
-
-    if (m->num_turns == 2) {
-      double current_time = GetTime();
-      m->period = current_time - m->timestamp;
-      m->timestamp = current_time;
-      m->num_turns = 0;
-    }
+    oscillation_period_track(&periods[i], &masses[i], &prev_state[i]);
   }
 }
 
@@ -169,7 +141,7 @@ static void spring_stats(struct nk_context* ctx, int index) {
   nk_layout_row_push(ctx, 0.1);
   nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
   nk_layout_row_push(ctx, 0.9);
-  nk_value_float(ctx, "Period", motions[index].period);
+  nk_value_float(ctx, "Period", periods[index].period);
   nk_layout_row_end(ctx);
 }
 

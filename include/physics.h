@@ -3,6 +3,8 @@
 
 #include "raymath.h"
 
+#define GRAVITY 9.81f
+
 typedef struct {
     Vector3 position;
     Vector3 linear_velocity;
@@ -11,10 +13,19 @@ typedef struct {
     float mass;
 } rigidbody;
 
+typedef struct {
+  int num_turns;
+  double timestamp; 
+  double period;
+} oscillation_period;
+
 rigidbody rb_new(Vector3 position, float mass);
 
 Matrix rb_transformation(const rigidbody* rb);
 
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
+
+oscillation_period oscillation_period_new();
+void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
 
 #endif
