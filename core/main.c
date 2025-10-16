@@ -15,7 +15,6 @@ const float simulationStep = 1.0 / simulationRate;
 void draw_scene(Camera camera, float accum, struct nk_context* ctx) {
   BeginDrawing();
     ClearBackground(RAYWHITE);
-
       BeginMode3D(camera);
 
         float t = Clamp(accum / simulationStep, 0, 1);

@@ -4,6 +4,7 @@
 #include "raymath.h"
 
 #define GRAVITY 9.81f
+#define GRAVITY_V (Vector3) { 0, -9.81f, 0 }
 
 typedef struct {
     Vector3 position;

@@ -6,6 +6,15 @@
 #include "string.h"
 #include <stdlib.h>
 
+#define START_RUNNING true
+
+struct spring_pendulum {
+  Vector3 anchor;
+  float stiffness;
+  float damping;
+  rigidbody body;
+};
+
 struct pendulum {
   Vector3 anchor;
   rigidbody body;
@@ -14,13 +23,16 @@ struct pendulum {
 };
 
 const int num_pendulums = 2;
-const float initial_angle = PI * 0.25;
+const float initial_angle = 0.25 * PI;
 const float string_length = 2;
 const float default_mass = 1;
+const float default_stiffness = 20;
+const float defualt_damping = 3;
 
 struct object graphics[num_pendulums];
-struct pendulum pendulums[num_pendulums];
-struct pendulum prev_state[num_pendulums];
+struct spring_pendulum spring;
+struct pendulum p;
+
 oscillation_period periods[num_pendulums];
 
 int tick_count;
@@ -96,7 +108,7 @@ static void pendulum_normalize(struct pendulum* p) {
 }
 
 void initialize_program(program_config* config) {
-  is_running = false;
+  is_running = START_RUNNING;
   step_forward = false;
 
   config->camera_mode = CAMERA_CUSTOM; 
@@ -110,25 +122,34 @@ void setup_scene() {
 
   Color colors[] = { YELLOW, BLUE };
   Vector3 anchors[] = { { 0, 5, 0  }, { 0, 5, 2 } };
-  char* labels[] = { "EExp", "RK4" };
+  char* labels[] = { "Spring", "Rigid" };
+  Material materials[num_pendulums];
+
+  materials[0] = LoadMaterialDefault();
+  materials[0].maps[MATERIAL_MAP_DIFFUSE].color = colors[0];
+  materials[1] = LoadMaterialDefault();
+  materials[1].maps[MATERIAL_MAP_DIFFUSE].color = colors[1];
+
+  p = (struct pendulum) {
+     .anchor = anchors[0],
+     .body = rb_new(pendulum_position(anchors[0], string_length, initial_angle), default_mass),
+     .string_length = string_length,
+  };
+
+  spring = (struct spring_pendulum) {
+    .anchor = anchors[1],
+    .body = rb_new(pendulum_position(anchors[1], string_length, initial_angle), default_mass),
+    .stiffness = default_stiffness,
+    .damping = defualt_damping,
+  };
 
   for (int i = 0; i < num_pendulums; ++i) {
-    Material m = LoadMaterialDefault();
-    m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
-
-    pendulums[i] = (struct pendulum) {
-       .anchor = anchors[i],
-       .body = rb_new(pendulum_position(anchors[i], string_length, initial_angle), default_mass),
-       .string_length = string_length,
-    };
-
-    graphics[i] = (struct object) { .label = labels[i], .mesh = mesh, .material = m };
+    graphics[i] = (struct object) { .label = labels[i], .mesh = mesh, .material = materials[i] };
     periods[i] = oscillation_period_new();
   }
 }
 
 void save_state() {
-  memcpy(prev_state, pendulums, sizeof(pendulums));
 }
 
 void process_inputs() {
@@ -140,30 +161,26 @@ void process_inputs() {
     step_forward = true;
   }
 
-  if (IsKeyPressed(KEY_R)) {
-    for (int i = 0; i < num_pendulums; ++i) {
-      struct pendulum* p = &pendulums[i];
-      p->body.position = pendulum_position(p->anchor, p->string_length, initial_angle);
-      p->body.linear_velocity = (Vector3) { 0 };
-    }
+  if (IsKeyPressed(KEY_R)) { 
+    p.body.position = spring.body.position = pendulum_position(p.anchor, p.string_length, initial_angle);
+    p.body.linear_velocity = spring.body.linear_velocity = (Vector3) { 0 };
   }
 }
 
-static void euler_explicit(struct pendulum* p, float dt) {
-    rigidbody* mass = &p->body;
+static Vector3 rk4_acc(Vector3 position, Vector3 velocity, struct spring_pendulum* p) {
+  Vector3 spring_acc = Vector3Scale(Vector3Subtract(position, p->anchor), p->stiffness);
+  Vector3 damping_acc = Vector3Scale(velocity, p->damping);
+  Vector3 gravity_acc = GRAVITY_V;
 
-    Vector3 acceleration = pendulum_acceleration(p);
-    mass->linear_velocity = Vector3Add(mass->linear_velocity, Vector3Scale(acceleration, dt));    
-    mass->position = Vector3Add(mass->position, Vector3Scale(mass->linear_velocity, dt));
+  Vector3 acc = Vector3Subtract(gravity_acc, spring_acc);
+  acc = Vector3Subtract(acc, damping_acc);
 
-    // pendulum_normalize(p);
+  TraceLog(LOG_DEBUG, "Spring %f, damping %f, final %f", Vector3Length(spring_acc), Vector3Length(damping_acc), Vector3Length(acc));
+
+  return acc;
 }
 
-static Vector3 rk4_acc(Vector3 position, Vector3 velocity, struct pendulum* p) {
-  return pendulum_acceleration_ex(position, velocity, p);
-}
-
-static void rk4(struct pendulum* p, float dt) {
+static void rk4(struct spring_pendulum* p, float dt) {
   rigidbody* body = &p->body;
 
   Vector3 x0 = body->position;
@@ -183,8 +200,6 @@ static void rk4(struct pendulum* p, float dt) {
 
   body->linear_velocity = Vector3Add(v0, dv);
   body->position = Vector3Add(x0, dx);
-
-  pendulum_normalize(p);
 }
 
 void simulate(float dt) {
@@ -192,32 +207,31 @@ void simulate(float dt) {
     return;
   }
 
-  euler_explicit(&pendulums[0], dt);
-  rk4(&pendulums[1], dt);
-
-  for (int i = 0; i < num_pendulums; i++) {
-    oscillation_period_track(&periods[i], &pendulums[i].body, &prev_state[i].body);
-  }
+  rk4(&spring, dt);
 
   step_forward = false;
 }
 
 void draw(float interpolation) {
   for (int i = 0; i < num_pendulums; ++i) {
-    struct pendulum current = pendulums[i];
-    struct pendulum prev = prev_state[i];
     struct object obj = graphics[i];
 
-    DrawSphere(current.anchor, 0.05, RED);
+    Vector3 anchor;
+    rigidbody r;
+    switch (i) {
+      case 1:
+        anchor = spring.anchor;
+        r = spring.body;
+        break;
 
-    rigidbody actual = rb_interpolate(&prev.body, &current.body, interpolation);
-    // DrawMesh(obj.mesh, obj.material, rb_transformation(&actual));
-  
-    draw_arrow(actual.position, Vector3Add(actual.position, actual.linear_velocity), RED);
-    draw_arrow(actual.position, Vector3Add(actual.position, pendulum_acceleration(&current)), BLUE);
-    draw_arrow(actual.position, Vector3Add(actual.position, (Vector3) { 0, -GRAVITY, 0 }), PURPLE);
-    // draw_arrow(actual.position, Vector3Add(actual.position, ), PURPLE);
+      case 0:
+        anchor = p.anchor;
+        r = p.body;
+        break;
+    }
 
+    DrawSphere(anchor, 0.05, RED);
+    DrawMesh(obj.mesh, obj.material, rb_transformation(&r));
   }
 }
 
@@ -241,26 +255,23 @@ static void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value)
 
 void draw_ui(struct nk_context* ctx) {
     if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 220, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
-    nk_layout_row_static(ctx, 30, 200, 1);
-    nk_value_float(ctx, "Period", 2 * PI * sqrt(string_length / default_mass));
-    nk_value_float(ctx, "Total energy", default_mass * string_length * (1 - cosf(initial_angle)) * GRAVITY);
+      nk_layout_row_static(ctx, 30, 200, 1);
+      nk_label(ctx, graphics[0].label, NK_TEXT_ALIGN_LEFT);
 
-    for(int i = 0; i < num_pendulums; ++i) {
-      struct pendulum* p = &pendulums[i];
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#stiffness", 0, &spring.stiffness, 100, 1, 2);
+      nk_layout_row_end(ctx);
 
-      nk_layout_row_static(ctx, 15, 200, 1);
-      nk_label(ctx, graphics[i].label, NK_TEXT_ALIGN_LEFT);
-
-      float angle = pendulum_angle(p);
-      draw_stat_float(ctx, "Energy", pendulum_energy(p));
-      draw_stat_float(ctx, "Period", periods[i].period);
-      draw_stat_float(ctx, "a.y", -Vector3Subtract(p->body.position, p->anchor).y);
-      draw_stat_float(ctx, "Angle", angle);
-      draw_stat_float(ctx, "Height", pendulum_height(p));
-      draw_stat_float3(ctx, "Velocity", p->body.linear_velocity);
-      draw_stat_float3(ctx, "Acc", pendulum_acceleration(p));
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#damping", 0, &spring.damping, 10, 0.2, 0.1);
+      nk_layout_row_end(ctx);
     }
-  }
 
   nk_end(ctx);
 }
