@@ -20,6 +20,7 @@ struct pendulum {
   rigidbody body;
 
   float string_length;
+  float stabilization_factor;
 };
 
 const int num_pendulums = 2;
@@ -93,6 +94,7 @@ void setup_scene() {
      .anchor = anchors[0],
      .body = rb_new(pendulum_position(anchors[0], string_length, initial_angle), default_mass),
      .string_length = string_length,
+     .stabilization_factor = 0.2,
   };
 
   spring = (struct spring_pendulum) {
@@ -182,10 +184,12 @@ static void simulate_with_constraint(struct pendulum* p, float dt) {
   Vector3 r = Vector3Subtract(p->anchor, body->position);
   Vector3 n = Vector3Normalize(r);
   Vector3 J = n;
+
   float invMass = 1.0 / body->mass;
   Vector3 mInv = Vector3Scale(Vector3One(), invMass);
+  float error = fabs(Vector3Length(r) - p->string_length);
   float a = Vector3DotProduct(Vector3Scale(J, invMass), J);
-  float b = -Vector3DotProduct(J, body->linear_velocity);
+  float b = -(Vector3DotProduct(J, body->linear_velocity) - error * p->stabilization_factor / dt);
   float lambda = b / a;
 
   dv = Vector3Scale(Vector3Scale(J, invMass), lambda);
@@ -264,6 +268,22 @@ void draw_ui(struct nk_context* ctx) {
       nk_layout_row_push(ctx, 0.9);
       nk_property_float(ctx, "#damping", 0, &spring.damping, 10, 0.2, 0.1);
       nk_layout_row_end(ctx);
+
+      nk_layout_row_static(ctx, 30, 200, 1);
+      nk_label(ctx, graphics[1].label, NK_TEXT_ALIGN_LEFT);
+
+      float actual_distance =  Vector3Length(Vector3Subtract(p.anchor, p.body.position));
+      draw_stat_float(ctx, "Energy", pendulum_energy(&p));
+      draw_stat_float(ctx, "Length", actual_distance);
+      draw_stat_float(ctx, "Error", fabs(actual_distance - p.string_length));
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#correction", 0, &p.stabilization_factor, 1, 0.1, 0.05);
+      nk_layout_row_end(ctx);
+ 
     }
 
   nk_end(ctx);
