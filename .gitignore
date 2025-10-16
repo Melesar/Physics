@@ -1,11 +1,8 @@
 # build files
-obj/
+build/
 
 # binaries
 spring
 pendulum
-
-# raylib library
-lib/libraylib.a
 
 .cache/
