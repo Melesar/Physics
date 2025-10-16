@@ -2,12 +2,9 @@
 #include "raylib.h"
 #include "physics.h"
 #include "math.h"
-#include "raymath.h"
-#include "string.h"
-#include <stdlib.h>
 
 #define START_RUNNING true
-#define NUM_PENDULUMS 2
+#define NUM_PENDULUMS 3
 
 struct spring_pendulum {
   Vector3 anchor;
@@ -29,14 +26,18 @@ const float string_length = 2;
 const float default_mass = 1;
 const float default_stiffness = 20;
 const float defualt_damping = 3;
+const float default_stabilisation = 0.2;
 
 struct object graphics[NUM_PENDULUMS];
 struct spring_pendulum spring;
 struct pendulum p;
+struct pendulum double_pendulum[2];
 
 oscillation_period periods[NUM_PENDULUMS];
 
 int tick_count;
+int solver_iterations = 3;
+
 bool is_running;
 bool step_forward;
 
@@ -80,21 +81,23 @@ void initialize_program(program_config* config) {
 void setup_scene() {
   Mesh mesh = GenMeshSphere(0.3, 32, 32);
 
-  Color colors[] = { YELLOW, BLUE };
-  Vector3 anchors[] = { { 0, 5, 0  }, { 0, 5, 2 } };
-  char* labels[] = { "Spring", "Rigid" };
+  Color colors[] = { YELLOW, BLUE, PURPLE };
+  Vector3 anchors[] = { { 0, 5, 0  }, { 0, 5, 2 }, { 0, 5, 4 } };
+  char* labels[] = { "Spring", "Rigid", "Double" };
   Material materials[NUM_PENDULUMS];
 
   materials[0] = LoadMaterialDefault();
   materials[0].maps[MATERIAL_MAP_DIFFUSE].color = colors[0];
   materials[1] = LoadMaterialDefault();
   materials[1].maps[MATERIAL_MAP_DIFFUSE].color = colors[1];
+  materials[2] = LoadMaterialDefault();
+  materials[2].maps[MATERIAL_MAP_DIFFUSE].color = colors[2];
 
   p = (struct pendulum) {
      .anchor = anchors[0],
      .body = rb_new(pendulum_position(anchors[0], string_length, initial_angle), default_mass),
      .string_length = string_length,
-     .stabilization_factor = 0.2,
+     .stabilization_factor = default_stabilisation,
   };
 
   spring = (struct spring_pendulum) {
@@ -102,6 +105,19 @@ void setup_scene() {
     .body = rb_new(pendulum_position(anchors[1], string_length, initial_angle), default_mass),
     .stiffness = default_stiffness,
     .damping = defualt_damping,
+  };
+
+  double_pendulum[0] = (struct pendulum) {
+    .anchor = anchors[2],
+    .body = rb_new(pendulum_position(anchors[2], string_length, initial_angle), default_mass),
+    .string_length = string_length,
+    .stabilization_factor = default_stabilisation,
+  };
+  double_pendulum[1] = (struct pendulum) {
+    .anchor = Vector3Zero(),
+    .body = rb_new(pendulum_position(double_pendulum[0].body.position, string_length, 0.5 * PI), default_mass),
+    .string_length = string_length,
+    .stabilization_factor = default_stabilisation,
   };
 
   for (int i = 0; i < NUM_PENDULUMS; ++i) {
@@ -172,11 +188,6 @@ static void simulate_with_constraint(struct pendulum* p, float dt) {
   Vector3 x0 = body->position;
   Vector3 v0 = body->linear_velocity;
 
-  Vector3 dx1 = Vector3Scale(v0, dt);
-  Vector3 dx2 = Vector3Scale(Vector3Add(v0, Vector3Scale(dvv, 0.5f)), dt);
-  Vector3 dx3 = Vector3Scale(Vector3Add(v0, Vector3Scale(dvv, 0.5f)), dt);
-  Vector3 dx4 = Vector3Scale(Vector3Add(v0, dvv), dt);
-
   Vector3 dv = Vector3Scale(Vector3Add(dvv, Vector3Add(Vector3Scale(dvv, 2.0f), Vector3Add(Vector3Scale(dvv, 2.0f), dvv))), 1.0 / 6);
 
   body->linear_velocity = Vector3Add(v0, dv);
@@ -198,6 +209,79 @@ static void simulate_with_constraint(struct pendulum* p, float dt) {
   body->position = Vector3Add(body->position, Vector3Scale(body->linear_velocity, dt));
 }
 
+static void solve_double_pendulum(Vector2 inv_mass, float dt) {
+  struct pendulum *main = &double_pendulum[0];
+  struct pendulum *secondary = &double_pendulum[1];
+
+  Vector3 r[] = { Vector3Subtract(main->anchor, main->body.position), Vector3Subtract(main->body.position, secondary->body.position) };
+  Vector3 n[] = { Vector3Normalize(r[0]), Vector3Normalize(r[1]) };
+  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
+  float c[] = { main->string_length - Vector3Length(r[0]), secondary->string_length - Vector3Length(r[1]) };
+  float beta[] = { main->stabilization_factor, secondary->stabilization_factor };
+  float j1[] = { -n[0].x, -n[0].y, -n[0].z, 0, 0, 0 };
+  float j2[] = { n[0].x, n[0].y, n[0].z, -n[1].x, -n[1].y, -n[1].z };
+  float inv_m[] = { inv_mass.x, inv_mass.x, inv_mass.x, inv_mass.y, inv_mass.y, inv_mass.y };
+
+  float jm[12];
+  for (int i = 0; i < 6; ++i) {
+    jm[i] = j1[i] * inv_m[i];
+    jm[i + 6] = j2[i] * inv_m[i];
+  }
+
+  float a[4];
+  for (int i = 0; i < 3; i++) {
+    a[0] = jm[i] * j1[i];
+    a[1] = jm[i] * j2[i];
+    a[2] = jm[i + 3] * j1[i];
+    a[3] = jm[i + 3] * j2[i];
+  }
+
+  float b[2];
+  float inv_t = 1.0 / dt;
+  for (int i = 0; i < 6; ++i) {
+    float vi = *((float*)v+i);
+    b[0] = -(j1[i] * vi + beta[0] * c[0] * inv_t);
+    b[1] = -(j2[i] * vi + beta[1] * c[1] * inv_t);
+  }
+
+  float lambda[2];
+  gauss_seidel_solve(a, b, lambda, 2);
+
+  float dv[6];
+  for (int i = 0; i < 6; ++i) {
+    float jt_lambda = j1[i] * lambda[0] + j2[i] * lambda[1];
+    dv[i] = jt_lambda * inv_m[i];
+  }
+
+  main->body.linear_velocity = Vector3Add(main->body.linear_velocity, *(Vector3*)dv);
+  secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, *(Vector3*)(dv + 3));
+}
+
+static void simulate_double_pendulum(float dt) {
+  struct pendulum *main = &double_pendulum[0];
+  struct pendulum *secondary = &double_pendulum[1];
+  
+  Vector2 inv_mass = { 1.0 / main->body.mass, 1.0 / secondary->body.mass };
+
+  Vector3 acc[] = { Vector3Scale(GRAVITY_V, inv_mass.x), Vector3Scale(GRAVITY_V, inv_mass.y) };
+  Vector3 dvv[] = { Vector3Scale(acc[0], dt), Vector3Scale(acc[1], dt) };
+  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
+  Vector3 p[] = { main->body.position, secondary->body.position };
+
+  Vector3 dv[2];
+  for (int i = 0; i < 2; ++i) {
+    Vector3 dv = Vector3Scale(Vector3Add(dvv[i], Vector3Add(Vector3Scale(dvv[i], 2.0f), Vector3Add(Vector3Scale(dvv[i], 2.0f), dvv[i]))), 1.0 / 6);
+    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dv);
+  }
+
+  for (int i = 0; i < solver_iterations; ++i) {
+    solve_double_pendulum(inv_mass, dt);
+  }
+  
+  main->body.position = Vector3Add(main->body.position, Vector3Scale(main->body.linear_velocity, dt));
+  secondary->body.position = Vector3Add(secondary->body.position, Vector3Scale(secondary->body.linear_velocity, dt));
+}
+
 void simulate(float dt) {
   if (!is_running && !step_forward) {
     return;
@@ -205,6 +289,7 @@ void simulate(float dt) {
 
   rk4(&spring, dt);
   simulate_with_constraint(&p, dt);
+  simulate_double_pendulum(dt);
 
   step_forward = false;
 }
@@ -224,6 +309,13 @@ void draw(float interpolation) {
       case 0:
         anchor = p.anchor;
         r = p.body;
+        break;
+
+      case 2:
+        anchor = double_pendulum[0].anchor;
+        r = double_pendulum[0].body;
+
+        DrawMesh(obj.mesh, obj.material, rb_transformation(&double_pendulum[2].body));
         break;
     }
 

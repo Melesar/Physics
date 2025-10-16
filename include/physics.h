@@ -29,4 +29,6 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 oscillation_period oscillation_period_new();
 void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
 
+void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions);
+
 #endif
