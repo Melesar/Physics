@@ -51,31 +51,6 @@ static float pendulum_angle(struct pendulum* p) {
   return pendulum_angle_ex(p->body.position, p->anchor, p->string_length);
 }
 
-static Vector3 pendulum_acceleration_ex(Vector3 position, Vector3 velocity, struct pendulum* p) {
-  Vector3 r = Vector3Subtract(position, p->anchor);
-  float current_length = Vector3Length(r);
-  Vector3 r_hat = Vector3Scale(r, 1.0f / current_length);
-  
-  Vector3 gravity_acc = (Vector3){ 0, -GRAVITY, 0 };
-  
-  float v_radial = Vector3DotProduct(velocity, r_hat);
-  
-  float v_tangent_sq = Vector3LengthSqr(velocity) - v_radial * v_radial;
-  float centripetal = v_tangent_sq / p->string_length;
-  
-  float tension_magnitude = Vector3DotProduct(gravity_acc, r_hat) + centripetal;
-  
-  if (tension_magnitude < 0) tension_magnitude = 0;
-  
-  Vector3 tension = Vector3Scale(r_hat, tension_magnitude);
-  
-  return Vector3Add(gravity_acc, tension);
-}
-
-static Vector3 pendulum_acceleration(struct pendulum* p) {
-  return pendulum_acceleration_ex(p->body.position, p->body.linear_velocity, p);
-}
-
 static float pendulum_height(struct pendulum* p) {
   Vector3 r = Vector3Subtract(p->body.position, p->anchor);
   return p->string_length + r.y;
@@ -89,22 +64,6 @@ static float pendulum_energy(struct pendulum* p) {
 static Vector3 pendulum_position(Vector3 anchor, float length, float angle) {
   Vector3 offset = { sin(angle), -cos(angle), 0 };
   return Vector3Add(anchor, Vector3Scale(offset, length));
-}
-
-static void pendulum_normalize(struct pendulum* p) {
-    Vector3 r = Vector3Subtract(p->body.position, p->anchor);
-    float len = Vector3Length(r);
-
-    if (len <= 0) {
-      return;
-    }
-
-    rigidbody* body = &p->body;
-    body->position = Vector3Add(p->anchor, Vector3Scale(r, p->string_length / len));
-
-    Vector3 r_hat = Vector3Scale(r, 1.0f / len);
-    body->linear_velocity = Vector3Subtract(body->linear_velocity, 
-        Vector3Scale(r_hat, Vector3DotProduct(body->linear_velocity, r_hat)));
 }
 
 void initialize_program(program_config* config) {
@@ -167,7 +126,7 @@ void process_inputs() {
   }
 }
 
-static Vector3 rk4_acc(Vector3 position, Vector3 velocity, struct spring_pendulum* p) {
+static Vector3 spring_acc(Vector3 position, Vector3 velocity, struct spring_pendulum* p) {
   Vector3 spring_acc = Vector3Scale(Vector3Subtract(position, p->anchor), p->stiffness);
   Vector3 damping_acc = Vector3Scale(velocity, p->damping);
   Vector3 gravity_acc = GRAVITY_V;
@@ -186,13 +145,13 @@ static void rk4(struct spring_pendulum* p, float dt) {
   Vector3 x0 = body->position;
   Vector3 v0 = body->linear_velocity;
 
-  Vector3 dv1 = Vector3Scale(rk4_acc(x0, v0, p),  dt);
+  Vector3 dv1 = Vector3Scale(spring_acc(x0, v0, p),  dt);
   Vector3 dx1 = Vector3Scale(v0, dt);
-  Vector3 dv2 = Vector3Scale(rk4_acc(Vector3Add(x0, Vector3Scale(dx1, 0.5f)), Vector3Add(v0, Vector3Scale(dv1, 0.5f)), p), dt);
+  Vector3 dv2 = Vector3Scale(spring_acc(Vector3Add(x0, Vector3Scale(dx1, 0.5f)), Vector3Add(v0, Vector3Scale(dv1, 0.5f)), p), dt);
   Vector3 dx2 = Vector3Scale(Vector3Add(v0, Vector3Scale(dv1, 0.5f)), dt);
-  Vector3 dv3 = Vector3Scale(rk4_acc(Vector3Add(x0, Vector3Scale(dx2, 0.5f)),Vector3Add(v0, Vector3Scale(dv1, 0.5f)), p), dt);
+  Vector3 dv3 = Vector3Scale(spring_acc(Vector3Add(x0, Vector3Scale(dx2, 0.5f)),Vector3Add(v0, Vector3Scale(dv1, 0.5f)), p), dt);
   Vector3 dx3 = Vector3Scale(Vector3Add(v0, Vector3Scale(dv2, 0.5f)), dt);
-  Vector3 dv4 = Vector3Scale(rk4_acc(Vector3Add(x0, dx3),Vector3Add(v0, dv1), p), dt);
+  Vector3 dv4 = Vector3Scale(spring_acc(Vector3Add(x0, dx3),Vector3Add(v0, dv1), p), dt);
   Vector3 dx4 = Vector3Scale(Vector3Add(v0, dv3), dt);
 
   Vector3 dx = Vector3Scale(Vector3Add(dx1, Vector3Add(Vector3Scale(dx2, 2.0f), Vector3Add(Vector3Scale(dx3, 2.0f), dx4))), 1.0 / 6);
@@ -202,12 +161,46 @@ static void rk4(struct spring_pendulum* p, float dt) {
   body->position = Vector3Add(x0, dx);
 }
 
+static void simulate_with_constraint(struct pendulum* p, float dt) {
+  Vector3 acc = Vector3Scale(GRAVITY_V, 1.0 / p->body.mass);
+  Vector3 dvv = Vector3Scale(acc, dt);
+  
+  rigidbody* body = &p->body;
+
+  Vector3 x0 = body->position;
+  Vector3 v0 = body->linear_velocity;
+
+  Vector3 dx1 = Vector3Scale(v0, dt);
+  Vector3 dx2 = Vector3Scale(Vector3Add(v0, Vector3Scale(dvv, 0.5f)), dt);
+  Vector3 dx3 = Vector3Scale(Vector3Add(v0, Vector3Scale(dvv, 0.5f)), dt);
+  Vector3 dx4 = Vector3Scale(Vector3Add(v0, dvv), dt);
+
+  Vector3 dv = Vector3Scale(Vector3Add(dvv, Vector3Add(Vector3Scale(dvv, 2.0f), Vector3Add(Vector3Scale(dvv, 2.0f), dvv))), 1.0 / 6);
+
+  body->linear_velocity = Vector3Add(v0, dv);
+
+  Vector3 r = Vector3Subtract(p->anchor, body->position);
+  Vector3 n = Vector3Normalize(r);
+  Vector3 J = n;
+  float invMass = 1.0 / body->mass;
+  Vector3 mInv = Vector3Scale(Vector3One(), invMass);
+  float a = Vector3DotProduct(Vector3Scale(J, invMass), J);
+  float b = -Vector3DotProduct(J, body->linear_velocity);
+  float lambda = b / a;
+
+  dv = Vector3Scale(Vector3Scale(J, invMass), lambda);
+
+  body->linear_velocity = Vector3Add(body->linear_velocity, dv);
+  body->position = Vector3Add(body->position, Vector3Scale(body->linear_velocity, dt));
+}
+
 void simulate(float dt) {
   if (!is_running && !step_forward) {
     return;
   }
 
   rk4(&spring, dt);
+  simulate_with_constraint(&p, dt);
 
   step_forward = false;
 }
