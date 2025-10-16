@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #define START_RUNNING true
+#define NUM_PENDULUMS 2
 
 struct spring_pendulum {
   Vector3 anchor;
@@ -23,18 +24,17 @@ struct pendulum {
   float stabilization_factor;
 };
 
-const int num_pendulums = 2;
 const float initial_angle = 0.25 * PI;
 const float string_length = 2;
 const float default_mass = 1;
 const float default_stiffness = 20;
 const float defualt_damping = 3;
 
-struct object graphics[num_pendulums];
+struct object graphics[NUM_PENDULUMS];
 struct spring_pendulum spring;
 struct pendulum p;
 
-oscillation_period periods[num_pendulums];
+oscillation_period periods[NUM_PENDULUMS];
 
 int tick_count;
 bool is_running;
@@ -83,7 +83,7 @@ void setup_scene() {
   Color colors[] = { YELLOW, BLUE };
   Vector3 anchors[] = { { 0, 5, 0  }, { 0, 5, 2 } };
   char* labels[] = { "Spring", "Rigid" };
-  Material materials[num_pendulums];
+  Material materials[NUM_PENDULUMS];
 
   materials[0] = LoadMaterialDefault();
   materials[0].maps[MATERIAL_MAP_DIFFUSE].color = colors[0];
@@ -104,7 +104,7 @@ void setup_scene() {
     .damping = defualt_damping,
   };
 
-  for (int i = 0; i < num_pendulums; ++i) {
+  for (int i = 0; i < NUM_PENDULUMS; ++i) {
     graphics[i] = (struct object) { .label = labels[i], .mesh = mesh, .material = materials[i] };
     periods[i] = oscillation_period_new();
   }
@@ -210,7 +210,7 @@ void simulate(float dt) {
 }
 
 void draw(float interpolation) {
-  for (int i = 0; i < num_pendulums; ++i) {
+  for (int i = 0; i < NUM_PENDULUMS; ++i) {
     struct object obj = graphics[i];
 
     Vector3 anchor;

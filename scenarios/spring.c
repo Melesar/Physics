@@ -5,15 +5,15 @@
 #include "raymath.h"
 #include "string.h"
 
-const int num_bodies = 4;
+#define NUM_BODIES 4
 
 const float stiffness = 8;
 const float initial_offset = 5;
 
-oscillation_period periods[num_bodies];
-struct object graphics[num_bodies];
-rigidbody prev_state[num_bodies];
-rigidbody masses[num_bodies];
+oscillation_period periods[NUM_BODIES];
+struct object graphics[NUM_BODIES];
+rigidbody prev_state[NUM_BODIES];
+rigidbody masses[NUM_BODIES];
 
 float total_time;
 bool interpolate = true;
@@ -37,11 +37,11 @@ void initialize_program(program_config* config) {
 void setup_scene() {
   Mesh cubeMesh = GenMeshCube(1, 1, 1);
 
-  char* labels[num_bodies] = { "Exact", "Euler explicit", "Euler implicit", "RK4" };
-  Color colors[num_bodies] = { YELLOW, GREEN, BLUE, PURPLE }; 
-  float offsets[num_bodies] = { -2, 0, 2, 4 };
+  char* labels[NUM_BODIES] = { "Exact", "Euler explicit", "Euler implicit", "RK4" };
+  Color colors[NUM_BODIES] = { YELLOW, GREEN, BLUE, PURPLE }; 
+  float offsets[NUM_BODIES] = { -2, 0, 2, 4 };
 
-  for (int i = 0; i < num_bodies; ++i) {
+  for (int i = 0; i < NUM_BODIES; ++i) {
     Material m = LoadMaterialDefault();
     m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
 
@@ -103,13 +103,13 @@ void simulate(float dt) {
   
   total_time += dt;
 
-  for (int i = 0; i < num_bodies; ++i) {
+  for (int i = 0; i < NUM_BODIES; ++i) {
     oscillation_period_track(&periods[i], &masses[i], &prev_state[i]);
   }
 }
 
 void draw(float interpolation) {
-  for (int i = 0; i < num_bodies; ++i) {
+  for (int i = 0; i < NUM_BODIES; ++i) {
     rigidbody body;
     if (interpolate) {
       const rigidbody* current = &masses[i];
@@ -151,7 +151,7 @@ void draw_ui(struct nk_context* ctx) {
     nk_radio_label(ctx, "Interpolation", &interpolate);
     nk_value_float(ctx, "Period", 2 * PI * sqrt(masses[0].mass / stiffness));
 
-    for(int i = 0; i < num_bodies; ++i) {
+    for(int i = 0; i < NUM_BODIES; ++i) {
       spring_stats(ctx, i);
     }
   }
