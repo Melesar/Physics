@@ -16,6 +16,7 @@ void setup_scene(Shader shader) {
   Mesh cylinder_mesh = GenMeshCylinder(1, 2.5, 32);
   Material m = LoadMaterialDefault();
   m.maps[MATERIAL_MAP_DIFFUSE].color = LIME;
+  m.shader = shader;
 
   cylinder = rb_new((Vector3) { 0, 1, 0 }, 3);
   cylinder_graphics = (struct object) { .mesh = cylinder_mesh, .material = m, .label = "Cylinder" };
