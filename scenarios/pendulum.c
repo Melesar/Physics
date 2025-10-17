@@ -352,37 +352,64 @@ static void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value)
 void draw_ui(struct nk_context* ctx) {
     if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 220, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
       nk_layout_row_static(ctx, 30, 200, 1);
-      nk_label(ctx, graphics[0].label, NK_TEXT_ALIGN_LEFT);
+      nk_label(ctx, graphics[2].label, NK_TEXT_ALIGN_LEFT);
 
       nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
       nk_layout_row_push(ctx, 0.1);
       nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
       nk_layout_row_push(ctx, 0.9);
-      nk_property_float(ctx, "#stiffness", 0, &spring.stiffness, 100, 1, 2);
+      nk_property_float(ctx, "#length1", 0.1, &double_pendulum[0].string_length, 10, 0.5, 0.1);
       nk_layout_row_end(ctx);
 
       nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
       nk_layout_row_push(ctx, 0.1);
       nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
       nk_layout_row_push(ctx, 0.9);
-      nk_property_float(ctx, "#damping", 0, &spring.damping, 10, 0.2, 0.1);
+      nk_property_float(ctx, "#length2", 0.1, &double_pendulum[1].string_length, 10, 0.5, 0.1);
       nk_layout_row_end(ctx);
-
-      nk_layout_row_static(ctx, 30, 200, 1);
-      nk_label(ctx, graphics[1].label, NK_TEXT_ALIGN_LEFT);
-
-      float actual_distance =  Vector3Length(Vector3Subtract(p.anchor, p.body.position));
-      draw_stat_float(ctx, "Energy", pendulum_energy(&p));
-      draw_stat_float(ctx, "Length", actual_distance);
-      draw_stat_float(ctx, "Error", fabs(actual_distance - p.string_length));
 
       nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
       nk_layout_row_push(ctx, 0.1);
       nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
       nk_layout_row_push(ctx, 0.9);
-      nk_property_float(ctx, "#correction", 0, &p.stabilization_factor, 1, 0.1, 0.05);
+      nk_property_float(ctx, "#mass1", 0.1, &double_pendulum[0].body.mass, 10, 0.5, 0.1);
       nk_layout_row_end(ctx);
- 
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#mass2", 0.1, &double_pendulum[1].body.mass, 10, 0.5, 0.1);
+      nk_layout_row_end(ctx);
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#comp1", 0, &double_pendulum[0].stabilization_factor, 1, 0.1, 0.01);
+      nk_layout_row_end(ctx);
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_float(ctx, "#comp2", 0, &double_pendulum[1].stabilization_factor, 1, 0.1, 0.01);
+      nk_layout_row_end(ctx);
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+      nk_layout_row_push(ctx, 0.1);
+      nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+      nk_layout_row_push(ctx, 0.9);
+      nk_property_int(ctx, "#iterations", 1, &solver_iterations, 10, 1, 0.5);
+      nk_layout_row_end(ctx);
+
+      float actual_distance_1 =  Vector3Length(Vector3Subtract(double_pendulum[0].anchor, double_pendulum[0].body.position));
+      draw_stat_float(ctx, "Length 1", actual_distance_1);
+      draw_stat_float(ctx, "Error 1", fabs(actual_distance_1 - double_pendulum[0].string_length));
+
+      float actual_distance_2 =  Vector3Length(Vector3Subtract(double_pendulum[0].body.position, double_pendulum[1].body.position));
+      draw_stat_float(ctx, "Length 2", actual_distance_2);
+      draw_stat_float(ctx, "Error 2", fabs(actual_distance_2 - double_pendulum[1].string_length));
     }
 
   nk_end(ctx);
