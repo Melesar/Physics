@@ -34,7 +34,7 @@ void initialize_program(program_config* config) {
   config->camera_target = (Vector3) { 2, 0.5, 0 };
 }
 
-void setup_scene() {
+void setup_scene(Shader shader) {
   Mesh cubeMesh = GenMeshCube(1, 1, 1);
 
   char* labels[NUM_BODIES] = { "Exact", "Euler explicit", "Euler implicit", "RK4" };
@@ -44,6 +44,7 @@ void setup_scene() {
   for (int i = 0; i < NUM_BODIES; ++i) {
     Material m = LoadMaterialDefault();
     m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
+    m.shader = shader;
 
     graphics[i] = (struct object) { labels[i], cubeMesh, m };
     masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);

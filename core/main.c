@@ -2,6 +2,10 @@
 #include "core.h"
 #include "raymath.h"
 #include "stdio.h"
+
+#define RLIGHTS_IMPLEMENTATION
+#include "shaders/rlights.h"
+
 #include "raylib-nuklear.h"
 
 const int ui_font_size = 12;
@@ -12,16 +16,20 @@ const int simulationRate = 120;
 
 const float simulationStep = 1.0 / simulationRate;
 
-void draw_scene(Camera camera, float accum, struct nk_context* ctx) {
+void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
     ClearBackground(RAYWHITE);
       BeginMode3D(camera);
 
-        float t = Clamp(accum / simulationStep, 0, 1);
-        draw(t);
+        BeginShaderMode(shader);
 
-        DrawPlane((Vector3){0.0f, 0.0f, 0.0f}, (Vector2){32.0f, 32.0f}, LIGHTGRAY);
-        DrawGrid(32, 1.0f);
+          float t = Clamp(accum / simulationStep, 0, 1);
+          draw(t);
+
+          DrawPlane((Vector3){0.0f, 0.0f, 0.0f}, (Vector2){32.0f, 32.0f}, LIGHTGRAY);
+          DrawGrid(32, 1.0f);
+
+        EndShaderMode();
 
       EndMode3D();
 
@@ -49,13 +57,25 @@ int main(void) {
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;
 
-  setup_scene();
+  char *vs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.vs";
+  char *fs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.fs";
+
+  Shader shader = LoadShader(vs_shader_path, fs_shader_path); // Use default lighting shader
+  Light light = CreateLight(LIGHT_DIRECTIONAL, (Vector3){-2.0f, 5.0f, -2.0f}, Vector3Zero(), WHITE, shader);
+
+  int ambientLoc = GetShaderLocation(shader, "ambient");
+  SetShaderValue(shader, ambientLoc, (float[4]){0.4f, 0.4f, 0.4f, 4.0f},
+                 SHADER_UNIFORM_VEC4);
+
+  setup_scene(shader);
 
   float accum = 0;
   float deltaTime = 0;
   while (!WindowShouldClose()) {
     UpdateCamera(&camera, config.camera_mode);
     UpdateNuklear(ctx);
+    UpdateLightValues(shader, light);
+
     process_inputs();
 
     accum += deltaTime;
@@ -67,13 +87,13 @@ int main(void) {
     }
 
     draw_ui(ctx);
-    draw_scene(camera, accum, ctx);
-
+    draw_scene(camera, accum, ctx, shader);
     accum -= sim_count * simulationStep;
     deltaTime = GetFrameTime();
   }
 
   UnloadNuklear(ctx);
+  UnloadShader(shader);
   CloseWindow();
 
   return 0;

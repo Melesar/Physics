@@ -18,7 +18,7 @@ struct object {
 };
 
 void initialize_program(program_config* config);
-void setup_scene();
+void setup_scene(Shader shader);
 void save_state();
 void process_inputs();
 void simulate(float dt);

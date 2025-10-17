@@ -78,7 +78,7 @@ void initialize_program(program_config* config) {
   config->camera_target = (Vector3) { 0, 3, 0 };
 }
 
-void setup_scene() {
+void setup_scene(Shader shader) {
   Mesh mesh = GenMeshSphere(0.1, 32, 32);
 
   Color colors[] = { YELLOW, BLUE, PURPLE };
@@ -86,12 +86,11 @@ void setup_scene() {
   char* labels[] = { "Spring", "Rigid", "Double" };
   Material materials[NUM_PENDULUMS];
 
-  materials[0] = LoadMaterialDefault();
-  materials[0].maps[MATERIAL_MAP_DIFFUSE].color = colors[0];
-  materials[1] = LoadMaterialDefault();
-  materials[1].maps[MATERIAL_MAP_DIFFUSE].color = colors[1];
-  materials[2] = LoadMaterialDefault();
-  materials[2].maps[MATERIAL_MAP_DIFFUSE].color = colors[2];
+  for (int i = 0; i < NUM_PENDULUMS; i++) {
+    materials[i] = LoadMaterialDefault();
+    materials[i].shader = shader;
+    materials[i].maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
+  }
 
   p = (struct pendulum) {
      .anchor = anchors[0],

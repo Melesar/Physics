@@ -49,6 +49,7 @@ foreach(SCENARIO_FILE ${SCENARIO_SOURCES})
     target_include_directories(${SCENARIO_NAME} PRIVATE 
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/raylib/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/raylib/examples
     )
     
     # Platform-specific linking

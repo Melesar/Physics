@@ -12,7 +12,7 @@ void initialize_program(program_config* config) {
 rigidbody cylinder;
 struct object cylinder_graphics;
 
-void setup_scene() {
+void setup_scene(Shader shader) {
   Mesh cylinder_mesh = GenMeshCylinder(1, 2.5, 32);
   Material m = LoadMaterialDefault();
   m.maps[MATERIAL_MAP_DIFFUSE].color = LIME;
