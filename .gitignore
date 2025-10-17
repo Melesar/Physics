@@ -4,5 +4,6 @@ build/
 # binaries
 spring
 pendulum
+rigidbodies
 
 .cache/
