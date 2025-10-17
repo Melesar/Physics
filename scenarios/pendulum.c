@@ -3,7 +3,7 @@
 #include "physics.h"
 #include "math.h"
 
-#define START_RUNNING true
+#define START_RUNNING false
 #define NUM_PENDULUMS 3
 
 struct spring_pendulum {
@@ -79,7 +79,7 @@ void initialize_program(program_config* config) {
 }
 
 void setup_scene() {
-  Mesh mesh = GenMeshSphere(0.3, 32, 32);
+  Mesh mesh = GenMeshSphere(0.1, 32, 32);
 
   Color colors[] = { YELLOW, BLUE, PURPLE };
   Vector3 anchors[] = { { 0, 5, 0  }, { 0, 5, 2 }, { 0, 5, 4 } };
@@ -139,8 +139,15 @@ void process_inputs() {
   }
 
   if (IsKeyPressed(KEY_R)) { 
-    p.body.position = spring.body.position = pendulum_position(p.anchor, p.string_length, initial_angle);
-    p.body.linear_velocity = spring.body.linear_velocity = (Vector3) { 0 };
+    p.body.position = pendulum_position(p.anchor, p.string_length, initial_angle);
+    spring.body.position = pendulum_position(spring.anchor, string_length, initial_angle);
+    double_pendulum[0].body.position = pendulum_position(double_pendulum[0].anchor, double_pendulum[0].string_length, initial_angle);
+    double_pendulum[1].body.position = pendulum_position(double_pendulum[0].body.position, string_length, PI * 0.5);
+
+    p.body.linear_velocity =
+      spring.body.linear_velocity =
+        double_pendulum[0].body.linear_velocity =
+          double_pendulum[1].body.linear_velocity = (Vector3) { 0 };
   }
 }
 
@@ -150,11 +157,7 @@ static Vector3 spring_acc(Vector3 position, Vector3 velocity, struct spring_pend
   Vector3 gravity_acc = GRAVITY_V;
 
   Vector3 acc = Vector3Subtract(gravity_acc, spring_acc);
-  acc = Vector3Subtract(acc, damping_acc);
-
-  TraceLog(LOG_DEBUG, "Spring %f, damping %f, final %f", Vector3Length(spring_acc), Vector3Length(damping_acc), Vector3Length(acc));
-
-  return acc;
+  return Vector3Subtract(acc, damping_acc);
 }
 
 static void rk4(struct spring_pendulum* p, float dt) {
@@ -215,12 +218,13 @@ static void solve_double_pendulum(Vector2 inv_mass, float dt) {
 
   Vector3 r[] = { Vector3Subtract(main->anchor, main->body.position), Vector3Subtract(main->body.position, secondary->body.position) };
   Vector3 n[] = { Vector3Normalize(r[0]), Vector3Normalize(r[1]) };
-  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
-  float c[] = { main->string_length - Vector3Length(r[0]), secondary->string_length - Vector3Length(r[1]) };
-  float beta[] = { main->stabilization_factor, secondary->stabilization_factor };
+  float c[] = { Vector3Length(r[0]) - main->string_length, Vector3Length(r[1]) - secondary->string_length };
   float j1[] = { -n[0].x, -n[0].y, -n[0].z, 0, 0, 0 };
   float j2[] = { n[0].x, n[0].y, n[0].z, -n[1].x, -n[1].y, -n[1].z };
+
+  float beta[] = { main->stabilization_factor, secondary->stabilization_factor };
   float inv_m[] = { inv_mass.x, inv_mass.x, inv_mass.x, inv_mass.y, inv_mass.y, inv_mass.y };
+  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
 
   float jm[12];
   for (int i = 0; i < 6; ++i) {
@@ -228,21 +232,24 @@ static void solve_double_pendulum(Vector2 inv_mass, float dt) {
     jm[i + 6] = j2[i] * inv_m[i];
   }
 
-  float a[4];
-  for (int i = 0; i < 3; i++) {
-    a[0] = jm[i] * j1[i];
-    a[1] = jm[i] * j2[i];
-    a[2] = jm[i + 3] * j1[i];
-    a[3] = jm[i + 3] * j2[i];
+  float a[4] = { 0 };
+  for (int i = 0; i < 6; i++) {
+    a[0] += jm[i] * j1[i];
+    a[1] += jm[i] * j2[i];
+    a[2] += jm[i + 6] * j1[i];
+    a[3] += jm[i + 6] * j2[i];
   }
 
-  float b[2];
-  float inv_t = 1.0 / dt;
+  float b[2] = { 0 };
   for (int i = 0; i < 6; ++i) {
     float vi = *((float*)v+i);
-    b[0] = -(j1[i] * vi + beta[0] * c[0] * inv_t);
-    b[1] = -(j2[i] * vi + beta[1] * c[1] * inv_t);
+    b[0] += (j1[i] * vi);
+    b[1] += (j2[i] * vi);
   }
+
+  float inv_t = 1.0 / dt;
+  b[0] = -(b[0] + beta[0] * c[0] * inv_t);
+  b[1] = -(b[1] + beta[1] * c[1] * inv_t);
 
   float lambda[2];
   gauss_seidel_solve(a, b, lambda, 2);
@@ -253,8 +260,10 @@ static void solve_double_pendulum(Vector2 inv_mass, float dt) {
     dv[i] = jt_lambda * inv_m[i];
   }
 
-  main->body.linear_velocity = Vector3Add(main->body.linear_velocity, *(Vector3*)dv);
-  secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, *(Vector3*)(dv + 3));
+  Vector3 dv1 = *(Vector3*)dv;
+  Vector3 dv2 = *(Vector3*)(dv + 3);
+  main->body.linear_velocity = Vector3Add(main->body.linear_velocity, dv1);
+  secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, dv2);
 }
 
 static void simulate_double_pendulum(float dt) {
@@ -263,21 +272,19 @@ static void simulate_double_pendulum(float dt) {
   
   Vector2 inv_mass = { 1.0 / main->body.mass, 1.0 / secondary->body.mass };
 
-  Vector3 acc[] = { Vector3Scale(GRAVITY_V, inv_mass.x), Vector3Scale(GRAVITY_V, inv_mass.y) };
+  Vector3 acc[] = { GRAVITY_V, GRAVITY_V };
   Vector3 dvv[] = { Vector3Scale(acc[0], dt), Vector3Scale(acc[1], dt) };
   Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
-  Vector3 p[] = { main->body.position, secondary->body.position };
 
   Vector3 dv[2];
   for (int i = 0; i < 2; ++i) {
-    Vector3 dv = Vector3Scale(Vector3Add(dvv[i], Vector3Add(Vector3Scale(dvv[i], 2.0f), Vector3Add(Vector3Scale(dvv[i], 2.0f), dvv[i]))), 1.0 / 6);
-    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dv);
+    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dvv[i]);
   }
 
   for (int i = 0; i < solver_iterations; ++i) {
     solve_double_pendulum(inv_mass, dt);
   }
-  
+
   main->body.position = Vector3Add(main->body.position, Vector3Scale(main->body.linear_velocity, dt));
   secondary->body.position = Vector3Add(secondary->body.position, Vector3Scale(secondary->body.linear_velocity, dt));
 }
@@ -315,7 +322,7 @@ void draw(float interpolation) {
         anchor = double_pendulum[0].anchor;
         r = double_pendulum[0].body;
 
-        DrawMesh(obj.mesh, obj.material, rb_transformation(&double_pendulum[2].body));
+        DrawMesh(obj.mesh, obj.material, rb_transformation(&double_pendulum[1].body));
         break;
     }
 
