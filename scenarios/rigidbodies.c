@@ -25,9 +25,11 @@ void save_state() {
   
 }
 
-void process_inputs() {
+void on_input() {
   
 }
+
+void reset() {}
 
 void simulate(float dt) {
 }

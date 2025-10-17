@@ -20,7 +20,8 @@ struct object {
 void initialize_program(program_config* config);
 void setup_scene(Shader shader);
 void save_state();
-void process_inputs();
+void on_input();
+void reset();
 void simulate(float dt);
 void draw(float interpolation);
 void draw_ui(struct nk_context* ctx);

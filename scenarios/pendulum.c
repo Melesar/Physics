@@ -38,9 +38,6 @@ oscillation_period periods[NUM_PENDULUMS];
 int tick_count;
 int solver_iterations = 3;
 
-bool is_running;
-bool step_forward;
-
 static float pendulum_angle_ex(Vector3 position, Vector3 anchor, float length) {
   Vector3 a = Vector3Subtract(position, anchor);
   float inner = -a.y / length;
@@ -69,9 +66,6 @@ static Vector3 pendulum_position(Vector3 anchor, float length, float angle) {
 }
 
 void initialize_program(program_config* config) {
-  is_running = START_RUNNING;
-  step_forward = false;
-
   config->camera_mode = CAMERA_CUSTOM; 
   config->window_title = "Pendulums";
   config->camera_position = (Vector3) { 0, 5, 10 };
@@ -128,27 +122,25 @@ void setup_scene(Shader shader) {
 void save_state() {
 }
 
-void process_inputs() {
-  if (IsKeyPressed(KEY_SPACE)) {
-    is_running = !is_running;
-  }
+void reset() {
+  p.body.position = pendulum_position(p.anchor, p.string_length, initial_angle);
+  spring.body.position =
+      pendulum_position(spring.anchor, string_length, initial_angle);
+  double_pendulum[0].body.position =
+      pendulum_position(double_pendulum[0].anchor,
+                        double_pendulum[0].string_length, initial_angle);
+  double_pendulum[1].body.position = pendulum_position(
+      double_pendulum[0].body.position, string_length, PI * 0.5);
 
-  if (IsKeyDown(KEY_S)) {
-    step_forward = true;
-  }
-
-  if (IsKeyPressed(KEY_R)) { 
-    p.body.position = pendulum_position(p.anchor, p.string_length, initial_angle);
-    spring.body.position = pendulum_position(spring.anchor, string_length, initial_angle);
-    double_pendulum[0].body.position = pendulum_position(double_pendulum[0].anchor, double_pendulum[0].string_length, initial_angle);
-    double_pendulum[1].body.position = pendulum_position(double_pendulum[0].body.position, string_length, PI * 0.5);
-
-    p.body.linear_velocity =
-      spring.body.linear_velocity =
-        double_pendulum[0].body.linear_velocity =
-          double_pendulum[1].body.linear_velocity = (Vector3) { 0 };
-  }
+  p.body.linear_velocity = spring.body.linear_velocity =
+      double_pendulum[0].body.linear_velocity =
+          double_pendulum[1].body.linear_velocity = (Vector3){0};
 }
+
+void on_input() {
+ 
+}
+
 
 static Vector3 spring_acc(Vector3 position, Vector3 velocity, struct spring_pendulum* p) {
   Vector3 spring_acc = Vector3Scale(Vector3Subtract(position, p->anchor), p->stiffness);
@@ -271,13 +263,13 @@ static void simulate_double_pendulum(float dt) {
   
   Vector2 inv_mass = { 1.0 / main->body.mass, 1.0 / secondary->body.mass };
 
-  Vector3 acc[] = { GRAVITY_V, GRAVITY_V };
-  Vector3 dvv[] = { Vector3Scale(acc[0], dt), Vector3Scale(acc[1], dt) };
+  Vector3 acc = GRAVITY_V;
+  Vector3 dvv = Vector3Scale(acc, dt);
   Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
 
   Vector3 dv[2];
   for (int i = 0; i < 2; ++i) {
-    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dvv[i]);
+    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dvv);
   }
 
   for (int i = 0; i < solver_iterations; ++i) {
@@ -289,15 +281,9 @@ static void simulate_double_pendulum(float dt) {
 }
 
 void simulate(float dt) {
-  if (!is_running && !step_forward) {
-    return;
-  }
-
   rk4(&spring, dt);
   simulate_with_constraint(&p, dt);
   simulate_double_pendulum(dt);
-
-  step_forward = false;
 }
 
 void draw(float interpolation) {

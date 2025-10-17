@@ -1,7 +1,6 @@
 #include "raylib.h"
 #include "core.h"
 #include "raymath.h"
-#include "stdio.h"
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
@@ -15,6 +14,9 @@ const int frameRate = 60;
 const int simulationRate = 120;
 
 const float simulationStep = 1.0 / simulationRate;
+
+bool simulation_running = true;
+bool step_forward = false;
 
 void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
@@ -35,6 +37,22 @@ void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shade
 
       DrawNuklear(ctx);
   EndDrawing();
+}
+
+void process_inputs() {
+  if (IsKeyPressed(KEY_SPACE)) {
+    simulation_running = !simulation_running;
+  }
+
+  if (IsKeyDown(KEY_S)) {
+    step_forward = true;
+  }
+
+  if (IsKeyPressed(KEY_R)) {
+    reset();
+  }
+
+  on_input();
 }
 
 int main(void) {
@@ -82,8 +100,12 @@ int main(void) {
     int sim_count = (int)(accum / simulationStep);
 
     for (int i = 0; i < sim_count; i++) {
+      if (!simulation_running && !step_forward) break;
+      
       save_state();
       simulate(simulationStep);
+
+      step_forward = false;
     }
 
     draw_ui(ctx);

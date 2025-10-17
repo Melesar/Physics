@@ -58,7 +58,9 @@ void save_state() {
   memcpy(prev_state, masses, sizeof(masses));
 }
 
-void process_inputs() {}
+void reset() {}
+
+void on_input() {}
 
 void simulate(float dt) {
   rigidbody* exact = &masses[0];
