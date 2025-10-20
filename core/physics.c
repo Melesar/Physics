@@ -1,5 +1,7 @@
 #include "raylib.h"
 #include "physics.h"
+#include "stdlib.h"
+#include "string.h"
 
 #define MAX_SOLVER_ITERATIONS 5
 #define SOLVER_TOLERANCE 0.01
@@ -45,12 +47,30 @@ void oscillation_period_track(oscillation_period* period, const rigidbody* curre
   }
 }
 
-void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions) {
-  for (int i = 0; i < num_dimensions; i++) {
-    solution[i] = 0.0;
-  }
+constraints* constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization) {
+  constraints *c = (constraints*) malloc(sizeof(constraints));
+  c->beta = stabilization;
+  c->num_bodies = num_bodies;
+  c->num_constraints = num_constraints;
+  c->num_dof = num_dof;
+
+  c->errors = (float*) malloc(num_constraints * sizeof(float));
+  c->j = (float*) malloc(num_constraints * num_bodies * num_dof * sizeof(float));
+  c->jm = (float*) malloc(num_constraints * num_bodies * num_dof * sizeof(float));
+  c->inv_m = (float*) malloc(num_dof * num_bodies * sizeof(float));
+  c->a = (float*) malloc(num_constraints * num_constraints * sizeof(float));
+  c->b = (float*) malloc(num_constraints * sizeof(float));
+  c->lambda = (float*) malloc(num_constraints * sizeof(float));
+  c->jt_lambda = (float*) malloc(num_bodies * num_dof * sizeof(float));
+  c->v = (float*) malloc(num_bodies * num_dof * sizeof(float));
+  c->dv = (float*) malloc(num_constraints * num_dof * sizeof(float));
+
+  return c;
+}
+
+static void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions) {
+  memset(solution, 0, num_dimensions * sizeof(float));
    
-  // Iterative solver
   for (int iter = 0; iter < MAX_SOLVER_ITERATIONS; iter++) {
     float max_delta = 0.0;
     
@@ -79,3 +99,59 @@ void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions)
     }
   }
 }
+
+void constraints_solve(constraints *c, float dt) {
+  int row_size = c->num_bodies * c->num_dof;
+  for (int i = 0; i < c->num_constraints; ++i) {
+    for (int j = 0; j < row_size; ++j) {
+      c->jm[i * row_size + j] = c->j[i * row_size + j] * c->inv_m[j];
+    }
+  }
+
+  memset(c->a, 0, c->num_constraints * c->num_constraints * sizeof(float));
+  for (int i = 0; i < c->num_constraints; i++) {
+    for (int j = 0; j < c->num_constraints; ++j) {
+      for (int k = 0; k < row_size; ++k) {
+        c->a[i * c->num_constraints + j] += c->jm[i * row_size + k] * c->j[j * row_size + k];
+      }
+    }
+  }
+
+  float inv_t = 1.0 / dt;
+  for (int i = 0; i < c->num_constraints; ++i) {
+    float bi = 0;
+    for (int j = 0; j < row_size; ++j) {
+      bi += c->j[i * row_size + j] * c->v[j];
+    }
+
+    c->b[i] = -(bi + c->beta * c->errors[i] * inv_t);
+  }
+
+  gauss_seidel_solve(c->a, c->b, c->lambda, c->num_constraints);
+
+  memset(c->jt_lambda, 0, row_size * sizeof(float));
+  for (int i = 0; i < row_size; ++i) {
+    for (int j = 0; j < c->num_constraints; ++j) {
+      c->jt_lambda[i] += c->j[j * row_size + i] * c->lambda[j];
+    }
+    c->dv[i] = c->jt_lambda[i] * c->inv_m[i];
+  }
+}
+
+void constraints_free(constraints *c) {
+  free(c->errors);
+  free(c->j);
+  free(c->jm);
+  free(c->inv_m);
+  free(c->a);
+  free(c->b);
+  free(c->lambda);
+  free(c->jt_lambda);
+  free(c->v);
+  free(c->dv);
+
+  free(c);
+}
+
+
+

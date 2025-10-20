@@ -20,6 +20,25 @@ typedef struct {
   double period;
 } oscillation_period;
 
+typedef struct {
+  int num_constraints, num_dof, num_bodies;
+  float beta;
+
+  float *j;
+  float *errors;
+  float *inv_m;
+  float *v;
+
+  float *jm;
+  float *a;
+  float *b;
+  float *lambda;
+  float *jt_lambda;
+
+  float *dv;
+ 
+} constraints;
+
 rigidbody rb_new(Vector3 position, float mass);
 
 Matrix rb_transformation(const rigidbody* rb);
@@ -29,6 +48,8 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 oscillation_period oscillation_period_new();
 void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
 
-void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions);
+constraints* constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization);
+void constraints_solve(constraints *c, float dt);
+void constraints_free(constraints *c);
 
 #endif

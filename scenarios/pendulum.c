@@ -3,6 +3,7 @@
 #include "physics.h"
 #include "math.h"
 #include "raymath.h"
+#include <string.h>
 
 struct pendulum {
   Vector3 anchor;
@@ -21,6 +22,7 @@ const float default_stabilisation = 0.2;
 
 struct object graphics;
 struct pendulum double_pendulum[2];
+constraints* cc;
 
 int tick_count;
 int solver_iterations = 3;
@@ -66,7 +68,9 @@ void setup_scene(Shader shader) {
     .stabilization_factor = default_stabilisation,
   };
 
-    graphics = (struct object) { .label = "Double", .mesh = mesh, .material = material };
+  cc = constraints_new(2, 2, 3, default_stabilisation);
+
+  graphics = (struct object) { .label = "Double", .mesh = mesh, .material = material };
 }
 
 void save_state() {
@@ -78,63 +82,42 @@ void reset() {
                         double_pendulum[0].string_length, initial_angle);
   double_pendulum[1].body.position = pendulum_position(
       double_pendulum[0].body.position, string_length, PI * 0.5);
+
+  double_pendulum[0].body.linear_velocity =
+    double_pendulum[1].body.linear_velocity = Vector3Zero();
 }
 
 void on_input() {
  
 }
 
-static void solve_double_pendulum(float dt) {
-  struct pendulum *main = &double_pendulum[0];
-  struct pendulum *secondary = &double_pendulum[1];
-
+static void update_constraints(struct pendulum *main, struct pendulum *secondary) {
   Vector3 r[] = { Vector3Subtract(main->anchor, main->body.position), Vector3Subtract(main->body.position, secondary->body.position) };
   Vector3 n[] = { Vector3Normalize(r[0]), Vector3Normalize(r[1]) };
   float c[] = { Vector3Length(r[0]) - main->string_length, Vector3Length(r[1]) - secondary->string_length };
   float j1[] = { -n[0].x, -n[0].y, -n[0].z, 0, 0, 0 };
   float j2[] = { n[0].x, n[0].y, n[0].z, -n[1].x, -n[1].y, -n[1].z };
-
   Vector2 inv_mass = { 1.0f / main->body.mass, 1.0f / secondary->body.mass };
-  float beta[] = { main->stabilization_factor, secondary->stabilization_factor };
-  float inv_m[] = { inv_mass.x, inv_mass.x, inv_mass.x, inv_mass.y, inv_mass.y, inv_mass.y };
   Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
 
-  float jm[12];
-  for (int i = 0; i < 6; ++i) {
-    jm[i] = j1[i] * inv_m[i];
-    jm[i + 6] = j2[i] * inv_m[i];
-  }
+  memcpy(cc->errors, c, 2 * sizeof(float));
+  memcpy(cc->j, j1, 6 * sizeof(float));
+  memcpy(cc->j + 6, j2, 6 * sizeof(float));
+  memcpy(cc->v, v, 6 * sizeof(float));
 
-  float a[4] = { 0 };
-  for (int i = 0; i < 6; i++) {
-    a[0] += jm[i] * j1[i];
-    a[1] += jm[i] * j2[i];
-    a[2] += jm[i + 6] * j1[i];
-    a[3] += jm[i + 6] * j2[i];
-  }
+  cc->inv_m[0] = cc->inv_m[1] = cc->inv_m[2] = inv_mass.x;
+  cc->inv_m[3] = cc->inv_m[4] = cc->inv_m[5] = inv_mass.y;
+}
 
-  float b[2] = { 0 };
-  for (int i = 0; i < 6; ++i) {
-    float vi = *((float*)v+i);
-    b[0] += (j1[i] * vi);
-    b[1] += (j2[i] * vi);
-  }
+static void solve_double_pendulum(float dt) {
+  struct pendulum *main = &double_pendulum[0];
+  struct pendulum *secondary = &double_pendulum[1];
 
-  float inv_t = 1.0 / dt;
-  b[0] = -(b[0] + beta[0] * c[0] * inv_t);
-  b[1] = -(b[1] + beta[1] * c[1] * inv_t);
+  update_constraints(main, secondary);
+  constraints_solve(cc, dt);
 
-  float lambda[2];
-  gauss_seidel_solve(a, b, lambda, 2);
-
-  float dv[6];
-  for (int i = 0; i < 6; ++i) {
-    float jt_lambda = j1[i] * lambda[0] + j2[i] * lambda[1];
-    dv[i] = jt_lambda * inv_m[i];
-  }
-
-  Vector3 dv1 = *(Vector3*)dv;
-  Vector3 dv2 = *(Vector3*)(dv + 3);
+  Vector3 dv1 = *(Vector3*)cc->dv;
+  Vector3 dv2 = *(Vector3*)(cc->dv + 3);
   main->body.linear_velocity = Vector3Add(main->body.linear_velocity, dv1);
   secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, dv2);
 }
