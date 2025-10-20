@@ -22,7 +22,7 @@ const float default_stabilisation = 0.2;
 
 struct object graphics;
 struct pendulum double_pendulum[2];
-constraints* cc;
+constraints cc;
 
 int tick_count;
 int solver_iterations = 3;
@@ -100,13 +100,13 @@ static void update_constraints(struct pendulum *main, struct pendulum *secondary
   Vector2 inv_mass = { 1.0f / main->body.mass, 1.0f / secondary->body.mass };
   Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
 
-  memcpy(cc->errors, c, 2 * sizeof(float));
-  memcpy(cc->j, j1, 6 * sizeof(float));
-  memcpy(cc->j + 6, j2, 6 * sizeof(float));
-  memcpy(cc->v, v, 6 * sizeof(float));
+  memcpy(cc.errors, c, 2 * sizeof(float));
+  memcpy(cc.j, j1, 6 * sizeof(float));
+  memcpy(cc.j + 6, j2, 6 * sizeof(float));
+  memcpy(cc.v, v, 6 * sizeof(float));
 
-  cc->inv_m[0] = cc->inv_m[1] = cc->inv_m[2] = inv_mass.x;
-  cc->inv_m[3] = cc->inv_m[4] = cc->inv_m[5] = inv_mass.y;
+  cc.inv_m[0] = cc.inv_m[1] = cc.inv_m[2] = inv_mass.x;
+  cc.inv_m[3] = cc.inv_m[4] = cc.inv_m[5] = inv_mass.y;
 }
 
 static void solve_double_pendulum(float dt) {
@@ -114,10 +114,10 @@ static void solve_double_pendulum(float dt) {
   struct pendulum *secondary = &double_pendulum[1];
 
   update_constraints(main, secondary);
-  constraints_solve(cc, dt);
+  constraints_solve(&cc, dt);
 
-  Vector3 dv1 = *(Vector3*)cc->dv;
-  Vector3 dv2 = *(Vector3*)(cc->dv + 3);
+  Vector3 dv1 = *(Vector3*)cc.dv;
+  Vector3 dv2 = *(Vector3*)(cc.dv + 3);
   main->body.linear_velocity = Vector3Add(main->body.linear_velocity, dv1);
   secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, dv2);
 }

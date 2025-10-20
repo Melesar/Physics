@@ -29,11 +29,9 @@ typedef struct {
   float *inv_m;
   float *v;
 
-  float *jm;
   float *a;
   float *b;
   float *lambda;
-  float *jt_lambda;
 
   float *dv;
  
@@ -48,8 +46,8 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 oscillation_period oscillation_period_new();
 void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
 
-constraints* constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization);
+constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization);
 void constraints_solve(constraints *c, float dt);
-void constraints_free(constraints *c);
+void constraints_free(constraints c);
 
 #endif
