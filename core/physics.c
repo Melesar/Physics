@@ -108,6 +108,7 @@ void constraints_solve(constraints *c, float dt) {
     for (int j = 0; j < nc; ++j) {
       float aij = 0;
       for (int k = 0; k < row_size; ++k) {
+        // TODO reintroduce jm matrix and use it here
         aij += c->j[i * row_size + k] * c->inv_m[k] * c->j[j * row_size + k];
       }
       c->a[i * nc + j] = aij;
