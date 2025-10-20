@@ -57,11 +57,11 @@ constraints constraints_new(int num_bodies, int num_constraints, int num_dof, fl
   c.errors = (float*) malloc(num_constraints * sizeof(float));
   c.j = (float*) malloc(num_constraints * num_bodies * num_dof * sizeof(float));
   c.inv_m = (float*) malloc(num_dof * num_bodies * sizeof(float));
+  c.v = (float*) malloc(num_bodies * num_dof * sizeof(float));
 
   c.a = (float*) malloc(num_constraints * num_constraints * sizeof(float));
   c.b = (float*) malloc(num_constraints * sizeof(float));
   c.lambda = (float*) malloc(num_constraints * sizeof(float));
-  c.v = (float*) malloc(num_bodies * num_dof * sizeof(float));
 
   c.dv = (float*) malloc(num_constraints * num_dof * sizeof(float));
 
