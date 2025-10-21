@@ -1,6 +1,7 @@
 #include "core.h"
 #include "physics.h"
 #include "raylib.h"
+#include "rcamera.h"
 #include "raymath.h"
 #include "stdlib.h"
 #include <string.h>
@@ -21,7 +22,7 @@ const int num_links = 10;
 const float link_spacing = 0.8;
 const float body_mass = 3;
 const float link_mass = 0.5;
-const float damping = 0.997;
+const float damping = 0.990;
 
 const float initial_angle_degrees = 90.0;
 const float stabilization = 0.2;
@@ -29,6 +30,7 @@ const int solver_iterations = 20;
 
 rope r;
 constraints cc;
+bool body_fixed;
 
 void initialize_program(program_config* config) {
   config->window_title = "Rope";
@@ -54,8 +56,35 @@ void save_state() {
   
 }
 
-void on_input() {
-  
+void on_input(Camera *camera) {
+  Vector2 mouse_pos = GetMousePosition();
+  Vector3 body_pos = r.body.position;
+  Ray ray = GetScreenToWorldRay(mouse_pos, *camera);
+
+  bool is_mouse_pressed = IsMouseButtonDown(0);
+  if (!body_fixed && is_mouse_pressed)
+  {
+    RayCollision collision = GetRayCollisionSphere(ray, body_pos, 0.5);
+    body_fixed = collision.hit;
+  } else if (body_fixed && !is_mouse_pressed) {
+    body_fixed = false;
+  }
+
+  if (!body_fixed)
+    return;
+
+  Vector3 forward = GetCameraForward(camera);
+  Vector3 right = GetCameraRight(camera);
+  Vector3 up = GetCameraUp(camera);
+  Vector3 rr = Vector3Subtract(body_pos, camera->position);
+
+  float distance = Vector3DotProduct(rr, forward);
+  float mouse_distance = distance / Vector3DotProduct(forward, ray.direction);
+  Vector3 world_mouse_position = Vector3Add(ray.position, Vector3Scale(ray.direction, mouse_distance));
+  Vector3 delta = Vector3Subtract(world_mouse_position, r.anchor);
+  delta = Vector3ClampValue(delta, r.spacing, (r.num_links + 1) * r.spacing);
+
+  r.body.position = Vector3Add(r.anchor, delta);
 }
 
 void reset() {
@@ -69,6 +98,8 @@ void reset() {
     r.link_pos[i] = Vector3Add(r.anchor, (Vector3) { distance * sinf(angle), -distance * cosf(angle), 0 });
     r.link_vel[i] = Vector3Zero();
   }
+
+  body_fixed = false;
 }
 
 static void setup_constraints() {
@@ -96,14 +127,15 @@ static void setup_constraints() {
     if (i > 0)
       jj[i - 1] = n;
 
-    jj[i] = nn;
+    if (!body_fixed || i < dim - 1)
+      jj[i] = nn;
   }
 }
 
 void simulate(float dt) {
   Vector3 dv = Vector3Scale(GRAVITY_V, dt);
 
-  r.body.linear_velocity = Vector3Add(r.body.linear_velocity, dv);
+  r.body.linear_velocity = !body_fixed ? Vector3Add(r.body.linear_velocity, dv) : Vector3Zero();
   for (int i = 0; i < r.num_links; ++i) {
     r.link_vel[i] = Vector3Add(r.link_vel[i], dv);
   }

@@ -60,7 +60,7 @@ void save_state() {
 
 void reset() {}
 
-void on_input() {}
+void on_input(Camera *camera) {}
 
 void simulate(float dt) {
   rigidbody* exact = &masses[0];

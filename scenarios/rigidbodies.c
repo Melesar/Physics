@@ -26,7 +26,7 @@ void save_state() {
   
 }
 
-void on_input() {
+void on_input(Camera *camera) {
   
 }
 

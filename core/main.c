@@ -41,7 +41,7 @@ void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shade
   EndDrawing();
 }
 
-void process_inputs() {
+void process_inputs(Camera* camera) {
   if (IsKeyPressed(KEY_SPACE)) {
     simulation_running = !simulation_running;
   }
@@ -54,7 +54,7 @@ void process_inputs() {
     reset();
   }
 
-  on_input();
+  on_input(camera);
 }
 
 int main(int argc, char** argv) {
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     UpdateNuklear(ctx);
     UpdateLightValues(shader, light);
 
-    process_inputs();
+    process_inputs(&camera);
 
     accum += deltaTime;
     int sim_count = (int)(accum / simulation_step);

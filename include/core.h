@@ -20,7 +20,7 @@ struct object {
 void initialize_program(program_config* config);
 void setup_scene(Shader shader);
 void save_state();
-void on_input();
+void on_input(Camera *camera);
 void reset();
 void simulate(float dt);
 void draw(float interpolation);

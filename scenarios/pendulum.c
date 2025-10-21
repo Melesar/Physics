@@ -87,7 +87,7 @@ void reset() {
     double_pendulum[1].body.linear_velocity = Vector3Zero();
 }
 
-void on_input() {
+void on_input(Camera *camera) {
  
 }
 
