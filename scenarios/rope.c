@@ -20,8 +20,12 @@ typedef struct {
 const int num_links = 10;
 const float link_spacing = 0.8;
 const float body_mass = 3;
-const float stabilization = 0.8;
-const int solver_iterations = 50;
+const float link_mass = 0.5;
+const float damping = 0.997;
+
+const float initial_angle_degrees = 90.0;
+const float stabilization = 0.2;
+const int solver_iterations = 20;
 
 rope r;
 constraints cc;
@@ -41,7 +45,7 @@ void setup_scene(Shader shader) {
   r.link_vel = (Vector3*) malloc(num_links * sizeof(Vector3));
   r.anchor = (Vector3) { 0, rope_len + 2, 0 };
 
-  cc = constraints_new(r.num_links + 1, r.num_links + 1, 3, stabilization);
+  cc = constraints_new(r.num_links + 1, r.num_links + 1, 3, stabilization, 50);
 
   reset();
 }
@@ -55,9 +59,14 @@ void on_input() {
 }
 
 void reset() {
-  r.body = rb_new(Vector3Add(r.anchor, (Vector3) { (r.num_links * link_spacing) + link_spacing, 0, 0 }), body_mass);
+  float angle = initial_angle_degrees * DEG2RAD;
+  float distance = (r.num_links + 1) * link_spacing;
+
+  r.body = rb_new(Vector3Add(r.anchor, (Vector3) { distance * sinf(angle), -distance * cosf(angle), 0 }), body_mass);
+
   for (int i = 0; i < num_links; ++i) {
-    r.link_pos[i] = Vector3Add(r.anchor, (Vector3) { (i + 1) * link_spacing, 0, 0 });
+    distance = (i + 1) * link_spacing;
+    r.link_pos[i] = Vector3Add(r.anchor, (Vector3) { distance * sinf(angle), -distance * cosf(angle), 0 });
     r.link_vel[i] = Vector3Zero();
   }
 }
@@ -68,12 +77,12 @@ static void setup_constraints() {
     Vector3 p1 = i > 0 ? r.link_pos[i - 1] : r.anchor;
     Vector3 p2 = i < r.num_links ? r.link_pos[i] : r.body.position;
 
-    cc.errors[i] = Vector3DistanceSqr(p1, p2) - r.spacing * r.spacing;
+    cc.errors[i] = Vector3Distance(p1, p2) - r.spacing;
 
     Vector3 *vv = (Vector3*)cc.v;
     vv[i] = i < r.num_links ? r.link_vel[i] : r.body.linear_velocity;
 
-    float inv_m = i < r.num_links ? 1 : 1.0 / r.body.mass;
+    float inv_m = i < r.num_links ? 1.0 / link_mass : 1.0 / r.body.mass;
     Vector3 *mm = (Vector3*)cc.inv_m;
     mm[i] = Vector3Scale(Vector3One(), inv_m);
    
@@ -109,6 +118,11 @@ void simulate(float dt) {
 
       *v = Vector3Add(*v, dv);
     }
+  }
+
+  r.body.linear_velocity = Vector3Scale(r.body.linear_velocity, damping);
+  for (int i = 0; i < r.num_links; ++i) {
+    r.link_vel[i] = Vector3Scale(r.link_vel[i], damping);
   }
 
   for (int i = 0; i < r.num_links + 1; ++i) {

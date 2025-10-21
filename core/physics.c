@@ -3,7 +3,6 @@
 #include "stdlib.h"
 #include "string.h"
 
-#define MAX_SOLVER_ITERATIONS 5
 #define SOLVER_TOLERANCE 0.01
 
 rigidbody rb_new(Vector3 position, float mass) {
@@ -47,12 +46,13 @@ void oscillation_period_track(oscillation_period* period, const rigidbody* curre
   }
 }
 
-constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization) {
+constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
   constraints c;
   c.beta = stabilization;
   c.num_bodies = num_bodies;
   c.num_constraints = num_constraints;
   c.num_dof = num_dof;
+  c.gauss_seidel_iterations = gauss_seidel_iterations;
 
   c.errors = (float*) malloc(num_constraints * sizeof(float));
   c.j = (float*) malloc(num_constraints * num_bodies * num_dof * sizeof(float));
@@ -68,12 +68,12 @@ constraints constraints_new(int num_bodies, int num_constraints, int num_dof, fl
   return c;
 }
 
-static void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions) {
+static void gauss_seidel_solve(float* a, float* b, float* solution, int num_dimensions, int max_iterations) {
   memset(solution, 0, num_dimensions * sizeof(float));
    
-  for (int iter = 0; iter < MAX_SOLVER_ITERATIONS; iter++) {
-    float max_delta = 0.0;
-    
+  float max_delta = 0.0;
+  for (int iter = 0; iter < max_iterations; iter++) {
+    max_delta = 0.0;
     for (int i = 0; i < num_dimensions; i++) {
       float sigma = 0.0;
       
@@ -108,7 +108,6 @@ void constraints_solve(constraints *c, float dt) {
     for (int j = 0; j < nc; ++j) {
       float aij = 0;
       for (int k = 0; k < row_size; ++k) {
-        // TODO reintroduce jm matrix and use it here
         aij += c->j[i * row_size + k] * c->inv_m[k] * c->j[j * row_size + k];
       }
       c->a[i * nc + j] = aij;
@@ -125,7 +124,7 @@ void constraints_solve(constraints *c, float dt) {
     c->b[i] = -(bi + c->beta * c->errors[i] * inv_t);
   }
 
-  gauss_seidel_solve(c->a, c->b, c->lambda, nc);
+  gauss_seidel_solve(c->a, c->b, c->lambda, nc, c->gauss_seidel_iterations);
 
   for (int i = 0; i < row_size; ++i) {
     float jt_lambda = 0;

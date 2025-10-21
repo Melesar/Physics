@@ -22,6 +22,8 @@ typedef struct {
 
 typedef struct {
   int num_constraints, num_dof, num_bodies;
+  int gauss_seidel_iterations;
+
   float beta;
 
   float *j;
@@ -46,7 +48,7 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 oscillation_period oscillation_period_new();
 void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
 
-constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization);
+constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations);
 void constraints_solve(constraints *c, float dt);
 void constraints_free(constraints c);
 

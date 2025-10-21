@@ -68,7 +68,7 @@ void setup_scene(Shader shader) {
     .stabilization_factor = default_stabilisation,
   };
 
-  cc = constraints_new(2, 2, 3, default_stabilisation);
+  cc = constraints_new(2, 2, 3, default_stabilisation, 5);
 
   graphics = (struct object) { .label = "Double", .mesh = mesh, .material = material };
 }
