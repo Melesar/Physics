@@ -37,6 +37,7 @@ void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shade
       EndMode3D();
 
       DrawNuklear(ctx);
+      DrawFPS(1800, 1050);
   EndDrawing();
 }
 
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
   char *vs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.vs";
   char *fs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.fs";
 
-  Shader shader = LoadShader(vs_shader_path, fs_shader_path); // Use default lighting shader
+  Shader shader = LoadShader(vs_shader_path, fs_shader_path);
   Light light = CreateLight(LIGHT_DIRECTIONAL, (Vector3){-2.0f, 5.0f, -2.0f}, Vector3Zero(), WHITE, shader);
 
   int ambientLoc = GetShaderLocation(shader, "ambient");
@@ -117,6 +118,7 @@ int main(int argc, char** argv) {
 
     draw_ui(ctx);
     draw_scene(camera, accum, ctx, shader);
+    
     accum -= sim_count * simulation_step;
     deltaTime = GetFrameTime();
   }
