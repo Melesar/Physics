@@ -20,9 +20,9 @@ bool interpolate = true;
 
 static float total_energy(int spring_index) {
   rigidbody spring = masses[spring_index];
-  float velocity_sqr = Vector3LengthSqr(spring.linear_velocity);
+  float velocity_sqr = Vector3LengthSqr(spring.v);
   float kinetic = 0.5 * spring.mass * velocity_sqr;
-  float elastic = 0.5 * stiffness * spring.position.x * spring.position.x;
+  float elastic = 0.5 * stiffness * spring.p.x * spring.p.x;
 
   return kinetic + elastic;
 }
@@ -65,28 +65,28 @@ void on_input(Camera *camera) {}
 void simulate(float dt) {
   rigidbody* exact = &masses[0];
   float c = sqrtf(stiffness / exact->mass);
-  exact->position.x = initial_offset * cosf(c * total_time);
-  exact->linear_velocity.x = -c * initial_offset * sinf(c * total_time);
+  exact->p.x = initial_offset * cosf(c * total_time);
+  exact->v.x = -c * initial_offset * sinf(c * total_time);
 
   rigidbody* euler_explicit = &masses[1];
-  float acc = -stiffness * euler_explicit->position.x / euler_explicit->mass;
-  euler_explicit->linear_velocity.x += acc * dt;
-  euler_explicit->position.x += euler_explicit->linear_velocity.x * dt;
+  float acc = -stiffness * euler_explicit->p.x / euler_explicit->mass;
+  euler_explicit->v.x += acc * dt;
+  euler_explicit->p.x += euler_explicit->v.x * dt;
 
   rigidbody* euler_implicit = &masses[2];
   float omsq = stiffness / euler_implicit->mass;
-  float x0 = euler_implicit->position.x;
-  float v0 = euler_implicit->linear_velocity.x;
+  float x0 = euler_implicit->p.x;
+  float v0 = euler_implicit->v.x;
   float invDenom = 1 / (1 + dt * dt * omsq);
   float x = (x0 + dt * v0) * invDenom;
   float v = (v0 - dt * omsq * x0) * invDenom;
 
-  euler_implicit->position.x = x;
-  euler_implicit->linear_velocity.x = v;
+  euler_implicit->p.x = x;
+  euler_implicit->v.x = v;
 
   rigidbody* rk4 = &masses[3];
-  x0 = rk4->position.x;
-  v0 = rk4->linear_velocity.x;
+  x0 = rk4->p.x;
+  v0 = rk4->v.x;
 
   float omegasq = -stiffness / rk4->mass;
   float dv1 = dt * omegasq * x0;
@@ -101,8 +101,8 @@ void simulate(float dt) {
   float dx = (dx1 + 2 * dx2 + 2 * dx3 + dx4) / 6; 
   float dv = (dv1 + 2 * dv2 + 2 * dv3 + dv4) / 6;
 
-  rk4->position.x += dx;
-  rk4->linear_velocity.x += dv;
+  rk4->p.x += dx;
+  rk4->v.x += dv;
   
   total_time += dt;
 

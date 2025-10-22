@@ -1,26 +1,47 @@
 #include "raylib.h"
 #include "physics.h"
+#include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
 
 #define SOLVER_TOLERANCE 0.01
 
+Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
+  float principal =  mass * (3 * c.radius * c.radius + c.height * c.height) / 12.0;
+  return (Vector3){ principal, mass * c.radius * c.radius / 2.0, principal };
+}
+
 rigidbody rb_new(Vector3 position, float mass) {
-  return (rigidbody){ position, (Vector3){0}, QuaternionIdentity(), mass };
+  return (rigidbody) {
+    .mass = mass,
+    .p = position,
+    .v = Vector3Zero(),
+    .r = QuaternionIdentity(),
+    .i0_inv = Vector3One(),
+    .l = Vector3Zero(),
+  };
 }
 
 Matrix rb_transformation(const rigidbody* rb) {
   return MatrixMultiply(
-    QuaternionToMatrix(rb->orientation),
-    MatrixTranslate(rb->position.x, rb->position.y, rb->position.z)
+    QuaternionToMatrix(rb->r),
+    MatrixTranslate(rb->p.x, rb->p.y, rb->p.z)
   );
+}
+
+Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset) {
+  return MatrixMultiply(
+    MatrixMultiply(
+      MatrixTranslate(rb->p.x, rb->p.y, rb->p.z),
+      QuaternionToMatrix(rb->r)),
+        MatrixTranslate(offset.x, offset.y, offset.z));
 }
 
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   rigidbody result;
-  result.position = Vector3Lerp(from->position, to->position, t);
-  result.orientation = QuaternionSlerp(from->orientation, to->orientation, t);
-  result.linear_velocity = Vector3Lerp(from->linear_velocity, to->linear_velocity, t);
+  result.p = Vector3Lerp(from->p, to->p, t);
+  result.r = QuaternionSlerp(from->r, to->r, t);
+  result.v = Vector3Lerp(from->v, to->v, t);
   result.mass = Lerp(from->mass, to->mass, t);
 
   return result;
@@ -31,8 +52,8 @@ oscillation_period oscillation_period_new() {
 }
 
 void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev) {
-  float prev_velocity = prev->linear_velocity.x;
-  float current_velocity = current->linear_velocity.x;
+  float prev_velocity = prev->v.x;
+  float current_velocity = current->v.x;
 
   if (prev_velocity * current_velocity < 0) {
     period->num_turns += 1;
@@ -145,6 +166,3 @@ void constraints_free(constraints c) {
   free(c.v);
   free(c.dv);
 }
-
-
-

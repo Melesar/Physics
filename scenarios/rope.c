@@ -58,7 +58,7 @@ void save_state() {
 
 void on_input(Camera *camera) {
   Vector2 mouse_pos = GetMousePosition();
-  Vector3 body_pos = r.body.position;
+  Vector3 body_pos = r.body.p;
   Ray ray = GetScreenToWorldRay(mouse_pos, *camera);
 
   bool is_mouse_pressed = IsMouseButtonDown(0);
@@ -83,7 +83,7 @@ void on_input(Camera *camera) {
   Vector3 delta = Vector3Subtract(world_mouse_position, r.anchor);
   delta = Vector3ClampValue(delta, r.spacing, (r.num_links + 1) * r.spacing);
 
-  r.body.position = Vector3Add(r.anchor, delta);
+  r.body.p = Vector3Add(r.anchor, delta);
 }
 
 void reset() {
@@ -105,12 +105,12 @@ static void setup_constraints() {
   int dim = r.num_links + 1;
   for (int i = 0; i < dim; ++i) {
     Vector3 p1 = i > 0 ? r.link_pos[i - 1] : r.anchor;
-    Vector3 p2 = i < r.num_links ? r.link_pos[i] : r.body.position;
+    Vector3 p2 = i < r.num_links ? r.link_pos[i] : r.body.p;
 
     cc.errors[i] = Vector3Distance(p1, p2) - r.spacing;
 
     Vector3 *vv = (Vector3*)cc.v;
-    vv[i] = i < r.num_links ? r.link_vel[i] : r.body.linear_velocity;
+    vv[i] = i < r.num_links ? r.link_vel[i] : r.body.v;
 
     float inv_m = i < r.num_links ? 1.0 / link_mass : 1.0 / r.body.mass;
     Vector3 *mm = (Vector3*)cc.inv_m;
@@ -134,7 +134,7 @@ static void setup_constraints() {
 void simulate(float dt) {
   Vector3 dv = Vector3Scale(GRAVITY_V, dt);
 
-  r.body.linear_velocity = !body_fixed ? Vector3Add(r.body.linear_velocity, dv) : Vector3Zero();
+  r.body.v = !body_fixed ? Vector3Add(r.body.v, dv) : Vector3Zero();
   for (int i = 0; i < r.num_links; ++i) {
     r.link_vel[i] = Vector3Add(r.link_vel[i], dv);
   }
@@ -144,21 +144,21 @@ void simulate(float dt) {
     constraints_solve(&cc, dt);
 
     for (int k = 0; k < r.num_links + 1; ++k) {
-      Vector3 *v = k < r.num_links ? &r.link_vel[k] : &r.body.linear_velocity;
+      Vector3 *v = k < r.num_links ? &r.link_vel[k] : &r.body.v;
       Vector3 dv = *(Vector3*)(cc.dv + 3 * k);
 
       *v = Vector3Add(*v, dv);
     }
   }
 
-  r.body.linear_velocity = Vector3Scale(r.body.linear_velocity, damping);
+  r.body.v = Vector3Scale(r.body.v, damping);
   for (int i = 0; i < r.num_links; ++i) {
     r.link_vel[i] = Vector3Scale(r.link_vel[i], damping);
   }
 
   for (int i = 0; i < r.num_links + 1; ++i) {
-    Vector3 *p = i < r.num_links ? &r.link_pos[i] : &r.body.position;
-    Vector3 v = i < r.num_links ? r.link_vel[i] : r.body.linear_velocity;
+    Vector3 *p = i < r.num_links ? &r.link_pos[i] : &r.body.p;
+    Vector3 v = i < r.num_links ? r.link_vel[i] : r.body.v;
 
     *p = Vector3Add(*p, Vector3Scale(v, dt));
   }
@@ -166,10 +166,10 @@ void simulate(float dt) {
 
 void draw(float interpolation) {
   DrawSphere(r.anchor, link_spacing * 0.5, RED);
-  DrawSphere(r.body.position, 0.5, PURPLE);
+  DrawSphere(r.body.p, 0.5, PURPLE);
 
   DrawLine3D(r.anchor, r.link_pos[0], BLACK);
-  DrawLine3D(r.link_pos[num_links - 1], r.body.position, BLACK);
+  DrawLine3D(r.link_pos[num_links - 1], r.body.p, BLACK);
   for (int i = 0; i < num_links - 1; ++i) {
     DrawLine3D(r.link_pos[i], r.link_pos[i + 1], BLACK);
   }

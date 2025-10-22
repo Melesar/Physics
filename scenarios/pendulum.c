@@ -63,7 +63,7 @@ void setup_scene(Shader shader) {
   };
   double_pendulum[1] = (struct pendulum) {
     .anchor = Vector3Zero(),
-    .body = rb_new(pendulum_position(double_pendulum[0].body.position, string_length, 0.5 * PI), default_mass),
+    .body = rb_new(pendulum_position(double_pendulum[0].body.p, string_length, 0.5 * PI), default_mass),
     .string_length = string_length,
     .stabilization_factor = default_stabilisation,
   };
@@ -77,14 +77,14 @@ void save_state() {
 }
 
 void reset() {
-  double_pendulum[0].body.position =
+  double_pendulum[0].body.p =
       pendulum_position(double_pendulum[0].anchor,
                         double_pendulum[0].string_length, initial_angle);
-  double_pendulum[1].body.position = pendulum_position(
-      double_pendulum[0].body.position, string_length, PI * 0.5);
+  double_pendulum[1].body.p = pendulum_position(
+      double_pendulum[0].body.p, string_length, PI * 0.5);
 
-  double_pendulum[0].body.linear_velocity =
-    double_pendulum[1].body.linear_velocity = Vector3Zero();
+  double_pendulum[0].body.v =
+    double_pendulum[1].body.v = Vector3Zero();
 }
 
 void on_input(Camera *camera) {
@@ -92,13 +92,13 @@ void on_input(Camera *camera) {
 }
 
 static void update_constraints(struct pendulum *main, struct pendulum *secondary) {
-  Vector3 r[] = { Vector3Subtract(main->anchor, main->body.position), Vector3Subtract(main->body.position, secondary->body.position) };
+  Vector3 r[] = { Vector3Subtract(main->anchor, main->body.p), Vector3Subtract(main->body.p, secondary->body.p) };
   Vector3 n[] = { Vector3Normalize(r[0]), Vector3Normalize(r[1]) };
   float c[] = { Vector3Length(r[0]) - main->string_length, Vector3Length(r[1]) - secondary->string_length };
   float j1[] = { -n[0].x, -n[0].y, -n[0].z, 0, 0, 0 };
   float j2[] = { n[0].x, n[0].y, n[0].z, -n[1].x, -n[1].y, -n[1].z };
   Vector2 inv_mass = { 1.0f / main->body.mass, 1.0f / secondary->body.mass };
-  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
+  Vector3 v[] = { main->body.v, secondary->body.v };
 
   memcpy(cc.errors, c, 2 * sizeof(float));
   memcpy(cc.j, j1, 6 * sizeof(float));
@@ -118,27 +118,27 @@ static void solve_double_pendulum(float dt) {
 
   Vector3 dv1 = *(Vector3*)cc.dv;
   Vector3 dv2 = *(Vector3*)(cc.dv + 3);
-  main->body.linear_velocity = Vector3Add(main->body.linear_velocity, dv1);
-  secondary->body.linear_velocity = Vector3Add(secondary->body.linear_velocity, dv2);
+  main->body.v = Vector3Add(main->body.v, dv1);
+  secondary->body.v = Vector3Add(secondary->body.v, dv2);
 }
 
 static void simulate_double_pendulum(float dt) {
   struct pendulum *main = &double_pendulum[0];
   struct pendulum *secondary = &double_pendulum[1];
 
-  Vector3 v[] = { main->body.linear_velocity, secondary->body.linear_velocity };
+  Vector3 v[] = { main->body.v, secondary->body.v };
   Vector3 dvv = Vector3Scale(GRAVITY_V, dt);
 
   for (int i = 0; i < 2; ++i) {
-    double_pendulum[i].body.linear_velocity = Vector3Add(v[i], dvv);
+    double_pendulum[i].body.v = Vector3Add(v[i], dvv);
   }
 
   for (int i = 0; i < solver_iterations; ++i) {
     solve_double_pendulum(dt);
   }
 
-  main->body.position = Vector3Add(main->body.position, Vector3Scale(main->body.linear_velocity, dt));
-  secondary->body.position = Vector3Add(secondary->body.position, Vector3Scale(secondary->body.linear_velocity, dt));
+  main->body.p = Vector3Add(main->body.p, Vector3Scale(main->body.v, dt));
+  secondary->body.p = Vector3Add(secondary->body.p, Vector3Scale(secondary->body.v, dt));
 }
 
 void simulate(float dt) {
@@ -227,11 +227,11 @@ void draw_ui(struct nk_context* ctx) {
       nk_property_int(ctx, "#iterations", 1, &solver_iterations, 10, 1, 0.5);
       nk_layout_row_end(ctx);
 
-      float actual_distance_1 =  Vector3Length(Vector3Subtract(double_pendulum[0].anchor, double_pendulum[0].body.position));
+      float actual_distance_1 =  Vector3Length(Vector3Subtract(double_pendulum[0].anchor, double_pendulum[0].body.p));
       draw_stat_float(ctx, "Length 1", actual_distance_1);
       draw_stat_float(ctx, "Error 1", fabs(actual_distance_1 - double_pendulum[0].string_length));
 
-      float actual_distance_2 =  Vector3Length(Vector3Subtract(double_pendulum[0].body.position, double_pendulum[1].body.position));
+      float actual_distance_2 =  Vector3Length(Vector3Subtract(double_pendulum[0].body.p, double_pendulum[1].body.p));
       draw_stat_float(ctx, "Length 2", actual_distance_2);
       draw_stat_float(ctx, "Error 2", fabs(actual_distance_2 - double_pendulum[1].string_length));
     }
