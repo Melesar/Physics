@@ -62,8 +62,7 @@ void on_input(Camera *camera) {
   Ray ray = GetScreenToWorldRay(mouse_pos, *camera);
 
   bool is_mouse_pressed = IsMouseButtonDown(0);
-  if (!body_fixed && is_mouse_pressed)
-  {
+  if (!body_fixed && is_mouse_pressed) {
     RayCollision collision = GetRayCollisionSphere(ray, body_pos, 0.5);
     body_fixed = collision.hit;
   } else if (body_fixed && !is_mouse_pressed) {

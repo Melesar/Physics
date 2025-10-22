@@ -40,9 +40,7 @@ typedef struct {
 } constraints;
 
 rigidbody rb_new(Vector3 position, float mass);
-
 Matrix rb_transformation(const rigidbody* rb);
-
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 
 oscillation_period oscillation_period_new();

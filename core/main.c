@@ -19,9 +19,11 @@ const float simulation_step = 1.0 / simulation_rate;
 bool simulation_running = true;
 bool step_forward = false;
 
-void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
+static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
+
     ClearBackground(RAYWHITE);
+
       BeginMode3D(camera);
 
         BeginShaderMode(shader);
@@ -38,10 +40,11 @@ void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shade
 
       DrawNuklear(ctx);
       DrawFPS(1800, 1050);
+
   EndDrawing();
 }
 
-void process_inputs(Camera* camera) {
+static void process_inputs(Camera* camera) {
   if (IsKeyPressed(KEY_SPACE)) {
     simulation_running = !simulation_running;
   }
