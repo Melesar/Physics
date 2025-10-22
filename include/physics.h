@@ -17,19 +17,28 @@ Vector3 cylinder_inertia_tensor(cylinder c, float mass);
 // ==== RIGIDBODY =====
 
 typedef struct {
-    Vector3 p;
-    Vector3 v;
-    Quaternion r;
-    Vector3 i0_inv;
-    Vector3 l;
+  Vector3 f; // Linear force applied to the center of mass
+  Vector3 v; // Linear velocity
+  Vector3 p; // Position of the center of mass
 
-    float mass;
+  Vector3 t; // Torque
+  Quaternion r; // Orientation
+  Vector3 i0_inv; // Inversed inertia tensor in body space
+  Vector3 l; // Moment of inertia
+
+  float mass;
 } rigidbody;
 
 rigidbody rb_new(Vector3 position, float mass);
+
 Matrix rb_transformation(const rigidbody* rb);
 Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset);
+Matrix rb_inertia_world(const rigidbody* rb);
 Vector3 rb_angular_velocity(const rigidbody* rb);
+
+void rb_apply_impulse(rigidbody* rb, Vector3 at, Vector3 impulse);
+void rb_simulate(rigidbody* r, float dt);
+
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 
 // ==== CONSTRAINTS ====

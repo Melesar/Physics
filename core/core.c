@@ -53,3 +53,30 @@ void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value) {
   nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "%s: (%.3f, %.3f, %.3f)", title, value.x, value.y, value.z);
   nk_layout_row_end(ctx);
 }
+
+void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value) {
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9);
+  nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "%s:", title);
+  nk_layout_row_end(ctx);
+
+  for (int i = 0; i < 4; ++i) {
+    float *m = ((float*)(&value) + i * 4);
+    nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 1);
+    nk_layout_row_push(ctx, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "\t%.3f\t%.3f\t%.3f\t%.3f", m[0], m[1], m[2], m[3]);
+    nk_layout_row_end(ctx);
+  }
+}
+
+
+void draw_property_float(struct nk_context* ctx, char* title, float* value, float min, float max, float step_arrow, float step_drag) {
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9);
+  nk_property_float(ctx, title, min, value, max, step_arrow, step_drag);
+  nk_layout_row_end(ctx);
+}

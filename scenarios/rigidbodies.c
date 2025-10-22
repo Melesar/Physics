@@ -9,13 +9,17 @@ const cylinder cylinder_shape = { .height = 2.5, .radius = 1 };
 
 rigidbody cylinder_body;
 struct object cylinder_graphics;
+Mesh cylinder_mesh;
+
+float input_impulse_strength = 15;
+float velocity_damping = 0.993;
 
 const Vector3 initial_position = { 0, 1.25, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
 const Vector3 mesh_origin_offset = { 0, -0.5 * cylinder_shape.height, 0 };
 
 static struct object generate_cylinder_graphics(Shader shader) {
-  Mesh cylinder_mesh = GenMeshCylinder(cylinder_shape.radius, cylinder_shape.height, 32);
+  cylinder_mesh = GenMeshCylinder(cylinder_shape.radius, cylinder_shape.height, 32);
   Vector3 *vertices = (Vector3*)cylinder_mesh.vertices;
   for (int i = 0; i < cylinder_mesh.vertexCount; ++i) {
     vertices[i] = Vector3Add(vertices[i], mesh_origin_offset);
@@ -57,14 +61,22 @@ void reset() {
 }
 
 void on_input(Camera *camera) {
+  if (!IsMouseButtonPressed(0))
+    return;
+
+  Ray r = GetScreenToWorldRay(GetMousePosition(), *camera);
+  RayCollision col = GetRayCollisionMesh(r, cylinder_mesh, rb_transformation(&cylinder_body));
+  if (!col.hit)
+    return;
+
+  Vector3 impulse = Vector3Scale(r.direction, input_impulse_strength);
+  rb_apply_impulse(&cylinder_body, col.point, impulse);
 }
 
 void simulate(float dt) {
-  Vector3 omega = rb_angular_velocity(&cylinder_body);
-  Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
-  Quaternion dq = QuaternionScale(QuaternionMultiply(q_omega, cylinder_body.r), 0.5 * dt);
+  rb_simulate(&cylinder_body, dt);
 
-  cylinder_body.r = QuaternionNormalize(QuaternionAdd(cylinder_body.r, dq));
+  cylinder_body.l = Vector3Scale(cylinder_body.l, velocity_damping);
 }
 
 void draw(float interpolation) {
@@ -79,11 +91,16 @@ void draw_ui(struct nk_context* ctx) {
     nk_layout_row_static(ctx, 30, 200, 1);
     nk_label(ctx, cylinder_graphics.label, NK_TEXT_ALIGN_LEFT);
 
+    draw_property_float(ctx, "#impulse_strength", &input_impulse_strength, 0, 100, 1, 0.5);
+    draw_property_float(ctx, "#damping", &velocity_damping, 0.990, 0.999, 0.001, 0.001);
+
     draw_stat_float3(ctx, "I0", Vector3Invert(cylinder_body.i0_inv));
     draw_stat_float3(ctx, "Omega", rb_angular_velocity(&cylinder_body));
+    draw_stat_float3(ctx, "Momentum", cylinder_body.l);
 
     float det = MatrixDeterminant(QuaternionToMatrix(cylinder_body.r));
     draw_stat_float(ctx, "Det", det);
+    draw_stat_matrix(ctx, "Inertia", rb_inertia_world(&cylinder_body));
   }
 
   nk_end(ctx);

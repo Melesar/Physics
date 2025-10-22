@@ -29,5 +29,8 @@ void draw_ui(struct nk_context* ctx);
 void draw_arrow(Vector3 start, Vector3 end, Color color);
 void draw_stat_float(struct nk_context* ctx, char* title, float value);
 void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value);
+void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value);
+
+void draw_property_float(struct nk_context* ctx, char* title, float* value, float min, float max, float step_arrow, float step_drag);
 
 #endif

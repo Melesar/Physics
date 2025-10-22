@@ -13,12 +13,16 @@ Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
 
 rigidbody rb_new(Vector3 position, float mass) {
   return (rigidbody) {
-    .mass = mass,
-    .p = position,
+    .f = Vector3Zero(),
     .v = Vector3Zero(),
+    .p = position,
+
+    .t = Vector3Zero(),
     .r = QuaternionIdentity(),
     .i0_inv = Vector3One(),
     .l = Vector3Zero(),
+
+    .mass = mass,
   };
 }
 
@@ -37,15 +41,34 @@ Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset) {
         MatrixTranslate(offset.x, offset.y, offset.z));
 }
 
-Vector3 rb_angular_velocity(const rigidbody* rb) {
-  Matrix orientation = QuaternionToMatrix(rb->r);
+static Matrix rb_inv_i0_m(const rigidbody* rb) {
   Matrix inv_i0 = { 0 };
   inv_i0.m0 = rb->i0_inv.x;
   inv_i0.m5 = rb->i0_inv.y;
   inv_i0.m10 = rb->i0_inv.z;
+  return inv_i0;
+}
 
+static Vector3 rb_angular_velocity_ex(const rigidbody* rb, Matrix inv_i0) {
+  Matrix orientation = QuaternionToMatrix(rb->r);
   Matrix transform = MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
   return Vector3Transform(rb->l, transform);
+}
+
+static Matrix rb_inertia_world_ex(const rigidbody* rb, Matrix orientation, Matrix inv_i0) {
+  return MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
+}
+
+Matrix rb_inertia_world(const rigidbody* rb) {
+  Matrix orientation = QuaternionToMatrix(rb->r);
+  Matrix inv_i0 = rb_inv_i0_m(rb);
+
+  return rb_inertia_world_ex(rb, orientation, inv_i0);
+}
+
+Vector3 rb_angular_velocity(const rigidbody* rb) {
+  Matrix inv_i0 = rb_inv_i0_m(rb);
+  return rb_angular_velocity_ex(rb, inv_i0);
 }
 
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
@@ -56,6 +79,24 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   result.mass = Lerp(from->mass, to->mass, t);
 
   return result;
+}
+
+void rb_apply_impulse(rigidbody* rb, Vector3 at, Vector3 impulse) {
+  Vector3 r = Vector3Subtract(at, rb->p); 
+  rb->t = Vector3Add(rb->t, Vector3CrossProduct(r, impulse));
+}
+
+void rb_simulate(rigidbody* rb, float dt) {
+  rb->l = Vector3Add(rb->l, rb->t);
+
+  Matrix inv_i0 = rb_inv_i0_m(rb);
+  Vector3 omega = rb_angular_velocity_ex(rb, inv_i0);
+  Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
+  Quaternion dq = QuaternionScale(QuaternionMultiply(q_omega, rb->r), 0.5 * dt);
+
+  Quaternion q_orientation = QuaternionAdd(rb->r, dq);
+  rb->r = QuaternionNormalize(q_orientation);
+  rb->t = Vector3Zero();
 }
 
 oscillation_period oscillation_period_new() {
