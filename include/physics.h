@@ -1,6 +1,7 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
+#include "stdbool.h"
 #include "raymath.h"
 
 #define GRAVITY 9.81f
@@ -44,6 +45,18 @@ void rb_apply_force(rigidbody* rb, Vector3 force);
 void rb_simulate(rigidbody* r, float dt);
 
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
+
+// ==== COLLISIONS ====
+
+typedef struct {
+  Vector3 point;    // Contact point in world space
+  Vector3 normal;   // Normal in world space (points away from surface)
+  float depth;      // Penetration depth
+  Vector3 relative_velocity;
+  bool valid;
+} collision;
+
+collision check_collision_cylinder_plane(cylinder c, const rigidbody *rb, Vector3 plane_point, Vector3 plane_normal);
 
 // ==== CONSTRAINTS ====
 

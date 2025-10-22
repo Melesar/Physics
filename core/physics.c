@@ -123,24 +123,96 @@ void rb_simulate(rigidbody* rb, float dt) {
   rb->f = rb->fi = Vector3Zero();
 }
 
-oscillation_period oscillation_period_new() {
-  return (oscillation_period) { .timestamp = GetTime() };
-}
+collision check_collision_cylinder_plane(cylinder c, const rigidbody* rb, Vector3 plane_point, Vector3 plane_normal) {
+  collision result = { 0 };
+  result.relative_velocity = rb->v;
 
-void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev) {
-  float prev_velocity = prev->v.x;
-  float current_velocity = current->v.x;
+  Quaternion r_inv = QuaternionInvert(rb->r);
+  Vector3 n_local = Vector3RotateByQuaternion(plane_normal, r_inv);
+  Vector3 plane_point_local = Vector3RotateByQuaternion(Vector3Subtract(plane_point, rb->p), r_inv);
 
-  if (prev_velocity * current_velocity < 0) {
-    period->num_turns += 1;
+  Vector3 cylinder_axis = (Vector3) { 0, 1, 0 };
+  float half_height = 0.5f * c.height;
+
+  float min_signed_distance = INFINITY;
+  Vector3 closest_point_local = { 0 };
+
+  #define SIGNED_DISTANCE(pt) (Vector3DotProduct(Vector3Subtract(pt, plane_point_local), n_local))
+
+  // 1. Check the circular edges (top and bottom rims)
+  for (int cap = 0; cap < 2; cap++) {
+    float y = (cap == 0) ? half_height : -half_height;
+
+    // Project the plane normal onto the cap plane
+    Vector3 n_cap = (Vector3) { n_local.x, 0, n_local.z };
+    float n_cap_len = Vector3Length(n_cap);
+
+    if (n_cap_len > 0.001f) {
+      // Find the point on the rim closest to the plane
+      Vector3 rim_dir = Vector3Scale(n_cap, -c.radius / n_cap_len);
+      Vector3 rim_point = (Vector3) { rim_dir.x, y, rim_dir.z };
+
+      float dist = SIGNED_DISTANCE(rim_point);
+      if (dist < min_signed_distance) {
+        min_signed_distance = dist;
+        closest_point_local = rim_point;
+      }
+    }
   }
 
-  float num_oscillations = 0.5f * period->num_turns;
-  float time_passed = GetTime() - period->timestamp;
+  // 2. Check the cylindrical surface
+  // The closest point on the surface depends on where the plane intersects
+  // Project plane normal onto XZ plane
+  Vector3 n_xz = (Vector3) { n_local.x, 0, n_local.z };
+  float n_xz_len = Vector3Length(n_xz);
 
-  if (num_oscillations > 0) {
-    period->period = time_passed / num_oscillations;
+  if (n_xz_len > 0.001f) {
+    // Direction pointing from cylinder axis toward plane
+    Vector3 radial_dir = Vector3Scale(n_xz, -1.0f / n_xz_len);
+
+    // Check points along the cylindrical surface
+    // We need to find the generatrix (line on cylinder surface parallel to axis) closest to plane
+    Vector3 surface_base = Vector3Scale(radial_dir, c.radius);
+
+    // The closest point on this generatrix to the plane
+    // If plane is tilted, project the plane point onto the generatrix
+    float t = Vector3DotProduct(Vector3Subtract(plane_point_local, surface_base), cylinder_axis);
+    t = fmaxf(-half_height, fminf(half_height, t));
+
+    Vector3 surface_point = (Vector3) { surface_base.x, t, surface_base.z };
+    float dist = SIGNED_DISTANCE(surface_point);
+
+    if (dist < min_signed_distance) {
+      min_signed_distance = dist;
+      closest_point_local = surface_point;
+    }
   }
+
+  // 3. Check cap centers
+  for (int cap = 0; cap < 2; cap++) {
+    float y = (cap == 0) ? half_height : -half_height;
+    Vector3 cap_center = (Vector3) { 0, y, 0 };
+
+    float dist = SIGNED_DISTANCE(cap_center);
+    if (dist < min_signed_distance) {
+      min_signed_distance = dist;
+      closest_point_local = cap_center;
+    }
+  }
+
+  #undef SIGNED_DISTANCE
+
+  // Check if there's a collision (penetration)
+  if (min_signed_distance < 0) {
+    result.valid = true;
+    result.depth = -min_signed_distance;
+    result.normal = plane_normal; // Normal points away from plane
+
+    // Transform closest point back to world space
+    result.point = Vector3Add(rb->p, Vector3RotateByQuaternion(closest_point_local, rb->r));
+  }
+
+  return result;
 }
 
 constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
@@ -241,4 +313,24 @@ void constraints_free(constraints c) {
   free(c.lambda);
   free(c.v);
   free(c.dv);
+}
+
+oscillation_period oscillation_period_new() {
+  return (oscillation_period) { .timestamp = GetTime() };
+}
+
+void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev) {
+  float prev_velocity = prev->v.x;
+  float current_velocity = current->v.x;
+
+  if (prev_velocity * current_velocity < 0) {
+    period->num_turns += 1;
+  }
+
+  float num_oscillations = 0.5f * period->num_turns;
+  float time_passed = GetTime() - period->timestamp;
+
+  if (num_oscillations > 0) {
+    period->period = time_passed / num_oscillations;
+  }
 }
