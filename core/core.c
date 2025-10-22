@@ -1,9 +1,37 @@
 #include "core.h"
 #include "raylib.h"
+#include "raymath.h"
 
-void draw_arrow(Vector3 start, Vector3 end, Color color) {
-  const float radius = 0.02f;
+Mesh arrow_base;
+Mesh arrow_head;
+Material mat;
 
-  DrawSphere(end, radius * 2, color);
-  DrawCapsule(start, end, radius, 32, 32, color);
+static void set_arrow_color(Color c) {
+  mat.maps[MATERIAL_MAP_DIFFUSE].color = c;
+}
+
+void init_debugging() {
+  arrow_base = GenMeshCylinder(0.1, 1, 8);
+  arrow_head = GenMeshCone(0.2, 0.5, 8);
+  mat = LoadMaterialDefault();
+}
+
+void draw_arrow(Vector3 start, Vector3 direction, Color color) {
+  Vector3 end = Vector3Add(start, direction);
+  float distance = Vector3Length(direction);
+  Vector3 n = Vector3Scale(direction, 1.0 / distance);
+
+  set_arrow_color(color);
+
+  Matrix base_translation = MatrixTranslate(start.x, start.y, start.z);
+  Matrix base_rotation = QuaternionToMatrix(QuaternionFromVector3ToVector3((Vector3) { 0, 1, 0 }, n));
+  Matrix base_scale = MatrixScale(1, distance, 1);
+  Matrix base_transform = MatrixMultiply(MatrixMultiply(base_scale, base_rotation), base_translation);
+
+  Matrix head_translation = MatrixTranslate(end.x, end.y, end.z);
+  Matrix head_rotation = base_rotation;
+  Matrix head_transform = MatrixMultiply(head_rotation, head_translation);
+
+  DrawMesh(arrow_base, mat, base_transform);
+  DrawMesh(arrow_head, mat, head_transform);
 }

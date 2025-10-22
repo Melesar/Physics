@@ -29,6 +29,7 @@ typedef struct {
 rigidbody rb_new(Vector3 position, float mass);
 Matrix rb_transformation(const rigidbody* rb);
 Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset);
+Vector3 rb_angular_velocity(const rigidbody* rb);
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 
 // ==== CONSTRAINTS ====

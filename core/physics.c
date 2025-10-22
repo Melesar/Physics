@@ -37,6 +37,17 @@ Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset) {
         MatrixTranslate(offset.x, offset.y, offset.z));
 }
 
+Vector3 rb_angular_velocity(const rigidbody* rb) {
+  Matrix orientation = QuaternionToMatrix(rb->r);
+  Matrix inv_i0 = { 0 };
+  inv_i0.m0 = rb->i0_inv.x;
+  inv_i0.m5 = rb->i0_inv.y;
+  inv_i0.m10 = rb->i0_inv.z;
+
+  Matrix transform = MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
+  return Vector3Transform(rb->l, transform);
+}
+
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   rigidbody result;
   result.p = Vector3Lerp(from->p, to->p, t);

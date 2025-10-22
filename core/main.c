@@ -19,6 +19,8 @@ const float simulation_step = 1.0 / simulation_rate;
 bool simulation_running = true;
 bool step_forward = false;
 
+void init_debugging();
+
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
 
@@ -72,6 +74,7 @@ int main(int argc, char** argv) {
   SetTargetFPS(frame_rate); // Set frame rate
   SetTraceLogLevel(LOG_DEBUG);
 
+
   struct nk_context *ctx = InitNuklear(ui_font_size);
 
   Camera3D camera = {0};
@@ -91,6 +94,7 @@ int main(int argc, char** argv) {
   SetShaderValue(shader, ambientLoc, (float[4]){0.4f, 0.4f, 0.4f, 4.0f},
                  SHADER_UNIFORM_VEC4);
 
+  init_debugging();
   setup_scene(shader);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {

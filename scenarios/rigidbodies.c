@@ -11,7 +11,7 @@ rigidbody cylinder_body;
 struct object cylinder_graphics;
 
 const Vector3 initial_position = { 0, 1.25, 0 };
-const Vector3 initial_moment_of_inertia = { 5, 5, 5 };
+const Vector3 initial_moment_of_inertia = { 0, 2, 5 };
 const Vector3 mesh_origin_offset = { 0, -0.5 * cylinder_shape.height, 0 };
 
 static struct object generate_cylinder_graphics(Shader shader) {
@@ -57,14 +57,7 @@ void reset() {
 }
 
 void simulate(float dt) {
-  Matrix orientation = QuaternionToMatrix(cylinder_body.r);
-  Matrix inv_i0 = { 0 };
-  inv_i0.m0 = cylinder_body.i0_inv.x;
-  inv_i0.m5 = cylinder_body.i0_inv.y;
-  inv_i0.m10 = cylinder_body.i0_inv.z;
-
-  Matrix transform = MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
-  Vector3 omega = Vector3Transform(cylinder_body.l, transform);
+  Vector3 omega = rb_angular_velocity(&cylinder_body);
   Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
   Quaternion dq = QuaternionScale(QuaternionMultiply(q_omega, cylinder_body.r), 0.5 * dt);
 
@@ -73,6 +66,9 @@ void simulate(float dt) {
 
 void draw(float interpolation) {
   DrawMesh(cylinder_graphics.mesh, cylinder_graphics.material, rb_transformation(&cylinder_body));
+
+  draw_arrow(cylinder_body.p, cylinder_body.l, SKYBLUE);
+  draw_arrow(cylinder_body.p, rb_angular_velocity(&cylinder_body), MAROON);
 }
 
 void draw_ui(struct nk_context* ctx) {
