@@ -11,7 +11,7 @@ rigidbody cylinder_body;
 struct object cylinder_graphics;
 
 const Vector3 initial_position = { 0, 1.25, 0 };
-const Vector3 initial_moment_of_inertia = { 0, 2, 5 };
+const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
 const Vector3 mesh_origin_offset = { 0, -0.5 * cylinder_shape.height, 0 };
 
 static struct object generate_cylinder_graphics(Shader shader) {
@@ -56,6 +56,9 @@ void reset() {
   cylinder_body.l = initial_moment_of_inertia;
 }
 
+void on_input(Camera *camera) {
+}
+
 void simulate(float dt) {
   Vector3 omega = rb_angular_velocity(&cylinder_body);
   Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
@@ -72,9 +75,19 @@ void draw(float interpolation) {
 }
 
 void draw_ui(struct nk_context* ctx) {
-  
+  if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 350, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
+    nk_layout_row_static(ctx, 30, 200, 1);
+    nk_label(ctx, cylinder_graphics.label, NK_TEXT_ALIGN_LEFT);
+
+    draw_stat_float3(ctx, "I0", Vector3Invert(cylinder_body.i0_inv));
+    draw_stat_float3(ctx, "Omega", rb_angular_velocity(&cylinder_body));
+
+    float det = MatrixDeterminant(QuaternionToMatrix(cylinder_body.r));
+    draw_stat_float(ctx, "Det", det);
+  }
+
+  nk_end(ctx);
 }
 
 void save_state() { }
 
-void on_input(Camera *camera) { }

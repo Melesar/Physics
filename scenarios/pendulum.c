@@ -155,23 +155,6 @@ void draw(float interpolation) {
   DrawMesh(graphics.mesh, graphics.material, rb_transformation(&double_pendulum[1].body));
 }
 
-static void draw_stat_float(struct nk_context* ctx, char* title, float value) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
-  nk_value_float(ctx, title, value);
-  nk_layout_row_end(ctx);
-}
-
-static void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
-  nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "%s: (%.3f, %.3f, %.3f)", title, value.x, value.y, value.z);
-  nk_layout_row_end(ctx);
-}
 
 void draw_ui(struct nk_context* ctx) {
     if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 220, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
