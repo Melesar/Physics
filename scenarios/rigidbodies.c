@@ -70,13 +70,14 @@ void on_input(Camera *camera) {
     return;
 
   Vector3 impulse = Vector3Scale(r.direction, input_impulse_strength);
-  rb_apply_impulse(&cylinder_body, col.point, impulse);
+  rb_apply_impulse_at(&cylinder_body, col.point, impulse);
 }
 
 void simulate(float dt) {
   rb_simulate(&cylinder_body, dt);
 
   cylinder_body.l = Vector3Scale(cylinder_body.l, velocity_damping);
+  cylinder_body.v = Vector3Scale(cylinder_body.v, velocity_damping);
 }
 
 void draw(float interpolation) {

@@ -14,10 +14,12 @@ Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
 rigidbody rb_new(Vector3 position, float mass) {
   return (rigidbody) {
     .f = Vector3Zero(),
+    .fi = Vector3Zero(),
     .v = Vector3Zero(),
     .p = position,
 
     .t = Vector3Zero(),
+    .ti = Vector3Zero(),
     .r = QuaternionIdentity(),
     .i0_inv = Vector3One(),
     .l = Vector3Zero(),
@@ -81,13 +83,29 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   return result;
 }
 
-void rb_apply_impulse(rigidbody* rb, Vector3 at, Vector3 impulse) {
+void rb_apply_impulse_at(rigidbody* rb, Vector3 at, Vector3 impulse) {
   Vector3 r = Vector3Subtract(at, rb->p); 
-  rb->t = Vector3Add(rb->t, Vector3CrossProduct(r, impulse));
+  rb->ti = Vector3Add(rb->ti, Vector3CrossProduct(r, impulse));
+  rb->fi = Vector3Add(rb->fi, impulse);
+}
+
+void rb_apply_force_at(rigidbody* rb, Vector3 at, Vector3 force) {
+  Vector3 r = Vector3Subtract(at, rb->p); 
+  rb->t = Vector3Add(rb->t, Vector3CrossProduct(r, force));
+  rb->f = Vector3Add(rb->f, force);
+}
+
+void rb_apply_impulse(rigidbody* rb, Vector3 impulse) {
+  rb->fi = Vector3Add(rb->fi, impulse);
+}
+
+void rb_apply_force(rigidbody* rb, Vector3 force) {
+  rb->f = Vector3Add(rb->f, force);
 }
 
 void rb_simulate(rigidbody* rb, float dt) {
-  rb->l = Vector3Add(rb->l, rb->t);
+  rb->l = Vector3Add(rb->l, rb->ti);
+  rb->l = Vector3Add(rb->l, Vector3Scale(rb->t, dt));
 
   Matrix inv_i0 = rb_inv_i0_m(rb);
   Vector3 omega = rb_angular_velocity_ex(rb, inv_i0);
@@ -96,7 +114,13 @@ void rb_simulate(rigidbody* rb, float dt) {
 
   Quaternion q_orientation = QuaternionAdd(rb->r, dq);
   rb->r = QuaternionNormalize(q_orientation);
-  rb->t = Vector3Zero();
+  rb->t = rb->ti = Vector3Zero();
+
+  float inv_mass = 1.0 / rb->mass;
+  Vector3 acc = Vector3Scale(Vector3Add(rb->fi, Vector3Scale(rb->f, dt)), inv_mass);
+  rb->v = Vector3Add(rb->v, acc);
+  rb->p = Vector3Add(rb->p, Vector3Scale(rb->v, dt));
+  rb->f = rb->fi = Vector3Zero();
 }
 
 oscillation_period oscillation_period_new() {
