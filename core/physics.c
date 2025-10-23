@@ -125,10 +125,11 @@ void rb_simulate(rigidbody* rb, float dt) {
 
 collision check_collision_cylinder_plane(cylinder c, const rigidbody* rb, Vector3 plane_point, Vector3 plane_normal) {
   collision result = { 0 };
-  result.relative_velocity = rb->v;
+  
+  Vector3 n = Vector3Normalize(plane_normal);
 
   Quaternion r_inv = QuaternionInvert(rb->r);
-  Vector3 n_local = Vector3RotateByQuaternion(plane_normal, r_inv);
+  Vector3 n_local = Vector3RotateByQuaternion(n, r_inv);
   Vector3 plane_point_local = Vector3RotateByQuaternion(Vector3Subtract(plane_point, rb->p), r_inv);
 
   Vector3 cylinder_axis = (Vector3) { 0, 1, 0 };
@@ -206,10 +207,15 @@ collision check_collision_cylinder_plane(cylinder c, const rigidbody* rb, Vector
   if (min_signed_distance < 0) {
     result.valid = true;
     result.depth = -min_signed_distance;
-    result.normal = plane_normal; // Normal points away from plane
+    result.normal = n; // Normal points away from plane
 
     // Transform closest point back to world space
     result.point = Vector3Add(rb->p, Vector3RotateByQuaternion(closest_point_local, rb->r));
+    
+    // Compute relative velocity at contact point (include angular velocity)
+    Vector3 omega = rb_angular_velocity(rb);
+    Vector3 r_world = Vector3Subtract(result.point, rb->p);
+    result.relative_velocity = Vector3Add(rb->v, Vector3CrossProduct(omega, r_world));
   }
 
   return result;
