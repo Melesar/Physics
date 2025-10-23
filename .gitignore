@@ -6,5 +6,6 @@ spring
 pendulum
 rigidbodies
 rope
+collisions
 
 .cache/
