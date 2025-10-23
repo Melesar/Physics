@@ -41,7 +41,6 @@ static Vector3 pendulum_position(Vector3 anchor, float length, float angle) {
 }
 
 void initialize_program(program_config* config) {
-  config->camera_mode = CAMERA_CUSTOM; 
   config->window_title = "Pendulums";
   config->camera_position = (Vector3) { 0, 5, 10 };
   config->camera_target = (Vector3) { 0, 3, 0 };

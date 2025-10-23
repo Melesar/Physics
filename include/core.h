@@ -6,7 +6,6 @@
 
 typedef struct {
   char* window_title;
-  int camera_mode;
   Vector3 camera_position;
   Vector3 camera_target;
 } program_config;

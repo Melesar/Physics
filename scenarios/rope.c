@@ -34,7 +34,6 @@ bool body_fixed;
 
 void initialize_program(program_config* config) {
   config->window_title = "Rope";
-  config->camera_mode = CAMERA_CUSTOM;
   config->camera_position = (Vector3) { 0.609, 8.439, 22.771 };
   config->camera_target = (Vector3) { 0, 3, 0 };
 }

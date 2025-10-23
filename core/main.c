@@ -6,6 +6,8 @@
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
 
+#include "rcamera.h"
+
 #include "raylib-nuklear.h"
 
 const int ui_font_size = 14;
@@ -19,7 +21,60 @@ const float simulation_step = 1.0 / simulation_rate;
 bool simulation_running = true;
 bool step_forward = false;
 
+// Camera settings
+typedef struct {
+  float movement_speed;
+  float rotation_sensitivity;
+} camera_settings;
+
+camera_settings cam_settings = {
+  .movement_speed = 10.0f,
+  .rotation_sensitivity = 0.1f,
+};
+
 void init_debugging();
+
+static void update_custom_camera(Camera* camera, float deltaTime) {
+  Vector3 forward = GetCameraForward(camera);
+  Vector3 right = GetCameraRight(camera);
+
+  Vector3 movement = {0};
+
+  if (IsKeyDown(KEY_W)) movement = Vector3Add(movement, Vector3Scale(forward, cam_settings.movement_speed * deltaTime));
+  if (IsKeyDown(KEY_S)) movement = Vector3Add(movement, Vector3Scale(forward, -cam_settings.movement_speed * deltaTime));
+  if (IsKeyDown(KEY_A)) movement = Vector3Add(movement, Vector3Scale(right, -cam_settings.movement_speed * deltaTime));
+  if (IsKeyDown(KEY_D)) movement = Vector3Add(movement, Vector3Scale(right, cam_settings.movement_speed * deltaTime));
+
+  camera->position = Vector3Add(camera->position, movement);
+  camera->target = Vector3Add(camera->target, movement);
+
+  if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+    Vector2 mouseDelta = GetMouseDelta();
+    Vector3 rotation = {0};
+    rotation.x = mouseDelta.x * cam_settings.rotation_sensitivity;  // Yaw
+    rotation.y = -mouseDelta.y * cam_settings.rotation_sensitivity; // Pitch
+
+    UpdateCameraPro(camera, (Vector3){0}, rotation, 0.0f);
+  }
+}
+
+static void draw_camera_ui(struct nk_context* ctx) {
+  // Position window in top-right corner
+  int window_width = 280;
+  int window_x = screen_width - window_width - 20;
+
+  if (nk_begin_titled(ctx, "camera_settings", "Camera Settings",
+                      nk_rect(window_x, 20, window_width, 150),
+                      NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
+    nk_layout_row_dynamic(ctx, 30, 1);
+    nk_label(ctx, "Movement & Rotation", NK_TEXT_ALIGN_CENTERED);
+
+    nk_layout_row_dynamic(ctx, 25, 1);
+    nk_property_float(ctx, "Speed:", 1.0f, &cam_settings.movement_speed, 50.0f, 1.0f, 0.5f);
+    // nk_property_float(ctx, "Sensitivity:", 0.001f, &cam_settings.rotation_sensitivity, 0.1f, 0.005f, 0.001f);
+  }
+  nk_end(ctx);
+}
 
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
@@ -51,7 +106,7 @@ static void process_inputs(Camera* camera) {
     simulation_running = !simulation_running;
   }
 
-  if (IsKeyDown(KEY_S)) {
+  if (IsKeyDown(KEY_PERIOD)) {
     step_forward = true;
   }
 
@@ -105,7 +160,7 @@ int main(int argc, char** argv) {
   float accum = 0;
   float deltaTime = 0;
   while (!WindowShouldClose()) {
-    UpdateCamera(&camera, config.camera_mode);
+    update_custom_camera(&camera, GetFrameTime());
     UpdateNuklear(ctx);
     UpdateLightValues(shader, light);
 
@@ -124,6 +179,7 @@ int main(int argc, char** argv) {
     }
 
     draw_ui(ctx);
+    draw_camera_ui(ctx);
     draw_scene(camera, accum, ctx, shader);
     
     accum -= sim_count * simulation_step;

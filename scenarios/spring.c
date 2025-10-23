@@ -28,7 +28,6 @@ static float total_energy(int spring_index) {
 }
 
 void initialize_program(program_config* config) {
-  config->camera_mode = CAMERA_CUSTOM;
   config->window_title = "Mass on a spring";
   config->camera_position = (Vector3) { 2, 7, 10 };
   config->camera_target = (Vector3) { 2, 0.5, 0 };

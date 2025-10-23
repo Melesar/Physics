@@ -39,7 +39,6 @@ static struct object generate_cylinder_graphics(Shader shader) {
 
 void initialize_program(program_config* config) {
   config->window_title = "Rigidbodies";  
-  config->camera_mode = CAMERA_CUSTOM; 
   config->camera_position = (Vector3) { 22.542, 11.645, 20.752 };
   config->camera_target = (Vector3) { 0, 0, 0 };
 }
