@@ -5,9 +5,7 @@
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
-
 #include "rcamera.h"
-
 #include "raylib-nuklear.h"
 
 const int ui_font_size = 14;
@@ -18,6 +16,7 @@ const int simulation_rate = 120;
 
 const float simulation_step = 1.0 / simulation_rate;
 
+bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
 
@@ -33,6 +32,9 @@ camera_settings cam_settings = {
 };
 
 void init_debugging();
+void init_gizmos();
+void manipulate_gizmos(Camera *camera);
+void draw_gizmos();
 
 static void update_custom_camera(Camera* camera, float deltaTime) {
   Vector3 forward = GetCameraForward(camera);
@@ -91,6 +93,9 @@ static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shade
           DrawPlane((Vector3){0.0f, 0.0f, 0.0f}, (Vector2){32.0f, 32.0f}, LIGHTGRAY);
           DrawGrid(32, 1.0f);
 
+          if (edit_mode)
+            draw_gizmos();
+
         EndShaderMode();
 
       EndMode3D();
@@ -114,7 +119,16 @@ static void process_inputs(Camera* camera) {
     reset();
   }
 
-  on_input(camera);
+  if (!edit_mode && IsKeyPressed(KEY_ESCAPE)) {
+    edit_mode = true;
+  }
+
+  if (edit_mode && IsKeyDown(KEY_P)) {
+    edit_mode = false;
+  }
+
+  if (!edit_mode)
+    on_input(camera);
 }
 
 int main(int argc, char** argv) {
@@ -126,9 +140,8 @@ int main(int argc, char** argv) {
   InitWindow(screen_width, screen_height, config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetExitKey(KEY_F10);
-  SetTargetFPS(frame_rate); // Set frame rate
+  SetTargetFPS(frame_rate);
   SetTraceLogLevel(LOG_DEBUG);
-
 
   struct nk_context *ctx = InitNuklear(ui_font_size);
 
@@ -150,11 +163,11 @@ int main(int argc, char** argv) {
                  SHADER_UNIFORM_VEC4);
 
   init_debugging();
+  init_gizmos();
   setup_scene(shader);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
     simulation_running = false;
-    TraceLog(LOG_INFO, "Simulation paused...");
   }
 
   float accum = 0;
@@ -166,20 +179,23 @@ int main(int argc, char** argv) {
 
     process_inputs(&camera);
 
-    accum += deltaTime;
-    int sim_count = (int)(accum / simulation_step);
+    int sim_count = 0;
+    if (!edit_mode) {
+      accum += deltaTime;
+      sim_count = (int)(accum / simulation_step);
 
-    for (int i = 0; i < sim_count; i++) {
-      if (!simulation_running && !step_forward) break;
+      for (int i = 0; i < sim_count; i++) {
+        if (!simulation_running && !step_forward) break;
       
-      save_state();
-      simulate(simulation_step);
+        simulate(simulation_step);
 
-      step_forward = false;
+        step_forward = false;
+      }
+    } else {
+      manipulate_gizmos(&camera);
     }
 
     draw_ui(ctx);
-    draw_camera_ui(ctx);
     draw_scene(camera, accum, ctx, shader);
     
     accum -= sim_count * simulation_step;

@@ -3,6 +3,7 @@
 #include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "gizmos.h"
 
 const float cylinder_mass = 3;
 const cylinder cylinder_shape = { .height = 2.5, .radius = 1 };
@@ -50,6 +51,8 @@ void setup_scene(Shader shader) {
   cylinder_body.l = initial_moment_of_inertia;
 
   cylinder_graphics = generate_cylinder_graphics(shader);
+
+  register_gizmo(&cylinder_body.p, &cylinder_body.r);
 }
 
 void reset() {
@@ -73,10 +76,10 @@ void on_input(Camera *camera) {
 }
 
 void simulate(float dt) {
+  rb_apply_force(&cylinder_body, GRAVITY_V);
   rb_simulate(&cylinder_body, dt);
 
   cylinder_body.l = Vector3Scale(cylinder_body.l, velocity_damping);
-  cylinder_body.v = Vector3Scale(cylinder_body.v, velocity_damping);
 }
 
 void draw(float interpolation) {

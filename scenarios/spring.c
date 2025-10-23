@@ -3,7 +3,6 @@
 #include "core.h"
 #include "math.h"
 #include "raymath.h"
-#include "string.h"
 
 #define NUM_BODIES 4
 
@@ -49,12 +48,6 @@ void setup_scene(Shader shader) {
     masses[i] = rb_new((Vector3){ initial_offset, 0.5, offsets[i] }, 1);
     periods[i] = oscillation_period_new();
   }
-
-  save_state();
-}
-
-void save_state() {
-  memcpy(prev_state, masses, sizeof(masses));
 }
 
 void reset() {}
