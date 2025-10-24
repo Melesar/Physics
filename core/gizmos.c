@@ -1,9 +1,10 @@
 #include "raylib.h"
 #include "gizmos.h"
-#include "stdbool.h"
 #include "core.h"
-#include <stdlib.h>
-#include <string.h>
+
+#include "stdbool.h"
+#include "stdlib.h"
+#include "string.h"
 
 const float gizmo_arrow_length = 2.5f;
 const float gizmo_arrow_radius = 0.15f;
