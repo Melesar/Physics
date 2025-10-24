@@ -1,6 +1,7 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
+#include "raylib.h"
 #include "stdbool.h"
 #include "raymath.h"
 
@@ -14,6 +15,7 @@ typedef struct {
 } cylinder;
 
 Vector3 cylinder_inertia_tensor(cylinder c, float mass);
+Vector3 sphere_inertia_tensor(float radius, float mass);
 
 // ==== RIGIDBODY =====
 
@@ -49,14 +51,13 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 // ==== COLLISIONS ====
 
 typedef struct {
-  Vector3 point;    // Contact point in world space
-  Vector3 normal;   // Normal in world space (points away from surface)
-  float depth;      // Penetration depth
-  Vector3 relative_velocity;
+  Vector3 contact_a, contact_b;
+  Vector3 normal;
+  float depth;
   bool valid;
 } collision;
 
-collision check_collision_cylinder_plane(cylinder c, const rigidbody *rb, Vector3 plane_point, Vector3 plane_normal);
+collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius);
 
 // ==== CONSTRAINTS ====
 
