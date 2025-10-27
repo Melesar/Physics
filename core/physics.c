@@ -133,19 +133,20 @@ Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
 }
 
 Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
-  Vector3 axis = { 0, 1, 0 };
+  Vector3 axis = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, rotation);
+
   float half_height = 0.5f * height;
   float hh = half_height * half_height;
   float a = Vector3DotProduct(axis, direction);
-  float b = radius * radius + half_height * half_height;
-  float h = b * a;
-  Vector3 proj = Vector3Normalize((Vector3){ direction.x, 0, direction.z });
+  float d_sqr = hh + radius * radius;
+  float cos_sqr = hh / d_sqr;
 
-  if (h <= hh && h >= -hh) {
-    return Vector3Add(center, Vector3Scale(proj, radius));
+  if (a * a < cos_sqr) {
+    float r = radius / sinf(acosf(a));
+    return Vector3Add(center, Vector3Scale(direction, r));
   }
 
-  float d = half_height * tanf(a);
+  float d = half_height / fabs(a);
   return Vector3Add(center, Vector3Scale(direction, d));
 }
 
