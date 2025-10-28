@@ -3,8 +3,14 @@
 #include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
+#include <CarbonCore/Gestalt.h>
 
 #define SOLVER_TOLERANCE 0.01
+
+typedef enum {
+  SHAPE_CYLINDER,
+  SHAPE_SPHERE,
+} shape_type;
 
 Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
   float principal =  mass * (3 * c.radius * c.radius + c.height * c.height) / 12.0;
@@ -128,11 +134,11 @@ void rb_simulate(rigidbody* rb, float dt) {
   rb->f = rb->fi = Vector3Zero();
 }
 
-Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
+static Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
   return Vector3Add(center, Vector3Scale(direction, radius));
 }
 
-Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
+static Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
   Vector3 axis = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, rotation);
 
   float half_height = 0.5f * height;
@@ -150,11 +156,54 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
   return Vector3Add(center, Vector3Scale(direction, d));
 }
 
+static Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
+  Vector3 support_a, support_b;
+  if (shape_a == SHAPE_CYLINDER && shape_b == SHAPE_SPHERE) {
+    support_a = cylinder_support(rb_a->p, params_a.y, params_a.x, rb_a->r, direction);
+    support_b = sphere_support(rb_b->p, params_b.x, Vector3Negate(direction));
+  } else if (shape_a == SHAPE_SPHERE && shape_b == SHAPE_CYLINDER) {
+    support_a = sphere_support(rb_a->p, params_a.x, direction);
+    support_b = cylinder_support(rb_b->p, params_b.y, params_b.x, rb_b->r, Vector3Negate(direction));
+  } else {
+    support_a = support_b = Vector3Zero();
+  }
+
+  return Vector3Subtract(support_a, support_b);
+}
+
+static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
+  
+}
+
+collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
+  collision result = {0};
+
+  Vector3 direction = (Vector3) { 1, 0, 0 };
+  Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
+
+  int num_points = 0;
+  Vector3 points[4];
+  points[num_points++] = support;
+
+  direction = Vector3Negate(support);
+
+  while(true) {
+    support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
+
+    if (Vector3DotProduct(support, direction) <= 0) {
+      return result;
+    }
+
+    points[num_points++] = support;
+
+    if (gjk_update_simplex(points, &num_points, &direction)) {
+      return result; // TODO calculate additional info about collision
+    }
+  }
+}
+
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius) {
-  collision result = { 0 };
-
-
-  return result;
+  return check_collision(SHAPE_CYLINDER, SHAPE_SPHERE, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
 }
 
 constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
