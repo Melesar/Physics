@@ -3,7 +3,6 @@
 #include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
-#include <CarbonCore/Gestalt.h>
 
 #define SOLVER_TOLERANCE 0.01
 
@@ -172,7 +171,97 @@ static Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigid
 }
 
 static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
-  
+  Vector3 a, b, c, d;
+  Vector3 ab, ac, ad, ao;
+  Vector3 abc, acd, adb;
+
+  switch(*count) {
+    case 4:
+      a = points[0];
+      b = points[1];
+      c = points[2];
+      d = points[3];
+
+      ab = Vector3Subtract(b, a);
+      ac = Vector3Subtract(c, a);
+      ad = Vector3Subtract(d, a);
+      ao = Vector3Negate(a);
+
+      abc = Vector3CrossProduct(ab, ac);
+      acd = Vector3CrossProduct(ac, ad);
+      adb = Vector3CrossProduct(ad, ab);
+
+      if (Vector3DotProduct(abc, ao) > 0) {
+        // Fallthrough to case 3
+      } else if (Vector3DotProduct(acd, ao) > 0) {
+        points[1] = c;
+        points[2] = d;
+        *count = 3;
+        //Fallthrough to case 3
+      } else if (Vector3DotProduct(adb, ao) > 0) {
+        points[1] = d;
+        points[2] = b;
+        *count = 3;
+        //Fallthrough to case 3
+      }
+      return true;
+      
+    case 3:
+      a = points[0];
+      b = points[1];
+      c = points[2];
+
+      ab = Vector3Subtract(b, a);
+      ac = Vector3Subtract(c, a);
+      ao = Vector3Negate(a);
+
+      Vector3 abc = Vector3CrossProduct(ab, ac);
+      if (Vector3DotProduct(Vector3CrossProduct(abc, ac), ao) > 0) {
+    		if (Vector3DotProduct(ac, ao) > 0) {
+    			points[1] = c;
+    			*count = 2;
+    			*direction = Vector3Normalize(Vector3CrossProduct(Vector3CrossProduct(ac, ao), ac));
+    			return false;
+    		} else {
+    		  *count = 2;
+    		  // Fallthrough to case 2
+    		}
+    	} else {
+    		if (Vector3DotProduct(Vector3CrossProduct(ab, abc), ao) > 0) {
+    		  *count = 2;
+    		  // Fallthrough to case 2
+    		} else {
+    			if (Vector3DotProduct(abc, ao) > 0) {
+    				*direction = Vector3Normalize(abc);
+    				return false;
+    			} else {
+    			  points[2] = b;
+    			  points[1] = c;
+
+    				*direction = Vector3Normalize(Vector3Negate(abc));
+    				return false;
+    			}
+    		}
+    	}
+
+    case 2:
+      ab = Vector3Subtract(points[1], points[0]);
+      ao = Vector3Negate(points[0]);
+
+      if (Vector3DotProduct(ab, ao) > 0) {
+        *direction = Vector3Normalize(Vector3CrossProduct(Vector3CrossProduct(ab, ao), ab));
+      } else {
+        *count = 1;
+        *direction = Vector3Normalize(ao); 
+      }
+      return false;
+
+    case 1:
+      *direction = Vector3Normalize(Vector3Negate(points[0]));
+      return false;
+  }
+
+  return false;
 }
 
 collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
@@ -197,6 +286,7 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
     points[num_points++] = support;
 
     if (gjk_update_simplex(points, &num_points, &direction)) {
+      result.valid = true;
       return result; // TODO calculate additional info about collision
     }
   }
