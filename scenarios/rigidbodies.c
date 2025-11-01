@@ -5,15 +5,18 @@
 #include "raymath.h"
 #include "gizmos.h"
 
+const float sphere_radius = 1;
 const float cylinder_mass = 3;
 const cylinder cylinder_shape = { .height = 2.5, .radius = 1 };
 
+rigidbody sphere_body;
 rigidbody cylinder_body;
 struct object cylinder_graphics;
 Mesh cylinder_mesh;
 
 float input_impulse_strength = 15;
 float velocity_damping = 0.993;
+bool is_collision = false;
 
 const Vector3 initial_position = { 0, 1.25, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
@@ -52,7 +55,12 @@ void setup_scene(Shader shader) {
 
   cylinder_graphics = generate_cylinder_graphics(shader);
 
+  inertia = sphere_inertia_tensor(sphere_radius, cylinder_mass);
+  sphere_body = rb_new((Vector3) {-2, 1, 0}, cylinder_mass);
+  sphere_body.i0_inv = Vector3Invert(inertia);
+
   register_gizmo(&cylinder_body.p, &cylinder_body.r);
+  register_gizmo(&sphere_body.p, &sphere_body.r);
 }
 
 void reset() {
@@ -76,14 +84,17 @@ void on_input(Camera *camera) {
 }
 
 void simulate(float dt) {
-  rb_apply_force(&cylinder_body, GRAVITY_V);
-  rb_simulate(&cylinder_body, dt);
+  collision c = cylinder_sphere_check_collision(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius);
+  is_collision = c.valid;
+  // rb_apply_force(&cylinder_body, GRAVITY_V);
+  // rb_simulate(&cylinder_body, dt);
 
-  cylinder_body.l = Vector3Scale(cylinder_body.l, velocity_damping);
+  // cylinder_body.l = Vector3Scale(cylinder_body.l, velocity_damping);
 }
 
 void draw(float interpolation) {
   DrawMesh(cylinder_graphics.mesh, cylinder_graphics.material, rb_transformation(&cylinder_body));
+  DrawSphere(sphere_body.p, sphere_radius, is_collision ? GREEN : GRAY);
 
   draw_arrow(cylinder_body.p, cylinder_body.l, SKYBLUE);
   draw_arrow(cylinder_body.p, rb_angular_velocity(&cylinder_body), MAROON);
