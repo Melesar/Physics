@@ -5,6 +5,8 @@
 #include "string.h"
 
 #define SOLVER_TOLERANCE 0.01
+#define MAX_GJK_ATTEMPTS 20
+#define GJK_TOLERANCE 0.0001
 
 typedef enum {
   SHAPE_CYLINDER,
@@ -137,7 +139,7 @@ static Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
   return Vector3Add(center, Vector3Scale(direction, radius));
 }
 
-static Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
+Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
   Vector3 axis = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, rotation);
 
   float half_height = 0.5f * height;
@@ -192,6 +194,7 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       adb = Vector3CrossProduct(ad, ab);
 
       if (Vector3DotProduct(abc, ao) > 0) {
+        *count = 3;
         // Fallthrough to case 3
       } else if (Vector3DotProduct(acd, ao) > 0) {
         points[1] = c;
@@ -203,8 +206,9 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
         points[2] = b;
         *count = 3;
         //Fallthrough to case 3
+      } else {
+        return true;
       }
-      return true;
       
     case 3:
       a = points[0];
@@ -276,10 +280,11 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
 
   direction = Vector3Negate(support);
 
-  while(true) {
+  int num_attempts = 0;
+  while(++num_attempts < MAX_GJK_ATTEMPTS) {
     support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
-    if (Vector3DotProduct(support, direction) <= 0) {
+    if (Vector3DotProduct(support, direction) < GJK_TOLERANCE) {
       return result;
     }
 
@@ -290,10 +295,13 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
       return result; // TODO calculate additional info about collision
     }
   }
+
+  TraceLog(LOG_WARNING, "Max GJK attempts reached withot the result. Collision detection failed");
+  return result;
 }
 
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius) {
-  return check_collision(SHAPE_CYLINDER, SHAPE_SPHERE, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
+  return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
 }
 
 constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
