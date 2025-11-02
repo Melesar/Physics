@@ -1,5 +1,6 @@
 #include "config.h"
 #include "core.h"
+#include "external/par_shapes.h"
 #include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -17,6 +18,11 @@ Mesh cylinder_mesh;
 float input_impulse_strength = 15;
 float velocity_damping = 0.993;
 bool is_collision = false;
+
+Vector3 simplex[4];
+int simplex_points_count = 0;
+Vector3 direction = (Vector3) { 1, 0, 1 };
+bool gjk_stop = false;
 
 const Vector3 initial_position = { 0, 1.25, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
@@ -68,24 +74,42 @@ void reset() {
   cylinder_body.r = QuaternionIdentity();
   cylinder_body.v = Vector3Zero();
   cylinder_body.l = initial_moment_of_inertia;
+  gjk_stop = false;
 }
 
+typedef enum {
+  SHAPE_CYLINDER,
+  SHAPE_SPHERE,
+} shape_type;
+
+
+Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction);
+bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction);
+
 void on_input(Camera *camera) {
-  if (!IsMouseButtonPressed(0))
+  if (gjk_stop || !IsKeyPressed(KEY_Y)) {
     return;
+  }
 
-  Ray r = GetScreenToWorldRay(GetMousePosition(), *camera);
-  RayCollision col = GetRayCollisionMesh(r, cylinder_mesh, rb_transformation(&cylinder_body));
-  if (!col.hit)
+  Vector3 support = shape_support(SHAPE_SPHERE, SHAPE_CYLINDER, &sphere_body, &cylinder_body, (Vector2) {sphere_radius, 0}, (Vector2) { cylinder_shape.height, cylinder_shape.radius }, direction);
+  simplex[simplex_points_count++] = support;
+  if (Vector3DotProduct(support, direction) < 0.001) {
+    TraceLog(LOG_DEBUG, "GJK finished without collision");
+    gjk_stop = true;
+    return;    
+  }
+
+  if (gjk_update_simplex(simplex, &simplex_points_count, &direction)) {
+    TraceLog(LOG_DEBUG, "GJK finished with collision");
+    gjk_stop = true;
     return;
-
-  Vector3 impulse = Vector3Scale(r.direction, input_impulse_strength);
-  rb_apply_impulse_at(&cylinder_body, col.point, impulse);
+  }
+  
 }
 
 void simulate(float dt) {
-  collision c = cylinder_sphere_check_collision(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius);
-  is_collision = c.valid;
+  // collision c = cylinder_sphere_check_collision(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius);
+  // is_collision = c.valid;
   // rb_apply_force(&cylinder_body, GRAVITY_V);
   // rb_simulate(&cylinder_body, dt);
 
@@ -96,8 +120,17 @@ void draw(float interpolation) {
   DrawMesh(cylinder_graphics.mesh, cylinder_graphics.material, rb_transformation(&cylinder_body));
   DrawSphere(sphere_body.p, sphere_radius, is_collision ? GREEN : GRAY);
 
-  draw_arrow(cylinder_body.p, cylinder_body.l, SKYBLUE);
-  draw_arrow(cylinder_body.p, rb_angular_velocity(&cylinder_body), MAROON);
+  for (int i = 0; i < simplex_points_count; ++i) {
+    DrawSphere(simplex[i], 0.05, RED);
+  }
+
+  for (int i = 0; i < simplex_points_count - 1; ++i) {
+    DrawLine3D(simplex[i], simplex[i + 1], GREEN);
+  }
+
+  if (simplex_points_count > 2) {
+    DrawLine3D(simplex[simplex_points_count - 1], simplex[0], GREEN);
+  }
 }
 
 void draw_ui(struct nk_context* ctx) {

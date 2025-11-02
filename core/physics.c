@@ -157,7 +157,7 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
   return Vector3Add(center, Vector3Scale(direction, d));
 }
 
-static Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
+Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
   Vector3 support_a, support_b;
   if (shape_a == SHAPE_CYLINDER && shape_b == SHAPE_SPHERE) {
     support_a = cylinder_support(rb_a->p, params_a.y, params_a.x, rb_a->r, direction);
@@ -172,7 +172,7 @@ static Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigid
   return Vector3Subtract(support_a, support_b);
 }
 
-static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
+bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
   Vector3 a, b, c, d;
   Vector3 ab, ac, ad, ao;
   Vector3 abc, acd, adb;
@@ -278,7 +278,7 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
   Vector3 points[4];
   points[num_points++] = support;
 
-  direction = Vector3Negate(support);
+  direction = Vector3Normalize(Vector3Negate(support));
 
   int num_attempts = 0;
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
