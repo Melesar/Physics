@@ -183,6 +183,13 @@ Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *r
   return Vector3Subtract(support_a, support_b);
 }
 
+collision epa(Vector3 *simplex, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
+  collision result = {0};
+  result.valid = true;
+
+  return result;
+}
+
 bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
   Vector3 a, b, c, d;
   Vector3 ab, ac, ad, ao;
@@ -302,8 +309,7 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
     num_points += 1;
 
     if (gjk_update_simplex(points, &num_points, &direction)) {
-      result.valid = true;
-      return result; // TODO calculate additional info about collision
+      return epa(points, shape_a, shape_b, rb_a, rb_b, params_a, params_b);
     }
   }
 
@@ -397,7 +403,6 @@ collision sphere_plane_check_collision(const rigidbody *sphere_rb, float radius,
 
   return result;
 }
-
 
 constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
   constraints c;
