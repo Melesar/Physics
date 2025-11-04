@@ -16,7 +16,9 @@ Mesh cylinder_mesh;
 
 float input_impulse_strength = 15;
 float velocity_damping = 0.993;
-bool is_collision = false;
+
+bool cylinder_collision = false;
+bool sphere_collision = false;
 
 const Vector3 initial_position = { 0, 4, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
@@ -70,8 +72,12 @@ void reset() {
 void on_input(Camera *camera) {}
 
 void simulate(float dt) {
-  collision c = cylinder_sphere_check_collision(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius);
-  is_collision = c.valid;
+  collision c = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
+  collision s = sphere_plane_check_collision(&sphere_body, sphere_radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
+
+  cylinder_collision = c.valid;
+  sphere_collision = s.valid;
+  
   // rb_apply_force(&cylinder_body, GRAVITY_V);
   // rb_simulate(&cylinder_body, dt);
 
@@ -79,8 +85,9 @@ void simulate(float dt) {
 }
 
 void draw(float interpolation) {
+  cylinder_graphics.material.maps[MATERIAL_MAP_DIFFUSE].color = cylinder_collision ? GREEN : GRAY;
   DrawMesh(cylinder_graphics.mesh, cylinder_graphics.material, rb_transformation(&cylinder_body));
-  DrawSphere(sphere_body.p, sphere_radius, is_collision ? GREEN : GRAY);
+  DrawSphere(sphere_body.p, sphere_radius, sphere_collision ? GREEN : GRAY);
 }
 
 void draw_ui(struct nk_context* ctx) {

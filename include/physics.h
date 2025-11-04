@@ -3,7 +3,6 @@
 
 #include "raylib.h"
 #include "stdbool.h"
-#include "raymath.h"
 
 #define GRAVITY 9.81f
 #define GRAVITY_V (Vector3) { 0, -9.81f, 0 }
@@ -61,6 +60,8 @@ Vector3 sphere_support(Vector3 center, float radius, Vector3 direction);
 Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction);
 
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius);
+collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal);
+collision sphere_plane_check_collision(const rigidbody *shpere_rb, float radius, Vector3 plane_point, Vector3 plane_normal);
 
 // ==== CONSTRAINTS ====
 

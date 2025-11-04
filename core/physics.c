@@ -315,6 +315,90 @@ collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const ri
   return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
 }
 
+collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal) {
+  collision result = {0};
+
+  Vector3 normal = Vector3Normalize(plane_normal);
+  Vector3 cylinder_axis = Vector3RotateByQuaternion((Vector3){0, 1, 0}, cylinder_rb->r);
+
+  float half_height = cylinder_height * 0.5f;
+
+  Vector3 cap_top = Vector3Add(cylinder_rb->p, Vector3Scale(cylinder_axis, half_height));
+  Vector3 cap_bottom = Vector3Add(cylinder_rb->p, Vector3Scale(cylinder_axis, -half_height));
+
+  float dist_top = Vector3DotProduct(Vector3Subtract(cap_top, plane_point), normal);
+  float dist_bottom = Vector3DotProduct(Vector3Subtract(cap_bottom, plane_point), normal);
+
+  float closest_cap_dist = fminf(dist_top, dist_bottom);
+  Vector3 closest_cap_center = (dist_top < dist_bottom) ? cap_top : cap_bottom;
+
+  float axis_projection = fabsf(Vector3DotProduct(cylinder_axis, normal));
+
+  Vector3 closest_point;
+  float min_distance;
+
+  const float PERPENDICULAR_THRESHOLD = 0.001f;
+
+  if (axis_projection < PERPENDICULAR_THRESHOLD) {
+    Vector3 normal_radial = Vector3Subtract(normal, Vector3Scale(cylinder_axis,
+                                            Vector3DotProduct(normal, cylinder_axis)));
+    float radial_length = Vector3Length(normal_radial);
+
+    if (radial_length > PERPENDICULAR_THRESHOLD) {
+      Vector3 radial_dir = Vector3Scale(normal_radial, -1.0f / radial_length);
+      closest_point = Vector3Add(cylinder_rb->p, Vector3Scale(radial_dir, cylinder_radius));
+      min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
+    } else {
+      closest_point = closest_cap_center;
+      min_distance = closest_cap_dist;
+    }
+  } else {
+    Vector3 normal_on_cap = Vector3Subtract(normal, Vector3Scale(cylinder_axis,
+                                            Vector3DotProduct(normal, cylinder_axis)));
+    float normal_on_cap_length = Vector3Length(normal_on_cap);
+
+    if (normal_on_cap_length > PERPENDICULAR_THRESHOLD) {
+      Vector3 radial_dir = Vector3Scale(normal_on_cap, -1.0f / normal_on_cap_length);
+      closest_point = Vector3Add(closest_cap_center, Vector3Scale(radial_dir, cylinder_radius));
+    } else {
+      closest_point = closest_cap_center;
+    }
+
+    min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
+  }
+
+  const float CONTACT_EPSILON = 0.001f;
+  if (min_distance < CONTACT_EPSILON) {
+    result.valid = true;
+    result.normal = normal;
+    result.depth = fmaxf(0.0f, -min_distance);
+    result.contact_a = closest_point;
+    result.contact_b = Vector3Subtract(closest_point, Vector3Scale(normal, min_distance));
+  }
+
+  return result;
+}
+
+collision sphere_plane_check_collision(const rigidbody *sphere_rb, float radius, Vector3 plane_point, Vector3 plane_normal) {
+  collision result = {0};
+
+  Vector3 normal = Vector3Normalize(plane_normal);
+
+  Vector3 center_to_plane = Vector3Subtract(sphere_rb->p, plane_point);
+  float distance = Vector3DotProduct(center_to_plane, normal);
+
+  if (distance >= 0.0f && distance < radius) {
+    result.valid = true;
+    result.normal = normal;
+    result.depth = radius - distance;
+    result.contact_a = Vector3Subtract(sphere_rb->p, Vector3Scale(normal, radius));
+    result.contact_b = Vector3Subtract(sphere_rb->p, Vector3Scale(normal, distance));
+  }
+
+  return result;
+}
+
+
 constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations) {
   constraints c;
   c.beta = stabilization;
