@@ -135,26 +135,37 @@ void rb_simulate(rigidbody* rb, float dt) {
   rb->f = rb->fi = Vector3Zero();
 }
 
-static Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
+Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
   return Vector3Add(center, Vector3Scale(direction, radius));
 }
 
 Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
-  Vector3 axis = Vector3RotateByQuaternion((Vector3){ 0, 1, 0 }, rotation);
+  Quaternion inv_rotation = QuaternionInvert(rotation);
+  Vector3 local_dir = Vector3RotateByQuaternion(direction, inv_rotation);
 
   float half_height = 0.5f * height;
-  float hh = half_height * half_height;
-  float a = Vector3DotProduct(axis, direction);
-  float d_sqr = hh + radius * radius;
-  float cos_sqr = hh / d_sqr;
 
-  if (a * a < cos_sqr) {
-    float r = radius / sinf(acosf(a));
-    return Vector3Add(center, Vector3Scale(direction, r));
+  float axial_component = local_dir.y;
+  Vector3 radial_dir = (Vector3){ local_dir.x, 0.0f, local_dir.z };
+  float radial_magnitude = sqrtf(radial_dir.x * radial_dir.x + radial_dir.z * radial_dir.z);
+
+  Vector3 local_support;
+
+  if (radial_magnitude > 1e-6f) {
+    local_support.x = (radial_dir.x / radial_magnitude) * radius;
+    local_support.z = (radial_dir.z / radial_magnitude) * radius;
+  } else {
+    local_support.x = 0.0f;
+    local_support.z = 0.0f;
+  }
+  if (axial_component > 0.0f) {
+    local_support.y = half_height;
+  } else {
+    local_support.y = -half_height;
   }
 
-  float d = half_height / fabs(a);
-  return Vector3Add(center, Vector3Scale(direction, d));
+  Vector3 world_support = Vector3RotateByQuaternion(local_support, rotation);
+  return Vector3Add(center, world_support);
 }
 
 Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
@@ -225,6 +236,7 @@ bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
     			points[1] = c;
     			*count = 2;
     			*direction = Vector3Normalize(Vector3CrossProduct(Vector3CrossProduct(ac, ao), ac));
+
     			return false;
     		} else {
     		  *count = 2;
@@ -270,25 +282,24 @@ bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
 
 collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
   collision result = {0};
-
   Vector3 direction = (Vector3) { 1, 0, 0 };
-  Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
-
   int num_points = 0;
   Vector3 points[4];
-  points[num_points++] = support;
-
-  direction = Vector3Normalize(Vector3Negate(support));
-
   int num_attempts = 0;
+
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
-    support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
+    Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
     if (Vector3DotProduct(support, direction) < GJK_TOLERANCE) {
       return result;
     }
 
-    points[num_points++] = support;
+    points[3] = points[2];
+    points[2] = points[1];
+    points[1] = points[0];
+    points[0] = support;
+
+    num_points += 1;
 
     if (gjk_update_simplex(points, &num_points, &direction)) {
       result.valid = true;

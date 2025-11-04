@@ -57,6 +57,9 @@ typedef struct {
   bool valid;
 } collision;
 
+Vector3 sphere_support(Vector3 center, float radius, Vector3 direction);
+Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction);
+
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius);
 
 // ==== CONSTRAINTS ====
