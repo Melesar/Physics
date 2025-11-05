@@ -3,8 +3,13 @@
 #include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
+#include <HIServices/Icons.h>
+#include <cmath>
 
 #define COLLISION_MAX_POINTS 16
+#define COLLISION_MAX_INDICES (3 * COLLISION_MAX_FACES)
+#define COLLISION_MAX_FACES 16
+
 #define SOLVER_TOLERANCE 0.01
 #define MAX_GJK_ATTEMPTS 20
 #define GJK_TOLERANCE 0.0001
@@ -171,27 +176,110 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
 
 Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
   Vector3 support_a, support_b;
-  if (shape_a == SHAPE_CYLINDER && shape_b == SHAPE_SPHERE) {
-    support_a = cylinder_support(rb_a->p, params_a.y, params_a.x, rb_a->r, direction);
-    support_b = sphere_support(rb_b->p, params_b.x, Vector3Negate(direction));
-  } else if (shape_a == SHAPE_SPHERE && shape_b == SHAPE_CYLINDER) {
-    support_a = sphere_support(rb_a->p, params_a.x, direction);
-    support_b = cylinder_support(rb_b->p, params_b.y, params_b.x, rb_b->r, Vector3Negate(direction));
-  } else {
-    support_a = support_b = Vector3Zero();
+
+  switch(shape_a) {
+    case SHAPE_CYLINDER:
+      support_a = cylinder_support(rb_a->p, params_a.y, params_a.x, rb_a->r, direction);
+      break;
+
+    case SHAPE_SPHERE:
+      support_a = sphere_support(rb_a->p, params_a.x, direction);
+      break;
+  }
+
+  direction = Vector3Negate(direction);
+
+  switch (shape_b) {
+    case SHAPE_CYLINDER:
+      support_b = cylinder_support(rb_b->p, params_b.y, params_b.x, rb_b->r, direction);
+      break;
+
+    case SHAPE_SPHERE:
+      support_b = sphere_support(rb_b->p, params_b.x, direction);
+      break;
   }
 
   return Vector3Subtract(support_a, support_b);
 }
 
-collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
+static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index, Vector3 *points, int num_points, int *indices, int num_indices) {
+  
+}
+
+static void add_if_unique_edge(int *unique_edges, int *num_unique_edges, int *faces, int num_faces, int a, int b) {
+  
+}
+
+static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
   collision result = {0};
   result.valid = true;
+
+  int num_indices = 12;
+  int indices[COLLISION_MAX_INDICES];
+  indices[0] = 0;
+  indices[1] = 1;
+  indices[2] = 2;
+
+  indices[3] = 0;
+  indices[4] = 3;
+  indices[5] = 1;
+
+  indices[6] = 0;
+  indices[7] = 2;
+  indices[8] = 3;
+
+  indices[9] = 1;
+  indices[10] = 3;
+  indices[11] = 2;
+
+  int num_normals = 0;
+  int min_face_index = -1;
+  Vector4 normals[COLLISION_MAX_FACES];
+  face_normals(normals, &num_normals, &min_face_index, points, num_points, indices, num_indices);
+
+  Vector3 min_normal;
+  float min_distance = INFINITY;
+  while (min_distance == INFINITY) {
+    min_normal = *(Vector3*)&normals[min_face_index];
+    min_distance = normals[min_face_index].w;
+
+    Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
+    float distance = dot(min_normal, support);
+    if (fabsf(distance - min_distance) > 0.001) {
+      min_distance = INFINITY;
+    }
+
+    int num_unique_edges = 0;
+    int unique_edges[COLLISION_MAX_INDICES] = {0};
+    for (int i = 0; i < num_normals; ++i) {
+      Vector3 normal = *(Vector3*)&normals[i];
+      if (dot(normal, support) < 0) {
+        continue;
+      }
+
+      int f = i * 3;
+      add_if_unique_edge(unique_edges, &num_unique_edges, indices, num_indices, f, f + 1);
+      add_if_unique_edge(unique_edges, &num_unique_edges, indices, num_indices, f + 1, f + 2);
+      add_if_unique_edge(unique_edges, &num_unique_edges, indices, num_indices, f + 2, f);
+
+      indices[f + 2] = indices[num_indices - 1];
+      indices[f + 1] = indices[num_indices - 2];
+      indices[f] = indices[num_indices - 3];
+
+      num_indices -= 3;
+
+      normals[i] = normals[num_normals - 1];
+      num_normals -= 1;
+
+      i -= 1;
+    }
+  }
+
 
   return result;
 }
 
-bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
+static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
   Vector3 a, b, c, d;
   Vector3 ab, ac, ad, ao;
   Vector3 abc, acd, adb;
