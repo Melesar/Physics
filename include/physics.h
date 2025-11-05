@@ -7,6 +7,16 @@
 #define GRAVITY 9.81f
 #define GRAVITY_V (Vector3) { 0, -9.81f, 0 }
 
+// ==== MATH  ======
+ 
+#define cross(x, y) Vector3CrossProduct(x, y)
+#define dot(x, y) Vector3DotProduct(x, y)
+#define add(x, y) Vector3Add(x, y)
+#define scale(x, y) Vector3Scale(x, y)
+#define normalize(x) Vector3Normalize(x)
+#define sub(x, y) Vector3Subtract(x, y)
+#define len(x) Vector3Length(x)
+
 // ==== SHAPES =====
 
 typedef struct {
@@ -50,8 +60,10 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 // ==== COLLISIONS ====
 
 typedef struct {
-  Vector3 contact_a, contact_b;
+  Vector3 world_contact_a, world_contact_b;
+  Vector3 local_contact_a, local_contact_b;
   Vector3 normal;
+  Vector3 tangent, bitangent;
   float depth;
   bool valid;
 } collision;

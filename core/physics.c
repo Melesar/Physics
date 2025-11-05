@@ -4,6 +4,7 @@
 #include "stdlib.h"
 #include "string.h"
 
+#define COLLISION_MAX_POINTS 16
 #define SOLVER_TOLERANCE 0.01
 #define MAX_GJK_ATTEMPTS 20
 #define GJK_TOLERANCE 0.0001
@@ -183,7 +184,7 @@ Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *r
   return Vector3Subtract(support_a, support_b);
 }
 
-collision epa(Vector3 *simplex, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
+collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
   collision result = {0};
   result.valid = true;
 
@@ -288,17 +289,17 @@ bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
 }
 
 collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
-  collision result = {0};
   Vector3 direction = (Vector3) { 1, 0, 0 };
-  int num_points = 0;
-  Vector3 points[4];
-  int num_attempts = 0;
 
+  int num_points = 0;
+  Vector3 points[COLLISION_MAX_POINTS];
+
+  int num_attempts = 0;
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
     Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
     if (Vector3DotProduct(support, direction) < GJK_TOLERANCE) {
-      return result;
+      return (collision) { 0 };
     }
 
     points[3] = points[2];
@@ -309,12 +310,12 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
     num_points += 1;
 
     if (gjk_update_simplex(points, &num_points, &direction)) {
-      return epa(points, shape_a, shape_b, rb_a, rb_b, params_a, params_b);
+      return epa(points, num_points, shape_a, shape_b, rb_a, rb_b, params_a, params_b);
     }
   }
 
   TraceLog(LOG_WARNING, "Max GJK attempts reached withot the result. Collision detection failed");
-  return result;
+  return (collision) { 0 };
 }
 
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius) {
@@ -343,14 +344,14 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
   Vector3 closest_point;
   float min_distance;
 
-  const float PERPENDICULAR_THRESHOLD = 0.001f;
+  const float perpendicular_threshold = 0.001f;
 
-  if (axis_projection < PERPENDICULAR_THRESHOLD) {
+  if (axis_projection < perpendicular_threshold) {
     Vector3 normal_radial = Vector3Subtract(normal, Vector3Scale(cylinder_axis,
                                             Vector3DotProduct(normal, cylinder_axis)));
     float radial_length = Vector3Length(normal_radial);
 
-    if (radial_length > PERPENDICULAR_THRESHOLD) {
+    if (radial_length > perpendicular_threshold) {
       Vector3 radial_dir = Vector3Scale(normal_radial, -1.0f / radial_length);
       closest_point = Vector3Add(cylinder_rb->p, Vector3Scale(radial_dir, cylinder_radius));
       min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
@@ -363,7 +364,7 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
                                             Vector3DotProduct(normal, cylinder_axis)));
     float normal_on_cap_length = Vector3Length(normal_on_cap);
 
-    if (normal_on_cap_length > PERPENDICULAR_THRESHOLD) {
+    if (normal_on_cap_length > perpendicular_threshold) {
       Vector3 radial_dir = Vector3Scale(normal_on_cap, -1.0f / normal_on_cap_length);
       closest_point = Vector3Add(closest_cap_center, Vector3Scale(radial_dir, cylinder_radius));
     } else {
@@ -373,13 +374,21 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
     min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
   }
 
-  const float CONTACT_EPSILON = 0.001f;
-  if (min_distance < CONTACT_EPSILON) {
+  const float contact_epsilon = 0.001f;
+  if (min_distance < contact_epsilon) {
     result.valid = true;
     result.normal = normal;
     result.depth = fmaxf(0.0f, -min_distance);
-    result.contact_a = closest_point;
-    result.contact_b = Vector3Subtract(closest_point, Vector3Scale(normal, min_distance));
+
+    Vector3 tangent_seed = (fabsf(normal.x) < 0.9f) ? (Vector3){1, 0, 0} : (Vector3){0, 1, 0};
+    result.tangent = normalize(cross(tangent_seed, normal));
+    result.bitangent = cross(normal, result.tangent);
+
+    result.world_contact_a = closest_point;
+    result.world_contact_b = sub(closest_point, scale(normal, min_distance));
+
+    result.local_contact_a = sub(closest_point, cylinder_rb->p);
+    result.local_contact_b = sub(result.world_contact_b, plane_point);
   }
 
   return result;
@@ -388,17 +397,25 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
 collision sphere_plane_check_collision(const rigidbody *sphere_rb, float radius, Vector3 plane_point, Vector3 plane_normal) {
   collision result = {0};
 
-  Vector3 normal = Vector3Normalize(plane_normal);
+  Vector3 normal = normalize(plane_normal);
 
-  Vector3 center_to_plane = Vector3Subtract(sphere_rb->p, plane_point);
-  float distance = Vector3DotProduct(center_to_plane, normal);
+  Vector3 center_to_plane = sub(sphere_rb->p, plane_point);
+  float distance = dot(center_to_plane, normal);
 
   if (distance >= 0.0f && distance < radius) {
     result.valid = true;
-    result.normal = normal;
     result.depth = radius - distance;
-    result.contact_a = Vector3Subtract(sphere_rb->p, Vector3Scale(normal, radius));
-    result.contact_b = Vector3Subtract(sphere_rb->p, Vector3Scale(normal, distance));
+    result.normal = normal;
+
+    Vector3 tangent_seed = (fabsf(normal.x) < 0.9f) ? (Vector3){1, 0, 0} : (Vector3){0, 1, 0};
+    result.tangent = normalize(cross(tangent_seed, normal));
+    result.bitangent = cross(normal, result.tangent);
+
+    result.local_contact_a = scale(normal, -radius);
+    result.local_contact_b = scale(normal, -result.depth);
+
+    result.world_contact_a = add(sphere_rb->p, result.local_contact_a);
+    result.world_contact_b = add(plane_point, result.local_contact_b);
   }
 
   return result;
