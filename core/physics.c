@@ -3,8 +3,6 @@
 #include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
-#include <HIServices/Icons.h>
-#include <cmath>
 
 #define COLLISION_MAX_POINTS 16
 #define COLLISION_MAX_INDICES (3 * COLLISION_MAX_FACES)
@@ -26,39 +24,39 @@ Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
 
 Vector3 sphere_inertia_tensor(float radius, float mass) {
   float scale = 2.0 * mass * radius * radius / 5.0;  
-  return Vector3Scale(Vector3One(), scale);
+  return scale(one(), scale);
 }
 
 rigidbody rb_new(Vector3 position, float mass) {
   return (rigidbody) {
-    .f = Vector3Zero(),
-    .fi = Vector3Zero(),
-    .v = Vector3Zero(),
+    .f = zero(),
+    .fi = zero(),
+    .v = zero(),
     .p = position,
 
-    .t = Vector3Zero(),
-    .ti = Vector3Zero(),
-    .r = QuaternionIdentity(),
-    .i0_inv = Vector3One(),
-    .l = Vector3Zero(),
+    .t = zero(),
+    .ti = zero(),
+    .r = qidentity(),
+    .i0_inv = one(),
+    .l = zero(),
 
     .mass = mass,
   };
 }
 
 Matrix rb_transformation(const rigidbody* rb) {
-  return MatrixMultiply(
-    QuaternionToMatrix(rb->r),
-    MatrixTranslate(rb->p.x, rb->p.y, rb->p.z)
+  return mul(
+    as_matrix(rb->r),
+    translate(rb->p.x, rb->p.y, rb->p.z)
   );
 }
 
 Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset) {
-  return MatrixMultiply(
-    MatrixMultiply(
-      MatrixTranslate(rb->p.x, rb->p.y, rb->p.z),
-      QuaternionToMatrix(rb->r)),
-        MatrixTranslate(offset.x, offset.y, offset.z));
+  return mul(
+    mul(
+      translate(rb->p.x, rb->p.y, rb->p.z),
+      as_matrix(rb->r)),
+        translate(offset.x, offset.y, offset.z));
 }
 
 static Matrix rb_inv_i0_m(const rigidbody* rb) {
@@ -70,17 +68,17 @@ static Matrix rb_inv_i0_m(const rigidbody* rb) {
 }
 
 static Vector3 rb_angular_velocity_ex(const rigidbody* rb, Matrix inv_i0) {
-  Matrix orientation = QuaternionToMatrix(rb->r);
-  Matrix transform = MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
-  return Vector3Transform(rb->l, transform);
+  Matrix orientation = as_matrix(rb->r);
+  Matrix transform = mul(mul(orientation, inv_i0), transpose(orientation));
+  return transform(rb->l, transform);
 }
 
 static Matrix rb_inertia_world_ex(const rigidbody* rb, Matrix orientation, Matrix inv_i0) {
-  return MatrixMultiply(MatrixMultiply(orientation, inv_i0), MatrixTranspose(orientation));
+  return mul(mul(orientation, inv_i0), transpose(orientation));
 }
 
 Matrix rb_inertia_world(const rigidbody* rb) {
-  Matrix orientation = QuaternionToMatrix(rb->r);
+  Matrix orientation = as_matrix(rb->r);
   Matrix inv_i0 = rb_inv_i0_m(rb);
 
   return rb_inertia_world_ex(rb, orientation, inv_i0);
@@ -93,61 +91,61 @@ Vector3 rb_angular_velocity(const rigidbody* rb) {
 
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   rigidbody result;
-  result.p = Vector3Lerp(from->p, to->p, t);
-  result.r = QuaternionSlerp(from->r, to->r, t);
-  result.v = Vector3Lerp(from->v, to->v, t);
-  result.mass = Lerp(from->mass, to->mass, t);
+  result.p = vlerp(from->p, to->p, t);
+  result.r = slerp(from->r, to->r, t);
+  result.v = vlerp(from->v, to->v, t);
+  result.mass = lerp(from->mass, to->mass, t);
 
   return result;
 }
 
 void rb_apply_impulse_at(rigidbody* rb, Vector3 at, Vector3 impulse) {
-  Vector3 r = Vector3Subtract(at, rb->p); 
-  rb->ti = Vector3Add(rb->ti, Vector3CrossProduct(r, impulse));
-  rb->fi = Vector3Add(rb->fi, impulse);
+  Vector3 r = sub(at, rb->p); 
+  rb->ti = add(rb->ti, cross(r, impulse));
+  rb->fi = add(rb->fi, impulse);
 }
 
 void rb_apply_force_at(rigidbody* rb, Vector3 at, Vector3 force) {
-  Vector3 r = Vector3Subtract(at, rb->p); 
-  rb->t = Vector3Add(rb->t, Vector3CrossProduct(r, force));
-  rb->f = Vector3Add(rb->f, force);
+  Vector3 r = sub(at, rb->p); 
+  rb->t = add(rb->t, cross(r, force));
+  rb->f = add(rb->f, force);
 }
 
 void rb_apply_impulse(rigidbody* rb, Vector3 impulse) {
-  rb->fi = Vector3Add(rb->fi, impulse);
+  rb->fi = add(rb->fi, impulse);
 }
 
 void rb_apply_force(rigidbody* rb, Vector3 force) {
-  rb->f = Vector3Add(rb->f, force);
+  rb->f = add(rb->f, force);
 }
 
 void rb_simulate(rigidbody* rb, float dt) {
-  rb->l = Vector3Add(rb->l, rb->ti);
-  rb->l = Vector3Add(rb->l, Vector3Scale(rb->t, dt));
+  rb->l = add(rb->l, rb->ti);
+  rb->l = add(rb->l, scale(rb->t, dt));
 
   Matrix inv_i0 = rb_inv_i0_m(rb);
   Vector3 omega = rb_angular_velocity_ex(rb, inv_i0);
   Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
-  Quaternion dq = QuaternionScale(QuaternionMultiply(q_omega, rb->r), 0.5 * dt);
+  Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
 
-  Quaternion q_orientation = QuaternionAdd(rb->r, dq);
-  rb->r = QuaternionNormalize(q_orientation);
-  rb->t = rb->ti = Vector3Zero();
+  Quaternion q_orientation = qadd(rb->r, dq);
+  rb->r = qnormalize(q_orientation);
+  rb->t = rb->ti = zero();
 
   float inv_mass = 1.0 / rb->mass;
-  Vector3 acc = Vector3Scale(Vector3Add(rb->fi, Vector3Scale(rb->f, dt)), inv_mass);
-  rb->v = Vector3Add(rb->v, acc);
-  rb->p = Vector3Add(rb->p, Vector3Scale(rb->v, dt));
-  rb->f = rb->fi = Vector3Zero();
+  Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
+  rb->v = add(rb->v, acc);
+  rb->p = add(rb->p, scale(rb->v, dt));
+  rb->f = rb->fi = zero();
 }
 
 Vector3 sphere_support(Vector3 center, float radius, Vector3 direction) {
-  return Vector3Add(center, Vector3Scale(direction, radius));
+  return add(center, scale(direction, radius));
 }
 
 Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction) {
-  Quaternion inv_rotation = QuaternionInvert(rotation);
-  Vector3 local_dir = Vector3RotateByQuaternion(direction, inv_rotation);
+  Quaternion inv_rotation = qinvert(rotation);
+  Vector3 local_dir = rotate(direction, inv_rotation);
 
   float half_height = 0.5f * height;
 
@@ -170,8 +168,8 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
     local_support.y = -half_height;
   }
 
-  Vector3 world_support = Vector3RotateByQuaternion(local_support, rotation);
-  return Vector3Add(center, world_support);
+  Vector3 world_support = rotate(local_support, rotation);
+  return add(center, world_support);
 }
 
 Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
@@ -199,7 +197,7 @@ Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *r
       break;
   }
 
-  return Vector3Subtract(support_a, support_b);
+  return sub(support_a, support_b);
 }
 
 static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index, Vector3 *points, int num_points, int *indices, int num_indices) {
@@ -291,24 +289,24 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       c = points[2];
       d = points[3];
 
-      ab = Vector3Subtract(b, a);
-      ac = Vector3Subtract(c, a);
-      ad = Vector3Subtract(d, a);
-      ao = Vector3Negate(a);
+      ab = sub(b, a);
+      ac = sub(c, a);
+      ad = sub(d, a);
+      ao = negate(a);
 
-      abc = Vector3CrossProduct(ab, ac);
-      acd = Vector3CrossProduct(ac, ad);
-      adb = Vector3CrossProduct(ad, ab);
+      abc = cross(ab, ac);
+      acd = cross(ac, ad);
+      adb = cross(ad, ab);
 
-      if (Vector3DotProduct(abc, ao) > 0) {
+      if (dot(abc, ao) > 0) {
         *count = 3;
         // Fallthrough to case 3
-      } else if (Vector3DotProduct(acd, ao) > 0) {
+      } else if (dot(acd, ao) > 0) {
         points[1] = c;
         points[2] = d;
         *count = 3;
         //Fallthrough to case 3
-      } else if (Vector3DotProduct(adb, ao) > 0) {
+      } else if (dot(adb, ao) > 0) {
         points[1] = d;
         points[2] = b;
         *count = 3;
@@ -322,16 +320,16 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       b = points[1];
       c = points[2];
 
-      ab = Vector3Subtract(b, a);
-      ac = Vector3Subtract(c, a);
-      ao = Vector3Negate(a);
+      ab = sub(b, a);
+      ac = sub(c, a);
+      ao = negate(a);
 
-      Vector3 abc = Vector3CrossProduct(ab, ac);
-      if (Vector3DotProduct(Vector3CrossProduct(abc, ac), ao) > 0) {
-    		if (Vector3DotProduct(ac, ao) > 0) {
+      Vector3 abc = cross(ab, ac);
+      if (dot(cross(abc, ac), ao) > 0) {
+    		if (dot(ac, ao) > 0) {
     			points[1] = c;
     			*count = 2;
-    			*direction = Vector3Normalize(Vector3CrossProduct(Vector3CrossProduct(ac, ao), ac));
+    			*direction = normalize(cross(cross(ac, ao), ac));
 
     			return false;
     		} else {
@@ -339,37 +337,37 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
     		  // Fallthrough to case 2
     		}
     	} else {
-    		if (Vector3DotProduct(Vector3CrossProduct(ab, abc), ao) > 0) {
+    		if (dot(cross(ab, abc), ao) > 0) {
     		  *count = 2;
     		  // Fallthrough to case 2
     		} else {
-    			if (Vector3DotProduct(abc, ao) > 0) {
-    				*direction = Vector3Normalize(abc);
+    			if (dot(abc, ao) > 0) {
+    				*direction = normalize(abc);
     				return false;
     			} else {
     			  points[2] = b;
     			  points[1] = c;
 
-    				*direction = Vector3Normalize(Vector3Negate(abc));
+    				*direction = normalize(negate(abc));
     				return false;
     			}
     		}
     	}
 
     case 2:
-      ab = Vector3Subtract(points[1], points[0]);
-      ao = Vector3Negate(points[0]);
+      ab = sub(points[1], points[0]);
+      ao = negate(points[0]);
 
-      if (Vector3DotProduct(ab, ao) > 0) {
-        *direction = Vector3Normalize(Vector3CrossProduct(Vector3CrossProduct(ab, ao), ab));
+      if (dot(ab, ao) > 0) {
+        *direction = normalize(cross(cross(ab, ao), ab));
       } else {
         *count = 1;
-        *direction = Vector3Normalize(ao); 
+        *direction = normalize(ao); 
       }
       return false;
 
     case 1:
-      *direction = Vector3Normalize(Vector3Negate(points[0]));
+      *direction = normalize(negate(points[0]));
       return false;
   }
 
@@ -377,7 +375,7 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
 }
 
 collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
-  Vector3 direction = (Vector3) { 1, 0, 0 };
+  Vector3 direction = right();
 
   int num_points = 0;
   Vector3 points[COLLISION_MAX_POINTS];
@@ -386,7 +384,7 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
     Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
-    if (Vector3DotProduct(support, direction) < GJK_TOLERANCE) {
+    if (dot(support, direction) < GJK_TOLERANCE) {
       return (collision) { 0 };
     }
 
@@ -413,21 +411,21 @@ collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const ri
 collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal) {
   collision result = {0};
 
-  Vector3 normal = Vector3Normalize(plane_normal);
-  Vector3 cylinder_axis = Vector3RotateByQuaternion((Vector3){0, 1, 0}, cylinder_rb->r);
+  Vector3 normal = normalize(plane_normal);
+  Vector3 cylinder_axis = rotate(up(), cylinder_rb->r);
 
   float half_height = cylinder_height * 0.5f;
 
-  Vector3 cap_top = Vector3Add(cylinder_rb->p, Vector3Scale(cylinder_axis, half_height));
-  Vector3 cap_bottom = Vector3Add(cylinder_rb->p, Vector3Scale(cylinder_axis, -half_height));
+  Vector3 cap_top = add(cylinder_rb->p, scale(cylinder_axis, half_height));
+  Vector3 cap_bottom = add(cylinder_rb->p, scale(cylinder_axis, -half_height));
 
-  float dist_top = Vector3DotProduct(Vector3Subtract(cap_top, plane_point), normal);
-  float dist_bottom = Vector3DotProduct(Vector3Subtract(cap_bottom, plane_point), normal);
+  float dist_top = dot(sub(cap_top, plane_point), normal);
+  float dist_bottom = dot(sub(cap_bottom, plane_point), normal);
 
   float closest_cap_dist = fminf(dist_top, dist_bottom);
   Vector3 closest_cap_center = (dist_top < dist_bottom) ? cap_top : cap_bottom;
 
-  float axis_projection = fabsf(Vector3DotProduct(cylinder_axis, normal));
+  float axis_projection = fabsf(dot(cylinder_axis, normal));
 
   Vector3 closest_point;
   float min_distance;
@@ -435,31 +433,31 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
   const float perpendicular_threshold = 0.001f;
 
   if (axis_projection < perpendicular_threshold) {
-    Vector3 normal_radial = Vector3Subtract(normal, Vector3Scale(cylinder_axis,
-                                            Vector3DotProduct(normal, cylinder_axis)));
-    float radial_length = Vector3Length(normal_radial);
+    Vector3 normal_radial = sub(normal, scale(cylinder_axis,
+                                            dot(normal, cylinder_axis)));
+    float radial_length = len(normal_radial);
 
     if (radial_length > perpendicular_threshold) {
-      Vector3 radial_dir = Vector3Scale(normal_radial, -1.0f / radial_length);
-      closest_point = Vector3Add(cylinder_rb->p, Vector3Scale(radial_dir, cylinder_radius));
-      min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
+      Vector3 radial_dir = scale(normal_radial, -1.0f / radial_length);
+      closest_point = add(cylinder_rb->p, scale(radial_dir, cylinder_radius));
+      min_distance = dot(sub(closest_point, plane_point), normal);
     } else {
       closest_point = closest_cap_center;
       min_distance = closest_cap_dist;
     }
   } else {
-    Vector3 normal_on_cap = Vector3Subtract(normal, Vector3Scale(cylinder_axis,
-                                            Vector3DotProduct(normal, cylinder_axis)));
-    float normal_on_cap_length = Vector3Length(normal_on_cap);
+    Vector3 normal_on_cap = sub(normal, scale(cylinder_axis,
+                                            dot(normal, cylinder_axis)));
+    float normal_on_cap_length = len(normal_on_cap);
 
     if (normal_on_cap_length > perpendicular_threshold) {
-      Vector3 radial_dir = Vector3Scale(normal_on_cap, -1.0f / normal_on_cap_length);
-      closest_point = Vector3Add(closest_cap_center, Vector3Scale(radial_dir, cylinder_radius));
+      Vector3 radial_dir = scale(normal_on_cap, -1.0f / normal_on_cap_length);
+      closest_point = add(closest_cap_center, scale(radial_dir, cylinder_radius));
     } else {
       closest_point = closest_cap_center;
     }
 
-    min_distance = Vector3DotProduct(Vector3Subtract(closest_point, plane_point), normal);
+    min_distance = dot(sub(closest_point, plane_point), normal);
   }
 
   const float contact_epsilon = 0.001f;

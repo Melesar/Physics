@@ -16,6 +16,30 @@
 #define normalize(x) Vector3Normalize(x)
 #define sub(x, y) Vector3Subtract(x, y)
 #define len(x) Vector3Length(x)
+#define zero() Vector3Zero()
+#define one() Vector3One()
+#define up() ((Vector3) { 0, 1, 0 })
+#define right() ((Vector3) { 1, 0, 0 })
+#define forward() ((Vector3) { 0, 0, 1 })
+#define rotate(x, y) Vector3RotateByQuaternion(x, y)
+#define negate(x) Vector3Negate(x)
+#define transform(x, y) Vector3Transform(x, y)
+
+#define qadd(x, y) QuaternionAdd(x, y)
+#define qscale(x, y) QuaternionScale(x, y)
+#define qmul(x, y) QuaternionMultiply(x, y)
+#define qnormalize(x) QuaternionNormalize(x)
+#define qinvert(x) QuaternionInvert(x)
+#define as_matrix(x) QuaternionToMatrix(x)
+#define qidentity() QuaternionIdentity()
+
+#define mul(x, y) MatrixMultiply(x, y)
+#define transpose(x) MatrixTranspose(x)
+#define translate(x, y, z) MatrixTranslate(x, y, z)
+
+#define vlerp(x, y, t) Vector3Lerp(x, y, t)
+#define lerp(x, y, t) Lerp(x, y, t)
+#define slerp(x, y, t) QuaternionSlerp(x, y, t)
 
 // ==== SHAPES =====
 
