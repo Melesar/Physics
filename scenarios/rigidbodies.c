@@ -77,22 +77,58 @@ void on_input(Camera *camera) {}
 
 void simulate(float dt) {
   rb_apply_force(&cylinder_body, GRAVITY_V);
-  rb_simulate(&cylinder_body, dt);
+
+  rigidbody *rb = &cylinder_body;
+  rb->l = add(rb->l, rb->ti);
+  rb->l = add(rb->l, scale(rb->t, dt));
+
+  float inv_mass = 1.0 / rb->mass;
+  Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
+  rb->v = add(rb->v, acc);
+
+  Matrix inv_i0 = { 0 };
+  inv_i0.m0 = rb->i0_inv.x;
+  inv_i0.m5 = rb->i0_inv.y;
+  inv_i0.m10 = rb->i0_inv.z;
+  Matrix orientation = as_matrix(rb->r);
+  Matrix transform = mul(mul(orientation, inv_i0), transpose(orientation));
+  Vector3 omega = transform(rb->l, transform);
 
   cylinder_collision = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
   if (cylinder_collision.valid) {
-    cylinder_body.p = add(cylinder_body.p, scale(cylinder_collision.normal, cylinder_collision.depth)); 
-    rb_apply_impulse_at(&cylinder_body, cylinder_collision.world_contact_a, scale(cylinder_collision.normal, len(sphere_body.v)));
+    for (int i = 0; i < 10; i++) {
+      Vector3 n = negate(cylinder_collision.normal);
+      Vector3 j1 = negate(n);
+      Vector3 j2 = negate(cross(cylinder_collision.local_contact_a, n));
+    
+      float m1 = transform.m0 * j2.x + transform.m1 * j2.y + transform.m2 * j2.z;
+      float m2 = transform.m4 * j2.x + transform.m5 * j2.y + transform.m6 * j2.z;   
+      float m3 = transform.m8 * j2.x + transform.m9 * j2.y + transform.m10 * j2.z;
+      Vector3 m = { m1, m2, m3 };
+
+      float effective_mass = inv_mass * dot(j1, j1) + dot(m, j2);
+
+      float bias = -0.2 * cylinder_collision.depth / dt ;
+      float v_proj = dot(j1, rb->v) + dot(j2, omega);
+      float lambda = -(v_proj + bias) / effective_mass; 
+
+      Vector3 dv = scale(j1, inv_mass * lambda);
+      Vector3 d_omega = scale(m, lambda);
+                           
+      rb->v = add(rb->v, dv);
+      omega = add(omega, d_omega);
+    }
   }
 
-  rb_apply_force(&sphere_body, GRAVITY_V);
-  rb_simulate(&sphere_body, dt);
 
-  sphere_collision = sphere_plane_check_collision(&sphere_body, sphere_radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
-  if (sphere_collision.valid) {
-    sphere_body.p = add(sphere_body.p, scale(sphere_collision.normal, sphere_collision.depth)); 
-    rb_apply_impulse_at(&sphere_body, sphere_collision.world_contact_a, scale(sphere_collision.normal, len(sphere_body.v)));
-  }
+  Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
+  Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
+  Quaternion q_orientation = qadd(rb->r, dq);
+  rb->r = qnormalize(q_orientation);
+  rb->t = rb->ti = zero();
+
+  rb->p = add(rb->p, scale(rb->v, dt));
+  rb->f = rb->fi = zero();
 }
 
 static void draw_collision(const collision *c) {
