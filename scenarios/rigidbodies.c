@@ -114,13 +114,18 @@ void simulate(float dt) {
       float lambda = -(v_proj + bias) / effective_mass; 
 
       Vector3 dv = scale(j1, inv_mass * lambda);
-      Vector3 d_omega = scale(m, lambda);
+      Vector3 mm1 = { transform.m0, transform.m4, transform.m8 };
+      Vector3 mm2 = { transform.m1, transform.m5, transform.m9 };
+      Vector3 mm3 = { transform.m2, transform.m6, transform.m10 };
+      Vector3 mm = { dot(mm1, j2), dot(mm2, j2), dot(mm3, j2) };
+      Vector3 dl = scale(mm, lambda);
                            
       rb->v = add(rb->v, dv);
-      omega = add(omega, d_omega);
+      rb->l = add(rb->l, dl);
+
+      omega = transform(rb->l, transform);
     }
   }
-
 
   Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
   Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
