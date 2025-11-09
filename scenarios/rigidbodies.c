@@ -96,7 +96,7 @@ void simulate(float dt) {
 
   cylinder_collision = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
   if (cylinder_collision.valid) {
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1; i++) {
       Vector3 n = negate(cylinder_collision.normal);
       Vector3 j1 = negate(n);
       Vector3 j2 = negate(cross(cylinder_collision.local_contact_a, n));
@@ -108,7 +108,8 @@ void simulate(float dt) {
 
       float effective_mass = inv_mass * dot(j1, j1) + dot(m, j2);
 
-      float bias = -0.2 * cylinder_collision.depth / dt ;
+      float restitution = 0.7 * (dot(sub(negate(rb->v), cross(omega, cylinder_collision.local_contact_a)), n));
+      float bias = -0.2 * cylinder_collision.depth / dt + restitution;
       float v_proj = dot(j1, rb->v) + dot(j2, omega);
       float lambda = -(v_proj + bias) / effective_mass; 
 
