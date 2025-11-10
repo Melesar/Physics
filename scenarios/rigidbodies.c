@@ -4,6 +4,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "gizmos.h"
+#include <math.h>
 
 const float sphere_radius = 1;
 const float cylinder_mass = 3;
@@ -75,6 +76,50 @@ void reset() {
 
 void on_input(Camera *camera) {}
 
+typedef struct {
+  float inv_mass;
+  Vector3 j1, j2;
+  Vector3 v, omega;
+  Matrix I;
+    
+} constraint;
+
+static constraint constraint_new(Vector3 n, Vector3 v, Vector3 ra, Vector3 omega, Matrix I, float inv_mass) {
+  constraint c;
+  c.j1 = negate(n);
+  c.j2 = negate(cross(ra, n));
+  c.inv_mass = inv_mass;
+  c.v = v;
+  c.omega = omega;
+  c.I = I;
+
+  return c;
+}
+
+static void constraint_update(constraint *c, Vector3 n, Vector3 ra) {
+  c->j1 = negate(n);
+  c->j2 = negate(cross(ra, n));
+}
+
+static void constraint_calculate_pre_lambda(const constraint *c, float *effective_mass, float *v_proj) {
+  float m1 = c->I.m0 * c->j2.x + c->I.m1 * c->j2.y + c->I.m2 * c->j2.z;
+  float m2 = c->I.m4 * c->j2.x + c->I.m5 * c->j2.y + c->I.m6 * c->j2.z;   
+  float m3 = c->I.m8 * c->j2.x + c->I.m9 * c->j2.y + c->I.m10 *c-> j2.z;
+  Vector3 m = { m1, m2, m3 };
+
+  *effective_mass = c->inv_mass * dot(c->j1, c->j1) + dot(m, c->j2);
+  *v_proj = dot(c->j1, c->v) + dot(c->j2, c->omega);
+}
+
+static void constraint_calculate_velocities(const constraint *c, float lambda, Vector3 *dv, Vector3 *dl) {
+  *dv = add(*dv, scale(c->j1, c->inv_mass * lambda));
+  Vector3 mm1 = { c->I.m0, c->I.m4, c->I.m8 };
+  Vector3 mm2 = { c->I.m1, c->I.m5, c->I.m9 };
+  Vector3 mm3 = { c->I.m2, c->I.m6, c->I.m10 };
+  Vector3 mm = { dot(mm1, c->j2), dot(mm2, c->j2), dot(mm3, c->j2) };
+  *dl = add(*dl, scale(mm, lambda));
+}
+
 void simulate(float dt) {
   rb_apply_force(&cylinder_body, GRAVITY_V);
 
@@ -96,35 +141,45 @@ void simulate(float dt) {
 
   cylinder_collision = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
   if (cylinder_collision.valid) {
-    for (int i = 0; i < 1; i++) {
-      Vector3 n = negate(cylinder_collision.normal);
-      Vector3 j1 = negate(n);
-      Vector3 j2 = negate(cross(cylinder_collision.local_contact_a, n));
+    const float restitution_coeff = 0.7;
+    const float baumgarde_coeff = 0.2;
+    const float friction_coeff = 0.3;
+
+    Vector3 n = negate(cylinder_collision.normal);
+    constraint c = constraint_new(n, rb->v, cylinder_collision.local_contact_a, omega, transform, inv_mass);
+
+    Vector3 dv = zero();
+    Vector3 dl = zero();
+    float effective_mass, v_proj;
+    constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
+
+    float restitution = restitution_coeff * (dot(sub(negate(rb->v), cross(omega, cylinder_collision.local_contact_a)), n));
+    float bias = -baumgarde_coeff * cylinder_collision.depth / dt + restitution;
+    float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
+
+    constraint_calculate_velocities(&c, lambda_normal, &dv, &dl);
+
+    constraint_update(&c, cylinder_collision.tangent, cylinder_collision.local_contact_a);
+    constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
+
+    float limit_friction = fabs(friction_coeff * lambda_normal);
+    float lambda_tangent = -v_proj / effective_mass;
+    lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, lambda_tangent));
+
+    constraint_calculate_velocities(&c, lambda_tangent, &dv, &dl);
     
-      float m1 = transform.m0 * j2.x + transform.m1 * j2.y + transform.m2 * j2.z;
-      float m2 = transform.m4 * j2.x + transform.m5 * j2.y + transform.m6 * j2.z;   
-      float m3 = transform.m8 * j2.x + transform.m9 * j2.y + transform.m10 * j2.z;
-      Vector3 m = { m1, m2, m3 };
+    constraint_update(&c, cylinder_collision.bitangent, cylinder_collision.local_contact_a);
+    constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-      float effective_mass = inv_mass * dot(j1, j1) + dot(m, j2);
+    float lambda_bitangent = -v_proj / effective_mass;
+    lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, lambda_bitangent));
 
-      float restitution = 0.7 * (dot(sub(negate(rb->v), cross(omega, cylinder_collision.local_contact_a)), n));
-      float bias = -0.2 * cylinder_collision.depth / dt + restitution;
-      float v_proj = dot(j1, rb->v) + dot(j2, omega);
-      float lambda = -(v_proj + bias) / effective_mass; 
+    constraint_calculate_velocities(&c, lambda_bitangent, &dv, &dl);
 
-      Vector3 dv = scale(j1, inv_mass * lambda);
-      Vector3 mm1 = { transform.m0, transform.m4, transform.m8 };
-      Vector3 mm2 = { transform.m1, transform.m5, transform.m9 };
-      Vector3 mm3 = { transform.m2, transform.m6, transform.m10 };
-      Vector3 mm = { dot(mm1, j2), dot(mm2, j2), dot(mm3, j2) };
-      Vector3 dl = scale(mm, lambda);
-                           
-      rb->v = add(rb->v, dv);
-      rb->l = add(rb->l, dl);
+    rb->v = add(rb->v, dv);
+    rb->l = add(rb->l, dl);
 
-      omega = transform(rb->l, transform);
-    }
+    omega = transform(rb->l, transform);
   }
 
   Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
