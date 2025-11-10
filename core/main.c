@@ -26,6 +26,8 @@ void init_gizmos();
 void manipulate_gizmos(Camera *camera);
 void draw_gizmos();
 
+static void draw_custom_grid(int slices, float spacing);
+static void setup_ground_plane(Shader shader);
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
@@ -40,6 +42,9 @@ camera_settings cam_settings = {
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
+
+static Model groundModel;
+static bool groundInitialized = false;
 
 int main(int argc, char** argv) {
 
@@ -60,6 +65,7 @@ int main(int argc, char** argv) {
 
   init_debugging();
   init_gizmos();
+  setup_ground_plane(shader);
   setup_scene(shader);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
@@ -132,7 +138,7 @@ static void process_inputs(Camera* camera) {
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
 
-    ClearBackground(RAYWHITE);
+    ClearBackground((Color){0x12, 0x12, 0x14, 0xFF}); // #121214
 
       BeginMode3D(camera);
 
@@ -141,8 +147,11 @@ static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shade
           float t = Clamp(accum / simulation_step, 0, 1);
           draw(t);
 
-          DrawPlane((Vector3){0.0f, 0.0f, 0.0f}, (Vector2){32.0f, 32.0f}, LIGHTGRAY);
-          DrawGrid(32, 1.0f);
+          // Draw ground plane
+          if (groundInitialized) {
+            DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
+          }
+          draw_custom_grid(32, 1.0f);
 
           if (edit_mode)
             draw_gizmos();
@@ -192,17 +201,85 @@ static Camera setup_camera(program_config config) {
   return camera;
 }
 
+static void draw_custom_grid(int slices, float spacing) {
+  int halfSlices = slices / 2;
+  Color mainColor = (Color){0x44, 0x44, 0x44, 0xFF};    // Main divisions (#444444)
+  Color subColor = (Color){0x22, 0x22, 0x22, 0xFF};     // Sub divisions (#222222)
+
+  for (int i = -halfSlices; i <= halfSlices; i++) {
+    Color lineColor = (i % 10 == 0) ? mainColor : subColor;
+
+    // Lines parallel to Z axis
+    DrawLine3D(
+      (Vector3){i * spacing, 0.01f, -halfSlices * spacing},
+      (Vector3){i * spacing, 0.01f, halfSlices * spacing},
+      lineColor
+    );
+
+    // Lines parallel to X axis
+    DrawLine3D(
+      (Vector3){-halfSlices * spacing, 0.01f, i * spacing},
+      (Vector3){halfSlices * spacing, 0.01f, i * spacing},
+      lineColor
+    );
+  }
+}
+
+static void setup_ground_plane(Shader shader) {
+  // Create plane mesh (200x200 units)
+  Mesh mesh = GenMeshPlane(200.0f, 200.0f, 1, 1);
+  groundModel = LoadModelFromMesh(mesh);
+
+  // Set shader
+  groundModel.materials[0].shader = shader;
+
+  // Set color to #080808 (nearly black)
+  groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = (Color){0x08, 0x08, 0x08, 0xFF};
+
+  groundInitialized = true;
+}
+
 static Shader setup_lighting() {
-  char *vs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.vs";
-  char *fs_shader_path = "vendor/raylib/examples/shaders/resources/shaders/glsl330/lighting.fs";
+  char *vs_shader_path = "shaders/lighting_fog.vs";
+  char *fs_shader_path = "shaders/lighting_fog.fs";
 
   Shader shader = LoadShader(vs_shader_path, fs_shader_path);
-  Light light = CreateLight(LIGHT_DIRECTIONAL, (Vector3){-2.0f, 5.0f, -2.0f}, Vector3Zero(), WHITE, shader);
 
+  // Key light (Directional) - Main shadow caster from upper-right
+  Light keyLight = CreateLight(
+    LIGHT_DIRECTIONAL,
+    (Vector3){10.0f, 20.0f, 10.0f},
+    Vector3Zero(),
+    WHITE,  // #ffffff
+    shader
+  );
+  keyLight.enabled = 1;
+  UpdateLightValues(shader, keyLight);
+
+  // Rim light (Point) - Blue highlight from back-left
+  Light rimLight = CreateLight(
+    LIGHT_POINT,
+    (Vector3){-10.0f, 10.0f, -10.0f},
+    Vector3Zero(),
+    (Color){0x44, 0x44, 0xff, 0xff},  // #4444ff
+    shader
+  );
+  rimLight.enabled = 1;
+  UpdateLightValues(shader, rimLight);
+
+  // Ambient light - #404040
   int ambientLoc = GetShaderLocation(shader, "ambient");
-  SetShaderValue(shader, ambientLoc, (float[4]){0.4f, 0.4f, 0.4f, 4.0f},
+  SetShaderValue(shader, ambientLoc, (float[4]){0x40/255.0f, 0x40/255.0f, 0x40/255.0f, 1.0f},
                  SHADER_UNIFORM_VEC4);
-  UpdateLightValues(shader, light);
+
+  // Set fog parameters
+  int fogColorLoc = GetShaderLocation(shader, "fogColor");
+  int fogStartLoc = GetShaderLocation(shader, "fogStart");
+  int fogEndLoc = GetShaderLocation(shader, "fogEnd");
+
+  SetShaderValue(shader, fogColorLoc, (float[3]){0x12/255.0f, 0x12/255.0f, 0x14/255.0f}, SHADER_UNIFORM_VEC3);
+  SetShaderValue(shader, fogStartLoc, (float[1]){20.0f}, SHADER_UNIFORM_FLOAT);
+  SetShaderValue(shader, fogEndLoc, (float[1]){100.0f}, SHADER_UNIFORM_FLOAT);
 
   return shader;
 }
