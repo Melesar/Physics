@@ -23,6 +23,8 @@ const float default_stabilisation = 0.2;
 struct object graphics;
 struct pendulum double_pendulum[2];
 constraints cc;
+Model pendulum_model;
+Model anchor_model;
 
 int tick_count;
 int solver_iterations = 3;
@@ -52,7 +54,7 @@ void setup_scene(Shader shader) {
   Vector3 anchor = { 0, 5, 4 };
   Material material = LoadMaterialDefault();
   material.shader = shader;
-  material.maps[MATERIAL_MAP_DIFFUSE].color = PURPLE;
+  material.maps[MATERIAL_MAP_DIFFUSE].color = COLOR_RED_HIGHLIGHT;
 
   double_pendulum[0] = (struct pendulum) {
     .anchor = anchor,
@@ -66,6 +68,15 @@ void setup_scene(Shader shader) {
     .string_length = string_length,
     .stabilization_factor = default_stabilisation,
   };
+
+  // Create pendulum model
+  pendulum_model = LoadModelFromMesh(mesh);
+  pendulum_model.materials[0] = material;
+
+  // Create anchor model
+  Mesh anchor_mesh = GenMeshSphere(0.05, 16, 16);
+  anchor_model = LoadModelFromMesh(anchor_mesh);
+  anchor_model.materials[0].shader = shader;
 
   cc = constraints_new(2, 2, 3, default_stabilisation, 5);
 
@@ -148,10 +159,15 @@ void draw(float interpolation) {
   Vector3 anchor = double_pendulum[0].anchor;
   rigidbody r = double_pendulum[0].body;
 
-  DrawSphere(anchor, 0.05, RED);
+  // Draw anchor with wireframe
+  draw_model_with_wireframe(anchor_model, anchor, 1.0f, COLOR_YELLOW_INFO);
 
-  DrawMesh(graphics.mesh, graphics.material, rb_transformation(&r));
-  DrawMesh(graphics.mesh, graphics.material, rb_transformation(&double_pendulum[1].body));
+  // Draw pendulum masses with wireframe
+  pendulum_model.transform = rb_transformation(&r);
+  draw_model_with_wireframe(pendulum_model, Vector3Zero(), 1.0f, COLOR_RED_HIGHLIGHT);
+
+  pendulum_model.transform = rb_transformation(&double_pendulum[1].body);
+  draw_model_with_wireframe(pendulum_model, Vector3Zero(), 1.0f, COLOR_RED_HIGHLIGHT);
 }
 
 

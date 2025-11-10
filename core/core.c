@@ -1,6 +1,7 @@
 #include "core.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 
 Mesh arrow_base;
 Mesh arrow_head;
@@ -79,4 +80,13 @@ void draw_property_float(struct nk_context* ctx, char* title, float* value, floa
   nk_layout_row_push(ctx, 0.9);
   nk_property_float(ctx, title, min, value, max, step_arrow, step_drag);
   nk_layout_row_end(ctx);
+}
+
+void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color) {
+  model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = color;
+  DrawModel(model, position, scale, WHITE);
+
+  rlEnableWireMode();
+  DrawModel(model, position, scale, COLOR_WIREFRAME);
+  rlDisableWireMode();
 }

@@ -14,6 +14,8 @@ rigidbody sphere_body;
 rigidbody cylinder_body;
 struct object cylinder_graphics;
 Mesh cylinder_mesh;
+Model sphere_model;
+Model cylinder_model;
 
 float input_impulse_strength = 15;
 float velocity_damping = 0.993;
@@ -34,7 +36,7 @@ static struct object generate_cylinder_graphics(Shader shader) {
   UpdateMeshBuffer(cylinder_mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, vertices, cylinder_mesh.vertexCount * sizeof(Vector3), 0);
 
   Material m = LoadMaterialDefault();
-  m.maps[MATERIAL_MAP_DIFFUSE].color = LIME;
+  m.maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GREEN_ACTIVE;
   m.shader = shader;
 
   return (struct object) {
@@ -58,6 +60,13 @@ void setup_scene(Shader shader) {
   cylinder_body.l = initial_moment_of_inertia;
 
   cylinder_graphics = generate_cylinder_graphics(shader);
+
+  cylinder_model = LoadModelFromMesh(cylinder_mesh);
+  cylinder_model.materials[0] = cylinder_graphics.material;
+
+  Mesh sphere_mesh = GenMeshSphere(sphere_radius, 32, 32);
+  sphere_model = LoadModelFromMesh(sphere_mesh);
+  sphere_model.materials[0].shader = shader;
 
   inertia = sphere_inertia_tensor(sphere_radius, cylinder_mass);
   sphere_body = rb_new((Vector3) {-5, 4, 0}, cylinder_mass);
@@ -195,7 +204,8 @@ void simulate(float dt) {
 static void draw_collision(const collision *c) {
   if (!c->valid) return;
 
-  DrawSphere(c->world_contact_a, 0.03f, GREEN);
+  // Fights with the grid rendering for some reason. Investigate.
+  // DrawSphere(c->world_contact_a, 0.03f, GREEN);
 
   draw_arrow(c->world_contact_a, c->normal, RED);
   draw_arrow(c->world_contact_a, c->tangent, BLUE);
@@ -203,8 +213,10 @@ static void draw_collision(const collision *c) {
 }
 
 void draw(float interpolation) {
-  DrawMesh(cylinder_graphics.mesh, cylinder_graphics.material, rb_transformation(&cylinder_body));
-  DrawSphere(sphere_body.p, sphere_radius, GRAY);
+  cylinder_model.transform = rb_transformation(&cylinder_body);
+
+  draw_model_with_wireframe(cylinder_model, Vector3Zero(), 1.0f, COLOR_GREEN_ACTIVE);
+  draw_model_with_wireframe(sphere_model, sphere_body.p, 1.0f, COLOR_BLUE_STATIC);
 
   draw_collision(&cylinder_collision);
   draw_collision(&sphere_collision);

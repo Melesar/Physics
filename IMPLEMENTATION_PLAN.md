@@ -335,7 +335,7 @@ Update color references to use these constants.
 ---
 
 ### 4.2 Material Properties for Objects
-**Files**: Scenario files (scenarios/rigidbodies.c, etc.)
+**Files**: scenarios/rigidbodies.c
 
 **Current State**: Unknown - need to check how objects are currently drawn.
 
@@ -362,12 +362,6 @@ cubeModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GREEN_ACTIVE;
 // For PBR properties, if using pbr.fs shader:
 // Would need to set additional uniforms for roughness, metalness
 ```
-
-**Note**: This stage requires examining each scenario file to understand current drawing approach and may need per-scenario modifications.
-
-**Deferred Decision**: Should flat shading be implemented?
-- Requires modifying mesh generation or shader
-- Can be evaluated during implementation if needed for visual clarity
 
 **Verification**: Objects should have the correct colors from the palette.
 

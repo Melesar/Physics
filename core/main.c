@@ -2,6 +2,7 @@
 #include "core.h"
 #include "raymath.h"
 #include "string.h"
+#include "rlgl.h"
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
@@ -138,7 +139,7 @@ static void process_inputs(Camera* camera) {
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
 
-    ClearBackground((Color){0x12, 0x12, 0x14, 0xFF}); // #121214
+    ClearBackground(COLOR_BACKGROUND);
 
       BeginMode3D(camera);
 
@@ -203,38 +204,32 @@ static Camera setup_camera(program_config config) {
 
 static void draw_custom_grid(int slices, float spacing) {
   int halfSlices = slices / 2;
-  Color mainColor = (Color){0x44, 0x44, 0x44, 0xFF};    // Main divisions (#444444)
-  Color subColor = (Color){0x22, 0x22, 0x22, 0xFF};     // Sub divisions (#222222)
+  Color mainColor = COLOR_GRID_MAIN;
+  Color subColor = COLOR_GRID_SUB;
 
   for (int i = -halfSlices; i <= halfSlices; i++) {
     Color lineColor = (i % 10 == 0) ? mainColor : subColor;
 
-    // Lines parallel to Z axis
     DrawLine3D(
-      (Vector3){i * spacing, 0.01f, -halfSlices * spacing},
-      (Vector3){i * spacing, 0.01f, halfSlices * spacing},
+      (Vector3){i * spacing, 0.03f, -halfSlices * spacing},
+      (Vector3){i * spacing, 0.03f, halfSlices * spacing},
       lineColor
     );
 
-    // Lines parallel to X axis
     DrawLine3D(
-      (Vector3){-halfSlices * spacing, 0.01f, i * spacing},
-      (Vector3){halfSlices * spacing, 0.01f, i * spacing},
+      (Vector3){-halfSlices * spacing, 0.03f, i * spacing},
+      (Vector3){halfSlices * spacing, 0.03f, i * spacing},
       lineColor
     );
   }
 }
 
 static void setup_ground_plane(Shader shader) {
-  // Create plane mesh (200x200 units)
   Mesh mesh = GenMeshPlane(200.0f, 200.0f, 1, 1);
   groundModel = LoadModelFromMesh(mesh);
 
-  // Set shader
   groundModel.materials[0].shader = shader;
-
-  // Set color to #080808 (nearly black)
-  groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = (Color){0x08, 0x08, 0x08, 0xFF};
+  groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GROUND;
 
   groundInitialized = true;
 }
@@ -245,7 +240,6 @@ static Shader setup_lighting() {
 
   Shader shader = LoadShader(vs_shader_path, fs_shader_path);
 
-  // Key light (Directional) - Main shadow caster from upper-right
   Light keyLight = CreateLight(
     LIGHT_DIRECTIONAL,
     (Vector3){10.0f, 20.0f, 10.0f},
@@ -256,23 +250,20 @@ static Shader setup_lighting() {
   keyLight.enabled = 1;
   UpdateLightValues(shader, keyLight);
 
-  // Rim light (Point) - Blue highlight from back-left
   Light rimLight = CreateLight(
     LIGHT_POINT,
     (Vector3){-10.0f, 10.0f, -10.0f},
     Vector3Zero(),
-    (Color){0x44, 0x44, 0xff, 0xff},  // #4444ff
+    (Color){0x44, 0x44, 0xff, 0xff},  // Blue rim light
     shader
   );
   rimLight.enabled = 1;
   UpdateLightValues(shader, rimLight);
 
-  // Ambient light - #404040
   int ambientLoc = GetShaderLocation(shader, "ambient");
   SetShaderValue(shader, ambientLoc, (float[4]){0x40/255.0f, 0x40/255.0f, 0x40/255.0f, 1.0f},
                  SHADER_UNIFORM_VEC4);
 
-  // Set fog parameters
   int fogColorLoc = GetShaderLocation(shader, "fogColor");
   int fogStartLoc = GetShaderLocation(shader, "fogStart");
   int fogEndLoc = GetShaderLocation(shader, "fogEnd");
