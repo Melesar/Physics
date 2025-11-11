@@ -14,7 +14,7 @@
 #define COLOR_GRID_MAIN      (Color){0x44, 0x44, 0x44, 0xFF}
 #define COLOR_GRID_SUB       (Color){0x22, 0x22, 0x22, 0xFF}
 
-#define COLOR_WIREFRAME      (Color){0xFF, 0xFF, 0xFF, 25}
+#define COLOR_WIREFRAME      (Color){0x12, 0x12, 0x12, 25}
 
 typedef struct {
   char* window_title;

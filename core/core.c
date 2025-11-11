@@ -87,6 +87,7 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
   DrawModel(model, position, scale, WHITE);
 
   rlEnableWireMode();
-  DrawModel(model, position, scale, COLOR_WIREFRAME);
+  model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_WIREFRAME;
+  DrawModel(model, position, 1.01 * scale, COLOR_WIREFRAME);
   rlDisableWireMode();
 }
