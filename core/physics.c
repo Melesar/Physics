@@ -172,40 +172,61 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
   return add(center, world_support);
 }
 
-Vector3 shape_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
-  Vector3 support_a, support_b;
-
-  switch(shape_a) {
+Vector3 single_shape_support(shape_type type, const rigidbody *rb, Vector2 params, Vector3 direction) {
+  switch(type) {
     case SHAPE_CYLINDER:
-      support_a = cylinder_support(rb_a->p, params_a.y, params_a.x, rb_a->r, direction);
-      break;
+      return cylinder_support(rb->p, params.y, params.x, rb->r, direction);
 
     case SHAPE_SPHERE:
-      support_a = sphere_support(rb_a->p, params_a.x, direction);
-      break;
+      return sphere_support(rb->p, params.x, direction);
   }
+}
 
-  direction = Vector3Negate(direction);
-
-  switch (shape_b) {
-    case SHAPE_CYLINDER:
-      support_b = cylinder_support(rb_b->p, params_b.y, params_b.x, rb_b->r, direction);
-      break;
-
-    case SHAPE_SPHERE:
-      support_b = sphere_support(rb_b->p, params_b.x, direction);
-      break;
-  }
+Vector3 shapes_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
+  Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, direction);
+  Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(direction));
 
   return sub(support_a, support_b);
 }
 
 static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index, Vector3 *points, int num_points, int *indices, int num_indices) {
-  
+  float min_distance = INFINITY;
+
+  for (int i = 0; i < num_indices; i += 3) {
+    Vector3 a = points[indices[i]];
+    Vector3 b = points[indices[i + 1]];
+    Vector3 c = points[indices[i + 2]];
+    
+    Vector3 normal = normalize(cross(sub(b, a), sub(c, a)));
+    float distance = dot(normal, a);
+
+    if (distance < 0) {
+      normal = scale(normal, -1);
+      distance *= -1;
+    }
+
+    normals[*num_normals++] = (Vector4) { normal.x, normal.y, normal.z, distance  };
+
+    if (distance < min_distance) {
+      *min_face_index = i / 3;
+      min_distance = distance;
+    }
+  }
 }
 
 static void add_if_unique_edge(int *unique_edges, int *num_unique_edges, int *faces, int num_faces, int a, int b) {
-  
+  for (int i = *num_unique_edges - 1; i >= 0; i -= 2) {
+    if (unique_edges[i] == faces[a] && unique_edges[i - 1] == faces[b]) {
+      unique_edges[i] = unique_edges[*num_unique_edges - 1];
+      unique_edges[i - 1] = unique_edges[*num_unique_edges - 2];
+      *num_unique_edges -= 2;
+      return;
+    }
+  }
+
+  unique_edges[*num_unique_edges] = faces[a];
+  unique_edges[*num_unique_edges + 1] = faces[b];
+  *num_unique_edges += 2;
 }
 
 static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
@@ -241,7 +262,7 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     min_normal = *(Vector3*)&normals[min_face_index];
     min_distance = normals[min_face_index].w;
 
-    Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
+    Vector3 support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
     float distance = dot(min_normal, support);
     if (fabsf(distance - min_distance) > 0.001) {
       min_distance = INFINITY;
@@ -271,8 +292,82 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
 
       i -= 1;
     }
+
+    int num_new_faces = 0;
+    int new_faces[COLLISION_MAX_INDICES];
+    for (int i = 0; i < num_unique_edges; i += 2) {
+      int edge_1 = unique_edges[i];
+      int edge_2 = unique_edges[i + 1];
+      new_faces[num_new_faces++] = edge_1;
+      new_faces[num_new_faces++] = edge_2;
+      new_faces[num_new_faces++] = num_points;
+    }
+
+    points[num_points++] = support;
+    if (num_points > COLLISION_MAX_POINTS) {
+      TraceLog(LOG_ERROR, "EPA: Maximum number of points reached");
+      return (collision) {0};
+    }
+
+    int num_new_normals = 0;
+    int new_min_face = -1;
+    Vector4 new_normals[COLLISION_MAX_FACES];
+
+    face_normals(new_normals, &num_new_normals, &new_min_face, points, num_points, new_faces, num_new_faces);
+
+    float old_min_distance = INFINITY;
+    for (int i = 0; i < num_normals; ++i) {
+      if (normals[i].w < old_min_distance) {
+        old_min_distance = normals[i].w;
+        min_face_index = i;
+      }
+    }
+
+    if (new_normals[new_min_face].w < old_min_distance) {
+      min_face_index = new_min_face + num_normals;
+    }
+
+    if (num_indices + num_new_faces > COLLISION_MAX_INDICES) {
+      TraceLog(LOG_ERROR, "Maximum number of indices exceeded: %d", num_indices + num_new_faces);
+      return (collision) { 0 };
+    }
+
+    if (num_normals + num_new_normals > COLLISION_MAX_FACES) {
+      TraceLog(LOG_ERROR, "Maximum number of faces exceeded: %d", num_normals + num_new_normals);
+      return (collision) { 0 };
+    }
+
+    memcpy(indices + num_indices, new_faces, num_new_faces * sizeof(int));
+    memcpy(normals + num_normals, new_normals, num_new_normals * sizeof(Vector4));
+
+    num_indices += num_new_faces;
+    num_normals += num_new_normals;
   }
 
+  Vector3 t1, t2;
+  if (min_normal.x >= 0.57735f) {
+    t1.x = min_normal.y;
+    t1.y = -min_normal.x;
+    t1.z = 0;
+  } else {
+    t1.x = 0;
+    t1.y = min_normal.z;
+    t1.z = -min_normal.y;
+  }
+
+  Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, min_normal);
+  Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(min_normal));
+
+  result.world_contact_a = add(support_a, scale(min_normal, -min_distance * 0.5f));
+  result.world_contact_b = add(support_b, scale(min_normal, min_distance * 0.5f));
+
+  result.local_contact_a = sub(result.world_contact_a, rb_a->p);
+  result.local_contact_b = sub(result.world_contact_b, rb_b->p);
+  
+  result.depth = min_distance + 0.001f;
+  result.normal = min_normal;
+  result.tangent = normalize(t1);
+  result.bitangent = cross(min_normal, result.tangent);
 
   return result;
 }
@@ -382,7 +477,7 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
 
   int num_attempts = 0;
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
-    Vector3 support = shape_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
+    Vector3 support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
     if (dot(support, direction) < GJK_TOLERANCE) {
       return (collision) { 0 };
