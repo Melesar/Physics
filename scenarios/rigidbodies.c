@@ -20,9 +20,6 @@ Model cylinder_model;
 float input_impulse_strength = 15;
 float velocity_damping = 0.993;
 
-collision cylinder_collision = { 0 };
-collision sphere_collision = { 0 };
-
 const Vector3 initial_position = { 0, 4, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
 const Vector3 mesh_origin_offset = { 0, -0.5 * cylinder_shape.height, 0 };
@@ -77,9 +74,6 @@ void setup_scene(Shader shader) {
 }
 
 void reset() {
-  sphere_collision = (collision) { 0 };
-  cylinder_collision = (collision) { 0 };
-
   cylinder_body.l = Vector3Zero();
 }
 
@@ -130,45 +124,68 @@ static void constraint_calculate_velocities(const constraint *c, float lambda, V
 }
 
 void simulate(float dt) {
-  rb_apply_force(&cylinder_body, GRAVITY_V);
+  const int num_bodies = 2;
+  const int max_collisions = 2;
+  
+  rigidbody *bodies[] = { &sphere_body, &cylinder_body };
+  Vector3 omegas[num_bodies];
+  float inv_masses[num_bodies];
+  Matrix inertias[num_bodies];
+  collision collisions[max_collisions];
 
-  rigidbody *rb = &cylinder_body;
-  rb->l = add(rb->l, rb->ti);
-  rb->l = add(rb->l, scale(rb->t, dt));
+  for (int i = 0; i < num_bodies; ++i) {
+    rigidbody *rb = bodies[i];
 
-  float inv_mass = 1.0 / rb->mass;
-  Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
-  rb->v = add(rb->v, acc);
+    rb_apply_force(rb, GRAVITY_V);
 
-  Matrix inv_i0 = { 0 };
-  inv_i0.m0 = rb->i0_inv.x;
-  inv_i0.m5 = rb->i0_inv.y;
-  inv_i0.m10 = rb->i0_inv.z;
-  Matrix orientation = as_matrix(rb->r);
-  Matrix transform = mul(mul(orientation, inv_i0), transpose(orientation));
-  Vector3 omega = transform(rb->l, transform);
+    rb->l = add(rb->l, rb->ti);
+    rb->l = add(rb->l, scale(rb->t, dt));
 
-  cylinder_collision = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, Vector3Zero(), (Vector3) { 0, 1, 0 });
-  if (cylinder_collision.valid) {
+    float inv_mass = 1.0 / rb->mass;
+    Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
+    rb->v = add(rb->v, acc);
+
+    Matrix inv_i0 = { 0 };
+    inv_i0.m0 = rb->i0_inv.x;
+    inv_i0.m5 = rb->i0_inv.y;
+    inv_i0.m10 = rb->i0_inv.z;
+    Matrix orientation = as_matrix(rb->r);
+    Matrix inertia = mul(mul(orientation, inv_i0), transpose(orientation));
+    Vector3 omega = transform(rb->l, inertia);
+
+    inv_masses[i] = inv_mass;
+    inertias[i] = inertia;
+    omegas[i] = omega;
+  }
+
+  collisions[0] = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
+  collisions[1] = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up());
+
+  for(int i = 0; i < num_bodies; ++i) {
+    collision col = collisions[i];
+    if (!col.valid) {
+      continue;
+    }
+
     const float restitution_coeff = 0.7;
     const float baumgarde_coeff = 0.2;
     const float friction_coeff = 0.3;
 
-    Vector3 n = negate(cylinder_collision.normal);
-    constraint c = constraint_new(n, rb->v, cylinder_collision.local_contact_a, omega, transform, inv_mass);
+    Vector3 n = negate(col.normal);
+    constraint c = constraint_new(n, bodies[i]->v, col.local_contact_a, omegas[i], inertias[i], inv_masses[i]);
 
     Vector3 dv = zero();
     Vector3 dl = zero();
     float effective_mass, v_proj;
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-    float restitution = restitution_coeff * (dot(sub(negate(rb->v), cross(omega, cylinder_collision.local_contact_a)), n));
-    float bias = -baumgarde_coeff * cylinder_collision.depth / dt + restitution;
+    float restitution = restitution_coeff * (dot(sub(negate(bodies[i]->v), cross(omegas[i], col.local_contact_a)), n));
+    float bias = -baumgarde_coeff * col.depth / dt + restitution;
     float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
     constraint_calculate_velocities(&c, lambda_normal, &dv, &dl);
 
-    constraint_update(&c, cylinder_collision.tangent, cylinder_collision.local_contact_a);
+    constraint_update(&c, col.tangent, col.local_contact_a);
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
     float limit_friction = fabs(friction_coeff * lambda_normal);
@@ -177,7 +194,7 @@ void simulate(float dt) {
 
     constraint_calculate_velocities(&c, lambda_tangent, &dv, &dl);
     
-    constraint_update(&c, cylinder_collision.bitangent, cylinder_collision.local_contact_a);
+    constraint_update(&c, col.bitangent, col.local_contact_a);
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
     float lambda_bitangent = -v_proj / effective_mass;
@@ -185,20 +202,26 @@ void simulate(float dt) {
 
     constraint_calculate_velocities(&c, lambda_bitangent, &dv, &dl);
 
+    rigidbody *rb = bodies[i];
     rb->v = add(rb->v, dv);
     rb->l = add(rb->l, dl);
 
-    omega = transform(rb->l, transform);
+    omegas[i] = transform(bodies[i]->l, inertias[i]);
   }
 
-  Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
-  Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
-  Quaternion q_orientation = qadd(rb->r, dq);
-  rb->r = qnormalize(q_orientation);
-  rb->t = rb->ti = zero();
+  for (int i = 0; i < num_bodies; ++i) {
+    Vector3 omega = omegas[i];
+    rigidbody *rb = bodies[i];
 
-  rb->p = add(rb->p, scale(rb->v, dt));
-  rb->f = rb->fi = zero();
+    Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
+    Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
+    Quaternion q_orientation = qadd(rb->r, dq);
+    rb->r = qnormalize(q_orientation);
+    rb->t = rb->ti = zero();
+
+    rb->p = add(rb->p, scale(rb->v, dt));
+    rb->f = rb->fi = zero();
+  }
 }
 
 static void draw_collision(const collision *c) {
@@ -217,9 +240,6 @@ void draw(float interpolation) {
 
   draw_model_with_wireframe(cylinder_model, Vector3Zero(), 1.0f, COLOR_GREEN_ACTIVE);
   draw_model_with_wireframe(sphere_model, sphere_body.p, 1.0f, COLOR_BLUE_STATIC);
-
-  draw_collision(&cylinder_collision);
-  draw_collision(&sphere_collision);
 }
 
 void draw_ui(struct nk_context* ctx) {
