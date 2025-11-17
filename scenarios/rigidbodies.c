@@ -80,47 +80,40 @@ void reset() {
 void on_input(Camera *camera) {}
 
 typedef struct {
-  float inv_mass;
-  Vector3 j1, j2;
-  Vector3 v, omega;
-  Matrix I;
+  float inv_mass[2];
+  Vector3 jacobian[4];
+  Vector3 v[2], omega[2];
+  Matrix I[2];
     
 } constraint;
 
-static constraint constraint_new(Vector3 n, Vector3 v, Vector3 ra, Vector3 omega, Matrix I, float inv_mass) {
-  constraint c;
-  c.j1 = negate(n);
-  c.j2 = negate(cross(ra, n));
-  c.inv_mass = inv_mass;
-  c.v = v;
-  c.omega = omega;
-  c.I = I;
-
-  return c;
-}
-
-static void constraint_update(constraint *c, Vector3 n, Vector3 ra) {
-  c->j1 = negate(n);
-  c->j2 = negate(cross(ra, n));
-}
-
 static void constraint_calculate_pre_lambda(const constraint *c, float *effective_mass, float *v_proj) {
-  float m1 = c->I.m0 * c->j2.x + c->I.m1 * c->j2.y + c->I.m2 * c->j2.z;
-  float m2 = c->I.m4 * c->j2.x + c->I.m5 * c->j2.y + c->I.m6 * c->j2.z;   
-  float m3 = c->I.m8 * c->j2.x + c->I.m9 * c->j2.y + c->I.m10 *c-> j2.z;
-  Vector3 m = { m1, m2, m3 };
+  *effective_mass = *v_proj = 0;
+  for (int i = 0; i < 2; i++) {
+    Vector3 j_linear = c->jacobian[i * 2];
+    Vector3 j_radial = c->jacobian[i * 2 + 1];
 
-  *effective_mass = c->inv_mass * dot(c->j1, c->j1) + dot(m, c->j2);
-  *v_proj = dot(c->j1, c->v) + dot(c->j2, c->omega);
+    float m1 = c->I[i].m0 * j_radial.x + c->I[i].m1 * j_radial.y + c->I[i].m2 * j_radial.z;
+    float m2 = c->I[i].m4 * j_radial.x + c->I[i].m5 * j_radial.y + c->I[i].m6 * j_radial.z;   
+    float m3 = c->I[i].m8 * j_radial.x + c->I[i].m9 * j_radial.y + c->I[i].m10 *j_radial.z;
+    Vector3 m = { m1, m2, m3 };
+
+    *effective_mass += c->inv_mass[i] * dot(j_linear, j_linear) + dot(m, j_radial);
+    *v_proj += dot(j_linear, c->v[i]) + dot(j_radial, c->omega[i]);
+  }
 }
 
-static void constraint_calculate_velocities(const constraint *c, float lambda, Vector3 *dv, Vector3 *dl) {
-  *dv = add(*dv, scale(c->j1, c->inv_mass * lambda));
-  Vector3 mm1 = { c->I.m0, c->I.m4, c->I.m8 };
-  Vector3 mm2 = { c->I.m1, c->I.m5, c->I.m9 };
-  Vector3 mm3 = { c->I.m2, c->I.m6, c->I.m10 };
-  Vector3 mm = { dot(mm1, c->j2), dot(mm2, c->j2), dot(mm3, c->j2) };
-  *dl = add(*dl, scale(mm, lambda));
+static void constraint_calculate_velocities(const constraint *c, float lambda, Vector3 *delta) {
+  for (int i = 0; i < 2; ++i) {
+    delta[i * 2] = add(delta[i * 2], scale(c->jacobian[i * 2], c->inv_mass[i] * lambda));
+
+    Vector3 mm1 = { c->I[i].m0, c->I[i].m4, c->I[i].m8 };
+    Vector3 mm2 = { c->I[i].m1, c->I[i].m5, c->I[i].m9 };
+    Vector3 mm3 = { c->I[i].m2, c->I[i].m6, c->I[i].m10 };
+    Vector3 mm = { dot(mm1, c->jacobian[i * 2 + 1]), dot(mm2, c->jacobian[i * 2 + 1]), dot(mm3, c->jacobian[i * 2 + 1]) };
+
+    delta[i * 2 + 1] = add(delta[i * 2 + 1], scale(mm, lambda));
+  }
 }
 
 void simulate(float dt) {
@@ -172,10 +165,17 @@ void simulate(float dt) {
     const float friction_coeff = 0.3;
 
     Vector3 n = negate(col.normal);
-    constraint c = constraint_new(n, bodies[i]->v, col.local_contact_a, omegas[i], inertias[i], inv_masses[i]);
+    Vector3 ra = col.local_contact_a;
 
-    Vector3 dv = zero();
-    Vector3 dl = zero();
+    constraint c = { 0 };
+    c.jacobian[0] = negate(n);
+    c.jacobian[1] = negate(cross(ra, n));
+    c.inv_mass[0] = inv_masses[i];
+    c.v[0] = bodies[i]->v;
+    c.omega[0] = omegas[i];
+    c.I[0] = inertias[i];
+
+    Vector3 delta[4] = { 0 };
     float effective_mass, v_proj;
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
@@ -183,28 +183,30 @@ void simulate(float dt) {
     float bias = -baumgarde_coeff * col.depth / dt + restitution;
     float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
-    constraint_calculate_velocities(&c, lambda_normal, &dv, &dl);
+    constraint_calculate_velocities(&c, lambda_normal, delta);
 
-    constraint_update(&c, col.tangent, col.local_contact_a);
+    c.jacobian[0] = negate(col.tangent);
+    c.jacobian[1] = negate(cross(col.local_contact_a, col.tangent));
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
     float limit_friction = fabs(friction_coeff * lambda_normal);
     float lambda_tangent = -v_proj / effective_mass;
     lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, lambda_tangent));
 
-    constraint_calculate_velocities(&c, lambda_tangent, &dv, &dl);
+    constraint_calculate_velocities(&c, lambda_tangent, delta);
     
-    constraint_update(&c, col.bitangent, col.local_contact_a);
+    c.jacobian[0] = negate(col.bitangent);
+    c.jacobian[1] = negate(cross(col.local_contact_a, col.bitangent));
     constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
     float lambda_bitangent = -v_proj / effective_mass;
     lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, lambda_bitangent));
 
-    constraint_calculate_velocities(&c, lambda_bitangent, &dv, &dl);
+    constraint_calculate_velocities(&c, lambda_bitangent, delta);
 
     rigidbody *rb = bodies[i];
-    rb->v = add(rb->v, dv);
-    rb->l = add(rb->l, dl);
+    rb->v = add(rb->v, delta[0]);
+    rb->l = add(rb->l, delta[1]);
 
     omegas[i] = transform(bodies[i]->l, inertias[i]);
   }
