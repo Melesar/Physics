@@ -89,6 +89,13 @@ Vector3 rb_angular_velocity(const rigidbody* rb) {
   return rb_angular_velocity_ex(rb, inv_i0);
 }
 
+void rb_angular_params(const rigidbody *rb, Matrix *inertia, Vector3 *omega) {
+  Matrix orientation = as_matrix(rb->r);
+  Matrix inv_i0 = rb_inv_i0_m(rb);
+  *inertia = mul(mul(orientation, inv_i0), transpose(orientation));
+  *omega = transform(rb->l, *inertia);
+}
+
 rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t) {
   rigidbody result;
   result.p = vlerp(from->p, to->p, t);

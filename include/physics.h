@@ -71,6 +71,7 @@ Matrix rb_transformation(const rigidbody* rb);
 Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset);
 Matrix rb_inertia_world(const rigidbody* rb);
 Vector3 rb_angular_velocity(const rigidbody* rb);
+void rb_angular_params(const rigidbody *rb, Matrix *inertia, Vector3 *omega);
 
 void rb_apply_impulse_at(rigidbody* rb, Vector3 at, Vector3 impulse);
 void rb_apply_force_at(rigidbody* rb, Vector3 at, Vector3 force);
