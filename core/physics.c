@@ -4,13 +4,14 @@
 #include "stdlib.h"
 #include "string.h"
 
-#define COLLISION_MAX_POINTS 16
+#define COLLISION_MAX_POINTS 32
 #define COLLISION_MAX_INDICES (3 * COLLISION_MAX_FACES)
-#define COLLISION_MAX_FACES 16
+#define COLLISION_MAX_FACES 64
 
 #define SOLVER_TOLERANCE 0.01
 #define MAX_GJK_ATTEMPTS 20
 #define GJK_TOLERANCE 0.0001
+#define EPA_TOLERANCE 0.001
 
 typedef enum {
   SHAPE_CYLINDER,
@@ -212,7 +213,7 @@ static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index
       distance *= -1;
     }
 
-    normals[*num_normals++] = (Vector4) { normal.x, normal.y, normal.z, distance  };
+    normals[(*num_normals)++] = (Vector4) { normal.x, normal.y, normal.z, distance  };
 
     if (distance < min_distance) {
       *min_face_index = i / 3;
@@ -271,15 +272,17 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
 
     Vector3 support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
     float distance = dot(min_normal, support);
-    if (fabsf(distance - min_distance) > 0.001) {
+    if (fabsf(distance - min_distance) > EPA_TOLERANCE) {
       min_distance = INFINITY;
+    } else {
+      break;
     }
 
     int num_unique_edges = 0;
     int unique_edges[COLLISION_MAX_INDICES] = {0};
     for (int i = 0; i < num_normals; ++i) {
       Vector3 normal = *(Vector3*)&normals[i];
-      if (dot(normal, support) < 0) {
+      if (dot(normal, support) - normals[i].w <= EPA_TOLERANCE) {
         continue;
       }
 
@@ -310,11 +313,12 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
       new_faces[num_new_faces++] = num_points;
     }
 
-    points[num_points++] = support;
-    if (num_points > COLLISION_MAX_POINTS) {
-      TraceLog(LOG_ERROR, "EPA: Maximum number of points reached");
+    if (num_points >= COLLISION_MAX_POINTS) {
+      TraceLog(LOG_ERROR, "EPA: Maximum number of points reached: %d", num_points);
       return (collision) {0};
     }
+
+    points[num_points++] = support;
 
     int num_new_normals = 0;
     int new_min_face = -1;
@@ -335,12 +339,12 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     }
 
     if (num_indices + num_new_faces > COLLISION_MAX_INDICES) {
-      TraceLog(LOG_ERROR, "Maximum number of indices exceeded: %d", num_indices + num_new_faces);
+      TraceLog(LOG_ERROR, "EPA: Maximum number of indices exceeded: %d", num_indices + num_new_faces);
       return (collision) { 0 };
     }
 
     if (num_normals + num_new_normals > COLLISION_MAX_FACES) {
-      TraceLog(LOG_ERROR, "Maximum number of faces exceeded: %d", num_normals + num_new_normals);
+      TraceLog(LOG_ERROR, "EPA: Maximum number of faces exceeded: %d", num_normals + num_new_normals);
       return (collision) { 0 };
     }
 

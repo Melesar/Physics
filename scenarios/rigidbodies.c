@@ -161,7 +161,7 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, const col
   constraint_calculate_velocities(&c, lambda_normal, delta);
 
   c.jacobian[0] = negate(collision->tangent);
-  c.jacobian[1] = negate(cross(rb, collision->tangent));
+  c.jacobian[1] = negate(cross(ra, collision->tangent));
   c.jacobian[2] = collision->tangent;
   c.jacobian[3] = cross(rb, collision->tangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
