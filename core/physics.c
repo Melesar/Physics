@@ -514,12 +514,40 @@ collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const ri
   return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
 }
 
-collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal) {
-  collision result = {0};
+static int cylinder_plane_store_contact(Vector3 point_on_cylinder, Vector3 normal, Vector3 plane_point, Vector3 tangent, Vector3 bitangent, const rigidbody *cylinder_rb, collision *contacts, int max_contacts, int count) {
+  if (count >= max_contacts) {
+    return count;
+  }
+
+  const float contact_epsilon = 0.001f;
+  float distance = dot(sub(point_on_cylinder, plane_point), normal);
+  if (distance < contact_epsilon) {
+    collision *contact = &contacts[count++];
+    contact->valid = true;
+    contact->normal = normal;
+    contact->tangent = tangent;
+    contact->bitangent = bitangent;
+    contact->depth = fmaxf(0.0f, -distance);
+    contact->world_contact_a = point_on_cylinder;
+    contact->world_contact_b = sub(point_on_cylinder, scale(normal, distance));
+    contact->local_contact_a = sub(point_on_cylinder, cylinder_rb->p);
+    contact->local_contact_b = sub(contact->world_contact_b, plane_point);
+  }
+
+  return count;
+}
+
+int cylinder_plane_contact_manifold(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_contacts) {
+  if (max_contacts <= 0 || contacts == NULL) {
+    return 0;
+  }
 
   Vector3 normal = normalize(plane_normal);
-  Vector3 cylinder_axis = rotate(up(), cylinder_rb->r);
+  Vector3 tangent_seed = (fabsf(normal.x) < 0.9f) ? (Vector3){1, 0, 0} : (Vector3){0, 1, 0};
+  Vector3 tangent = normalize(cross(tangent_seed, normal));
+  Vector3 bitangent = cross(normal, tangent);
 
+  Vector3 cylinder_axis = rotate(up(), cylinder_rb->r);
   float half_height = cylinder_height * 0.5f;
 
   Vector3 cap_top = add(cylinder_rb->p, scale(cylinder_axis, half_height));
@@ -532,15 +560,13 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
   Vector3 closest_cap_center = (dist_top < dist_bottom) ? cap_top : cap_bottom;
 
   float axis_projection = fabsf(dot(cylinder_axis, normal));
+  const float perpendicular_threshold = 0.001f;
 
   Vector3 closest_point;
   float min_distance;
 
-  const float perpendicular_threshold = 0.001f;
-
   if (axis_projection < perpendicular_threshold) {
-    Vector3 normal_radial = sub(normal, scale(cylinder_axis,
-                                            dot(normal, cylinder_axis)));
+    Vector3 normal_radial = sub(normal, scale(cylinder_axis, dot(normal, cylinder_axis)));
     float radial_length = len(normal_radial);
 
     if (radial_length > perpendicular_threshold) {
@@ -552,8 +578,7 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
       min_distance = closest_cap_dist;
     }
   } else {
-    Vector3 normal_on_cap = sub(normal, scale(cylinder_axis,
-                                            dot(normal, cylinder_axis)));
+    Vector3 normal_on_cap = sub(normal, scale(cylinder_axis, dot(normal, cylinder_axis)));
     float normal_on_cap_length = len(normal_on_cap);
 
     if (normal_on_cap_length > perpendicular_threshold) {
@@ -566,24 +591,83 @@ collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cyl
     min_distance = dot(sub(closest_point, plane_point), normal);
   }
 
+  int contact_count = 0;
   const float contact_epsilon = 0.001f;
-  if (min_distance < contact_epsilon) {
-    result.valid = true;
-    result.normal = normal;
-    result.depth = fmaxf(0.0f, -min_distance);
-
-    Vector3 tangent_seed = (fabsf(normal.x) < 0.9f) ? (Vector3){1, 0, 0} : (Vector3){0, 1, 0};
-    result.tangent = normalize(cross(tangent_seed, normal));
-    result.bitangent = cross(normal, result.tangent);
-
-    result.world_contact_a = closest_point;
-    result.world_contact_b = sub(closest_point, scale(normal, min_distance));
-
-    result.local_contact_a = sub(closest_point, cylinder_rb->p);
-    result.local_contact_b = sub(result.world_contact_b, plane_point);
+  if (min_distance >= contact_epsilon) {
+    return 0;
   }
 
-  return result;
+  if (axis_projection < perpendicular_threshold) {
+    Vector3 normal_radial = sub(normal, scale(cylinder_axis, dot(normal, cylinder_axis)));
+    float radial_length = len(normal_radial);
+    if (radial_length > perpendicular_threshold) {
+      Vector3 radial_dir = scale(normal_radial, -1.0f / radial_length);
+      Vector3 mid_point = add(cylinder_rb->p, scale(radial_dir, cylinder_radius));
+
+      Vector3 offsets[] = {
+        zero(),
+        scale(cylinder_axis, half_height),
+        scale(cylinder_axis, -half_height),
+        scale(cylinder_axis, half_height * 0.5f),
+        scale(cylinder_axis, -half_height * 0.5f)
+      };
+
+      int num_offsets = sizeof(offsets) / sizeof(offsets[0]);
+      for (int i = 0; i < num_offsets && contact_count < max_contacts; ++i) {
+        Vector3 sample_point = add(mid_point, offsets[i]);
+        contact_count = cylinder_plane_store_contact(sample_point, normal, plane_point, tangent, bitangent, cylinder_rb, contacts, max_contacts, contact_count);
+      }
+    }
+  } else {
+    Vector3 axis_hint = (fabsf(cylinder_axis.y) < 0.999f) ? up() : right();
+    Vector3 cap_u = cross(axis_hint, cylinder_axis);
+    float cap_u_len = len(cap_u);
+    if (cap_u_len < 0.001f) {
+      axis_hint = forward();
+      cap_u = cross(axis_hint, cylinder_axis);
+      cap_u_len = len(cap_u);
+    }
+    cap_u = scale(cap_u, 1.0f / cap_u_len);
+    Vector3 cap_v = cross(cylinder_axis, cap_u);
+    cap_v = normalize(cap_v);
+
+    Vector3 rim_dirs[9];
+    int rim_count = 0;
+    rim_dirs[rim_count++] = zero();
+    rim_dirs[rim_count++] = cap_u;
+    rim_dirs[rim_count++] = negate(cap_u);
+    rim_dirs[rim_count++] = cap_v;
+    rim_dirs[rim_count++] = negate(cap_v);
+
+    Vector3 diag1 = normalize(add(cap_u, cap_v));
+    Vector3 diag2 = normalize(sub(cap_u, cap_v));
+    rim_dirs[rim_count++] = diag1;
+    rim_dirs[rim_count++] = negate(diag1);
+    rim_dirs[rim_count++] = diag2;
+    rim_dirs[rim_count++] = negate(diag2);
+
+    for (int i = 0; i < rim_count && contact_count < max_contacts; ++i) {
+      Vector3 offset = scale(rim_dirs[i], cylinder_radius);
+      Vector3 sample_point = add(closest_cap_center, offset);
+      contact_count = cylinder_plane_store_contact(sample_point, normal, plane_point, tangent, bitangent, cylinder_rb, contacts, max_contacts, contact_count);
+    }
+  }
+
+  if (contact_count == 0) {
+    contact_count = cylinder_plane_store_contact(closest_point, normal, plane_point, tangent, bitangent, cylinder_rb, contacts, max_contacts, contact_count);
+  }
+
+  return contact_count;
+}
+
+collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal) {
+  collision single_contact = {0};
+  int generated = cylinder_plane_contact_manifold(cylinder_rb, cylinder_height, cylinder_radius, plane_point, plane_normal, &single_contact, 1);
+  if (generated == 0) {
+    return (collision){0};
+  }
+
+  return single_contact;
 }
 
 collision sphere_plane_check_collision(const rigidbody *sphere_rb, float radius, Vector3 plane_point, Vector3 plane_normal) {

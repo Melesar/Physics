@@ -201,7 +201,7 @@ void simulate(float dt) {
   Vector3 omegas[num_bodies];
   float inv_masses[num_bodies];
   Matrix inertias[num_bodies];
-  collision collisions[max_collisions];
+
 
   for (int i = 0; i < num_bodies; ++i) {
     rigidbody *rb = bodies[i];
@@ -219,26 +219,32 @@ void simulate(float dt) {
     rb_angular_params(rb, &inertias[i], &omegas[i]);
   }
 
-  collisions[0] = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
-  collisions[1] = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up());
+  const int max_cylinder_collisions = 6;
+  collision cylinder_manifold[max_cylinder_collisions];
+  int num_cylinder_collisions = cylinder_plane_contact_manifold(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up(), cylinder_manifold, max_cylinder_collisions);
 
+  collision sphere_collision = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
   collision shapes_collision = cylinder_sphere_check_collision(bodies[1], bodies[0], cylinder_shape.height, cylinder_shape.radius, sphere_radius);
 
   rigidbody plane_dummy = {0};
   plane_dummy.mass = INFINITY;
   plane_dummy.r = QuaternionIdentity();
 
+  Vector3 plane_omega;
   for (int iteration = 0; iteration < solver_iterations; ++iteration) {
-    for(int i = 0; i < num_bodies; ++i) {
-      collision col = collisions[i];
+    for(int i = 0; i < num_cylinder_collisions; ++i) {
+      collision col = cylinder_manifold[i];
       if (!col.valid) {
         continue;
       }
 
-      Vector3 plane_omega = zero();
-      contact_constraint_solve(bodies[i], &plane_dummy, &omegas[i], &plane_omega, &col, dt);
+      plane_omega = zero();
+      contact_constraint_solve(&cylinder_body, &plane_dummy, &omegas[1], &plane_omega, &col, dt);
     }
 
+    plane_omega = zero();
+    if (sphere_collision.valid)
+      contact_constraint_solve(&sphere_body, &plane_dummy, &omegas[0], &plane_omega, &sphere_collision, dt);
     if (shapes_collision.valid)
       contact_constraint_solve(bodies[1], bodies[0], &omegas[1], &omegas[0], &shapes_collision, dt);
   }

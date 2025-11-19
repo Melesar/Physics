@@ -98,6 +98,7 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
 
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius);
 collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal);
+int cylinder_plane_contact_manifold(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_contacts);
 collision sphere_plane_check_collision(const rigidbody *shpere_rb, float radius, Vector3 plane_point, Vector3 plane_normal);
 
 // ==== CONSTRAINTS ====
