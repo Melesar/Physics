@@ -224,7 +224,9 @@ void simulate(float dt) {
   int num_cylinder_collisions = cylinder_plane_contact_manifold(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up(), cylinder_manifold, max_cylinder_collisions);
 
   collision sphere_collision = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
-  collision shapes_collision = cylinder_sphere_check_collision(bodies[1], bodies[0], cylinder_shape.height, cylinder_shape.radius, sphere_radius);
+
+  collision shapes_manifold[3];
+  int num_shape_collisions = cylinder_sphere_contact_manifold(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius, shapes_manifold, 3);
 
   rigidbody plane_dummy = {0};
   plane_dummy.mass = INFINITY;
@@ -245,8 +247,14 @@ void simulate(float dt) {
     plane_omega = zero();
     if (sphere_collision.valid)
       contact_constraint_solve(&sphere_body, &plane_dummy, &omegas[0], &plane_omega, &sphere_collision, dt);
-    if (shapes_collision.valid)
-      contact_constraint_solve(bodies[1], bodies[0], &omegas[1], &omegas[0], &shapes_collision, dt);
+
+    for (int i = 0; i < num_shape_collisions; ++i) {
+      if (shapes_manifold[i].valid)
+        contact_constraint_solve(&cylinder_body, &sphere_body, &omegas[1], &omegas[0], &shapes_manifold[i], dt);
+      
+    }
+    // if (shapes_collision.valid)
+    //   contact_constraint_solve(bodies[1], bodies[0], &omegas[1], &omegas[0], &shapes_collision, dt);
   }
 
   for (int i = 0; i < num_bodies; ++i) {

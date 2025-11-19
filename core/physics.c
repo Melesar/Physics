@@ -18,6 +18,12 @@ typedef enum {
   SHAPE_SPHERE,
 } shape_type;
 
+typedef struct {
+  Vector3 minkowski;
+  Vector3 support_a;
+  Vector3 support_b;
+} support_point;
+
 Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
   float principal =  mass * (3 * c.radius * c.radius + c.height * c.height) / 12.0;
   return (Vector3){ principal, mass * c.radius * c.radius / 2.0, principal };
@@ -190,20 +196,24 @@ Vector3 single_shape_support(shape_type type, const rigidbody *rb, Vector2 param
   }
 }
 
-Vector3 shapes_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
+support_point shapes_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
   Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, direction);
   Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(direction));
 
-  return sub(support_a, support_b);
+  support_point point = {0};
+  point.support_a = support_a;
+  point.support_b = support_b;
+  point.minkowski = sub(support_a, support_b);
+  return point;
 }
 
-static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index, Vector3 *points, int num_points, int *indices, int num_indices) {
+static void face_normals(Vector4 *normals, int *num_normals, int *min_face_index, support_point *points, int num_points, int *indices, int num_indices) {
   float min_distance = INFINITY;
 
   for (int i = 0; i < num_indices; i += 3) {
-    Vector3 a = points[indices[i]];
-    Vector3 b = points[indices[i + 1]];
-    Vector3 c = points[indices[i + 2]];
+    Vector3 a = points[indices[i]].minkowski;
+    Vector3 b = points[indices[i + 1]].minkowski;
+    Vector3 c = points[indices[i + 2]].minkowski;
     
     Vector3 normal = normalize(cross(sub(b, a), sub(c, a)));
     float distance = dot(normal, a);
@@ -237,9 +247,10 @@ static void add_if_unique_edge(int *unique_edges, int *num_unique_edges, int *fa
   *num_unique_edges += 2;
 }
 
-static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
-  collision result = {0};
-  result.valid = true;
+static int epa(support_point *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, collision *contacts, int max_contacts) {
+  if (contacts == NULL || max_contacts <= 0) {
+    return 0;
+  }
 
   int num_indices = 12;
   int indices[COLLISION_MAX_INDICES];
@@ -270,8 +281,8 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     min_normal = *(Vector3*)&normals[min_face_index];
     min_distance = normals[min_face_index].w;
 
-    Vector3 support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
-    float distance = dot(min_normal, support);
+    support_point support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, min_normal);
+    float distance = dot(min_normal, support.minkowski);
     if (fabsf(distance - min_distance) > EPA_TOLERANCE) {
       min_distance = INFINITY;
     } else {
@@ -282,7 +293,7 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     int unique_edges[COLLISION_MAX_INDICES] = {0};
     for (int i = 0; i < num_normals; ++i) {
       Vector3 normal = *(Vector3*)&normals[i];
-      if (dot(normal, support) - normals[i].w <= EPA_TOLERANCE) {
+      if (dot(normal, support.minkowski) - normals[i].w <= EPA_TOLERANCE) {
         continue;
       }
 
@@ -315,7 +326,7 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
 
     if (num_points >= COLLISION_MAX_POINTS) {
       TraceLog(LOG_ERROR, "EPA: Maximum number of points reached: %d", num_points);
-      return (collision) {0};
+      return 0;
     }
 
     points[num_points++] = support;
@@ -340,12 +351,12 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
 
     if (num_indices + num_new_faces > COLLISION_MAX_INDICES) {
       TraceLog(LOG_ERROR, "EPA: Maximum number of indices exceeded: %d", num_indices + num_new_faces);
-      return (collision) { 0 };
+      return 0;
     }
 
     if (num_normals + num_new_normals > COLLISION_MAX_FACES) {
       TraceLog(LOG_ERROR, "EPA: Maximum number of faces exceeded: %d", num_normals + num_new_normals);
-      return (collision) { 0 };
+      return 0;
     }
 
     memcpy(indices + num_indices, new_faces, num_new_faces * sizeof(int));
@@ -355,7 +366,7 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     num_normals += num_new_normals;
   }
 
-  Vector3 t1, t2;
+  Vector3 t1;
   if (min_normal.x >= 0.57735f) {
     t1.x = min_normal.y;
     t1.y = -min_normal.x;
@@ -366,25 +377,48 @@ static collision epa(Vector3 *points, int num_points, shape_type shape_a, shape_
     t1.z = -min_normal.y;
   }
 
-  Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, min_normal);
-  Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(min_normal));
+  Vector3 tangent = normalize(t1);
+  Vector3 bitangent = cross(min_normal, tangent);
 
-  result.world_contact_a = add(support_a, scale(min_normal, -min_distance * 0.5f));
-  result.world_contact_b = add(support_b, scale(min_normal, min_distance * 0.5f));
+  int face_base = min_face_index * 3;
+  int contact_count = 0;
+  float penetration = fmaxf(0.0f, min_distance + 0.001f);
 
-  result.local_contact_a = sub(result.world_contact_a, rb_a->p);
-  result.local_contact_b = sub(result.world_contact_b, rb_b->p);
-  
-  result.depth = min_distance + 0.001f;
-  result.normal = min_normal;
-  result.tangent = normalize(t1);
-  result.bitangent = cross(min_normal, result.tangent);
+  for (int i = 0; i < 3 && contact_count < max_contacts; ++i) {
+    int idx = indices[face_base + i];
+    support_point vertex = points[idx];
+    collision *contact = &contacts[contact_count++];
+    contact->valid = true;
+    contact->normal = min_normal;
+    contact->tangent = tangent;
+    contact->bitangent = bitangent;
+    contact->depth = penetration;
+    contact->world_contact_a = vertex.support_a;
+    contact->world_contact_b = vertex.support_b;
+    contact->local_contact_a = sub(vertex.support_a, rb_a->p);
+    contact->local_contact_b = sub(vertex.support_b, rb_b->p);
+  }
 
-  return result;
+  if (contact_count == 0) {
+    Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, min_normal);
+    Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(min_normal));
+    collision *contact = &contacts[contact_count++];
+    contact->valid = true;
+    contact->normal = min_normal;
+    contact->tangent = tangent;
+    contact->bitangent = bitangent;
+    contact->depth = penetration;
+    contact->world_contact_a = add(support_a, scale(min_normal, -min_distance * 0.5f));
+    contact->world_contact_b = add(support_b, scale(min_normal, min_distance * 0.5f));
+    contact->local_contact_a = sub(contact->world_contact_a, rb_a->p);
+    contact->local_contact_b = sub(contact->world_contact_b, rb_b->p);
+  }
+
+  return contact_count;
 }
 
-static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) {
-  Vector3 a, b, c, d;
+static bool gjk_update_simplex(support_point *points, int *count, Vector3 *direction) {
+  support_point a, b, c, d;
   Vector3 ab, ac, ad, ao;
   Vector3 abc, acd, adb;
 
@@ -395,10 +429,10 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       c = points[2];
       d = points[3];
 
-      ab = sub(b, a);
-      ac = sub(c, a);
-      ad = sub(d, a);
-      ao = negate(a);
+      ab = sub(b.minkowski, a.minkowski);
+      ac = sub(c.minkowski, a.minkowski);
+      ad = sub(d.minkowski, a.minkowski);
+      ao = negate(a.minkowski);
 
       abc = cross(ab, ac);
       acd = cross(ac, ad);
@@ -426,9 +460,9 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       b = points[1];
       c = points[2];
 
-      ab = sub(b, a);
-      ac = sub(c, a);
-      ao = negate(a);
+      ab = sub(b.minkowski, a.minkowski);
+      ac = sub(c.minkowski, a.minkowski);
+      ao = negate(a.minkowski);
 
       Vector3 abc = cross(ab, ac);
       if (dot(cross(abc, ac), ao) > 0) {
@@ -461,8 +495,8 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
     	}
 
     case 2:
-      ab = sub(points[1], points[0]);
-      ao = negate(points[0]);
+      ab = sub(points[1].minkowski, points[0].minkowski);
+      ao = negate(points[0].minkowski);
 
       if (dot(ab, ao) > 0) {
         *direction = normalize(cross(cross(ab, ao), ab));
@@ -473,25 +507,29 @@ static bool gjk_update_simplex(Vector3 *points, int *count, Vector3 *direction) 
       return false;
 
     case 1:
-      *direction = normalize(negate(points[0]));
+      *direction = normalize(negate(points[0].minkowski));
       return false;
   }
 
   return false;
 }
 
-collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b) {
+int check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, collision *contacts, int max_contacts) {
+  if (contacts == NULL || max_contacts <= 0) {
+    return 0;
+  }
+
   Vector3 direction = right();
 
   int num_points = 0;
-  Vector3 points[COLLISION_MAX_POINTS];
+  support_point points[COLLISION_MAX_POINTS];
 
   int num_attempts = 0;
   while(++num_attempts < MAX_GJK_ATTEMPTS) {
-    Vector3 support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
+    support_point support = shapes_support(shape_a, shape_b, rb_a, rb_b, params_a, params_b, direction);
 
-    if (dot(support, direction) < GJK_TOLERANCE) {
-      return (collision) { 0 };
+    if (dot(support.minkowski, direction) < GJK_TOLERANCE) {
+      return 0;
     }
 
     points[3] = points[2];
@@ -502,16 +540,25 @@ collision check_collision(shape_type shape_a, shape_type shape_b, const rigidbod
     num_points += 1;
 
     if (gjk_update_simplex(points, &num_points, &direction)) {
-      return epa(points, num_points, shape_a, shape_b, rb_a, rb_b, params_a, params_b);
+      return epa(points, num_points, shape_a, shape_b, rb_a, rb_b, params_a, params_b, contacts, max_contacts);
     }
   }
 
   TraceLog(LOG_WARNING, "Max GJK attempts reached withot the result. Collision detection failed");
-  return (collision) { 0 };
+  return 0;
+}
+
+int cylinder_sphere_contact_manifold(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius, collision *contacts, int max_contacts) {
+  return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius }, contacts, max_contacts);
 }
 
 collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius) {
-  return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius });
+  collision result = {0};
+  if (cylinder_sphere_contact_manifold(cylinder_rb, sphere_rb, cylinder_height, cylinder_radius, sphere_radius, &result, 1) > 0) {
+    return result;
+  }
+
+  return result;
 }
 
 static int cylinder_plane_store_contact(Vector3 point_on_cylinder, Vector3 normal, Vector3 plane_point, Vector3 tangent, Vector3 bitangent, const rigidbody *cylinder_rb, collision *contacts, int max_contacts, int count) {
