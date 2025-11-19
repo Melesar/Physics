@@ -18,7 +18,11 @@ Model sphere_model;
 Model cylinder_model;
 
 float input_impulse_strength = 15;
-float velocity_damping = 0.993;
+float velocity_damping = 0.998;
+float restitution_coeff = 0.7;
+float baumgarde_coeff = 0.2;
+float friction_coeff = 0.3;
+int solver_iterations = 1;
 
 const Vector3 initial_position = { 0, 4, 0 };
 const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
@@ -74,7 +78,12 @@ void setup_scene(Shader shader) {
 }
 
 void reset() {
-  cylinder_body.l = Vector3Zero();
+  cylinder_body.l = cylinder_body.v = zero();
+  cylinder_body.r = QuaternionFromEuler(0, 0, 30 * DEG2RAD);
+  cylinder_body.p = initial_position;
+
+  sphere_body.p = add(cylinder_body.p, scale(up(), 3));
+  sphere_body.v = zero();
 }
 
 void on_input(Camera *camera) {}
@@ -116,18 +125,10 @@ static void constraint_calculate_velocities(const constraint *c, float lambda, V
   }
 }
 
-static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, const collision *collision, float dt) {
-  Vector3 omegas[2];
-  Matrix inertias[2];
+static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *omega_a, Vector3 *omega_b, const collision *collision, float dt) {
+  Matrix inertias[] = { rb_inertia_world(rb_a), rb_inertia_world(rb_b) };
   float inv_masses[] = { 1.0 / rb_a->mass, 1.0 / rb_b->mass };
-
-  rb_angular_params(rb_a, &inertias[0], &omegas[0]);
-  rb_angular_params(rb_b, &inertias[1], &omegas[1]);
   
-  const float restitution_coeff = 0.7;
-  const float baumgarde_coeff = 0.2;
-  const float friction_coeff = 0.3;
-
   Vector3 n = negate(collision->normal);
   Vector3 ra = collision->local_contact_a;
   Vector3 rb = collision->local_contact_b;
@@ -144,8 +145,8 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, const col
   c.v[0] = rb_a->v;
   c.v[1] = rb_b->v;
 
-  c.omega[0] = omegas[0];
-  c.omega[1] = omegas[1];
+  c.omega[0] = *omega_a;
+  c.omega[1] = *omega_b;
 
   c.I[0] = inertias[0];
   c.I[1] = inertias[1];
@@ -154,7 +155,7 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, const col
   float effective_mass, v_proj;
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float restitution = restitution_coeff * dot(add(sub(negate(rb_a->v), cross(omegas[0], collision->local_contact_a)), add(rb_b->v, cross(omegas[1], collision->local_contact_b))), n);
+  float restitution = restitution_coeff * dot(add(sub(negate(rb_a->v), cross(*omega_a, collision->local_contact_a)), add(rb_b->v, cross(*omega_b, collision->local_contact_b))), n);
   float bias = -baumgarde_coeff * collision->depth / dt + restitution;
   float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
@@ -187,6 +188,9 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, const col
   rb_a->l = add(rb_a->l, delta[1]);
   rb_b->v = add(rb_b->v, delta[2]);
   rb_b->l = add(rb_b->l, delta[3]);
+
+  *omega_a = transform(rb_a->l, inertias[0]);
+  *omega_b = transform(rb_b->l, inertias[1]);
 }
 
 void simulate(float dt) {
@@ -211,38 +215,33 @@ void simulate(float dt) {
     Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
     rb->v = add(rb->v, acc);
 
-    Matrix inv_i0 = { 0 };
-    inv_i0.m0 = rb->i0_inv.x;
-    inv_i0.m5 = rb->i0_inv.y;
-    inv_i0.m10 = rb->i0_inv.z;
-    Matrix orientation = as_matrix(rb->r);
-    Matrix inertia = mul(mul(orientation, inv_i0), transpose(orientation));
-    Vector3 omega = transform(rb->l, inertia);
-
     inv_masses[i] = inv_mass;
-    inertias[i] = inertia;
-    omegas[i] = omega;
+    rb_angular_params(rb, &inertias[i], &omegas[i]);
   }
 
   collisions[0] = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
   collisions[1] = cylinder_plane_check_collision(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up());
 
+  collision shapes_collision = cylinder_sphere_check_collision(bodies[1], bodies[0], cylinder_shape.height, cylinder_shape.radius, sphere_radius);
+
   rigidbody plane_dummy = {0};
   plane_dummy.mass = INFINITY;
   plane_dummy.r = QuaternionIdentity();
 
-  for(int i = 0; i < num_bodies; ++i) {
-    collision col = collisions[i];
-    if (!col.valid) {
-      continue;
+  for (int iteration = 0; iteration < solver_iterations; ++iteration) {
+    for(int i = 0; i < num_bodies; ++i) {
+      collision col = collisions[i];
+      if (!col.valid) {
+        continue;
+      }
+
+      Vector3 plane_omega = zero();
+      contact_constraint_solve(bodies[i], &plane_dummy, &omegas[i], &plane_omega, &col, dt);
     }
 
-    contact_constraint_solve(bodies[i], &plane_dummy, &col, dt);
+    if (shapes_collision.valid)
+      contact_constraint_solve(bodies[1], bodies[0], &omegas[1], &omegas[0], &shapes_collision, dt);
   }
-
-  collision shapes_collision = cylinder_sphere_check_collision(bodies[1], bodies[0], cylinder_shape.height, cylinder_shape.radius, sphere_radius);
-  if (shapes_collision.valid)
-    contact_constraint_solve(bodies[1], bodies[0], &shapes_collision, dt);
 
   for (int i = 0; i < num_bodies; ++i) {
     Vector3 omega = omegas[i];
@@ -256,6 +255,9 @@ void simulate(float dt) {
 
     rb->p = add(rb->p, scale(rb->v, dt));
     rb->f = rb->fi = zero();
+
+    rb->v = scale(rb->v, velocity_damping);
+    rb->l = scale(rb->l, velocity_damping);
   }
 }
 
@@ -284,6 +286,9 @@ void draw_ui(struct nk_context* ctx) {
 
     draw_property_float(ctx, "#impulse_strength", &input_impulse_strength, 0, 100, 1, 0.5);
     draw_property_float(ctx, "#damping", &velocity_damping, 0.990, 0.999, 0.001, 0.001);
+    draw_property_float(ctx, "#baumgarde", &baumgarde_coeff, 0, 1, 0.1, 0.05);
+    draw_property_float(ctx, "#restitution", &restitution_coeff, 0, 1, 0.1, 0.05);
+    draw_property_int(ctx, "#solver_iterations", &solver_iterations, 0, 50, 1, 1);
   }
 
   nk_end(ctx);

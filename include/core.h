@@ -42,6 +42,7 @@ void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value);
 void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value);
 
 void draw_property_float(struct nk_context* ctx, char* title, float* value, float min, float max, float step_arrow, float step_drag);
+void draw_property_int(struct nk_context* ctx, char* title, int* value, int min, int max, int step, float step_drag);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
 

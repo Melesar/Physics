@@ -82,6 +82,15 @@ void draw_property_float(struct nk_context* ctx, char* title, float* value, floa
   nk_layout_row_end(ctx);
 }
 
+void draw_property_int(struct nk_context* ctx, char* title, int* value, int min, int max, int step, float step_drag) {
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9);
+  nk_property_int(ctx, title, min, value, max, step, step_drag);
+  nk_layout_row_end(ctx);
+}
+
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color) {
   model.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = color;
   DrawModel(model, position, scale, WHITE);
