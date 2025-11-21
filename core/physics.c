@@ -16,6 +16,7 @@
 typedef enum {
   SHAPE_CYLINDER,
   SHAPE_SPHERE,
+  SHAPE_BOX,
 } shape_type;
 
 typedef struct {
@@ -32,6 +33,16 @@ Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
 Vector3 sphere_inertia_tensor(float radius, float mass) {
   float scale = 2.0 * mass * radius * radius / 5.0;  
   return scale(one(), scale);
+}
+
+Vector3 box_inertia_tensor(Vector3 size, float mass) {
+  float m = mass / 12;
+  float xx = size.x * size.x;
+  float yy = size.y * size.y;
+  float zz = size.z * size.z;
+
+  Vector3 i = { yy + zz, xx + zz, xx + yy };
+  return scale(i, m);
 }
 
 rigidbody rb_new(Vector3 position, float mass) {
@@ -186,17 +197,35 @@ Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion 
   return add(center, world_support);
 }
 
-Vector3 single_shape_support(shape_type type, const rigidbody *rb, Vector2 params, Vector3 direction) {
+Vector3 box_support(Vector3 center, Vector3 size, Quaternion rotation, Vector3 direction) {
+  Quaternion inv_rotation = qinvert(rotation);
+  Vector3 local_dir = rotate(direction, inv_rotation);
+
+  Vector3 half = scale(size, 0.5f);
+  Vector3 local_support = {
+    local_dir.x >= 0 ? half.x : -half.x,
+    local_dir.y >= 0 ? half.y : -half.y,
+    local_dir.z >= 0 ? half.z : -half.z
+  };
+
+  Vector3 world_support = rotate(local_support, rotation);
+  return add(center, world_support);
+}
+
+Vector3 single_shape_support(shape_type type, const rigidbody *rb, Vector3 params, Vector3 direction) {
   switch(type) {
     case SHAPE_CYLINDER:
       return cylinder_support(rb->p, params.y, params.x, rb->r, direction);
 
     case SHAPE_SPHERE:
       return sphere_support(rb->p, params.x, direction);
+
+    case SHAPE_BOX:
+      return box_support(rb->p, params, rb->r, direction);
   }
 }
 
-support_point shapes_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, Vector3 direction) {
+support_point shapes_support(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector3 params_a, Vector3 params_b, Vector3 direction) {
   Vector3 support_a = single_shape_support(shape_a, rb_a, params_a, direction);
   Vector3 support_b = single_shape_support(shape_b, rb_b, params_b, negate(direction));
 
@@ -247,7 +276,7 @@ static void add_if_unique_edge(int *unique_edges, int *num_unique_edges, int *fa
   *num_unique_edges += 2;
 }
 
-static int epa(support_point *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, collision *contacts, int max_contacts) {
+static int epa(support_point *points, int num_points, shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector3 params_a, Vector3 params_b, collision *contacts, int max_contacts) {
   if (contacts == NULL || max_contacts <= 0) {
     return 0;
   }
@@ -514,7 +543,7 @@ static bool gjk_update_simplex(support_point *points, int *count, Vector3 *direc
   return false;
 }
 
-int check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector2 params_a, Vector2 params_b, collision *contacts, int max_contacts) {
+int check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_a, const rigidbody *rb_b, Vector3 params_a, Vector3 params_b, collision *contacts, int max_contacts) {
   if (contacts == NULL || max_contacts <= 0) {
     return 0;
   }
@@ -549,17 +578,60 @@ int check_collision(shape_type shape_a, shape_type shape_b, const rigidbody *rb_
 }
 
 int cylinder_sphere_contact_manifold(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius, collision *contacts, int max_contacts) {
-  return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector2) { sphere_radius, 0 }, (Vector2) { cylinder_height, cylinder_radius }, contacts, max_contacts);
+  return check_collision(SHAPE_SPHERE, SHAPE_CYLINDER, sphere_rb, cylinder_rb, (Vector3) { sphere_radius, 0, 0 }, (Vector3) { cylinder_height, cylinder_radius, 0 }, contacts, max_contacts);
 }
 
-collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius) {
-  collision result = {0};
-  if (cylinder_sphere_contact_manifold(cylinder_rb, sphere_rb, cylinder_height, cylinder_radius, sphere_radius, &result, 1) > 0) {
-    return result;
+int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_collisions) {
+  if (contacts == NULL || max_collisions <= 0) {
+    return 0;
   }
 
-  return result;
+  Vector3 normal = normalize(plane_normal);
+  Vector3 tangent_seed = (fabsf(normal.x) < 0.9f) ? (Vector3){1, 0, 0} : (Vector3){0, 1, 0};
+  Vector3 tangent = normalize(cross(tangent_seed, normal));
+  Vector3 bitangent = cross(normal, tangent);
+
+  Vector3 half = scale(box_size, 0.5f);
+  Vector3 local_corners[8] = {
+    { half.x,  half.y,  half.z},
+    { half.x,  half.y, -half.z},
+    { half.x, -half.y,  half.z},
+    { half.x, -half.y, -half.z},
+    {-half.x,  half.y,  half.z},
+    {-half.x,  half.y, -half.z},
+    {-half.x, -half.y,  half.z},
+    {-half.x, -half.y, -half.z},
+  };
+
+  int contact_count = 0;
+  const float contact_epsilon = 0.001f;
+
+  for (int i = 0; i < 8 && contact_count < max_collisions; ++i) {
+    Vector3 world_corner = add(box_rb->p, rotate(local_corners[i], box_rb->r));
+    float distance = dot(sub(world_corner, plane_point), normal);
+
+    if (distance < contact_epsilon) {
+      collision *contact = &contacts[contact_count++];
+      contact->valid = true;
+      contact->normal = normal;
+      contact->tangent = tangent;
+      contact->bitangent = bitangent;
+      contact->depth = fmaxf(0.0f, -distance);
+
+      contact->world_contact_a = world_corner;
+      contact->world_contact_b = sub(world_corner, scale(normal, distance));
+      contact->local_contact_a = sub(world_corner, box_rb->p);
+      contact->local_contact_b = sub(contact->world_contact_b, plane_point);
+    }
+  }
+
+  return contact_count;
 }
+
+int box_box_contact_manifold(const rigidbody *box_a, const rigidbody *box_b, Vector3 size_a, Vector3 size_b, collision *contacts, int max_collisions) {
+  return check_collision(SHAPE_BOX, SHAPE_BOX, box_a, box_b, size_a, size_b, contacts, max_collisions);
+}
+
 
 static int cylinder_plane_store_contact(Vector3 point_on_cylinder, Vector3 normal, Vector3 plane_point, Vector3 tangent, Vector3 bitangent, const rigidbody *cylinder_rb, collision *contacts, int max_contacts, int count) {
   if (count >= max_contacts) {
@@ -705,16 +777,6 @@ int cylinder_plane_contact_manifold(const rigidbody *cylinder_rb, float cylinder
   }
 
   return contact_count;
-}
-
-collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal) {
-  collision single_contact = {0};
-  int generated = cylinder_plane_contact_manifold(cylinder_rb, cylinder_height, cylinder_radius, plane_point, plane_normal, &single_contact, 1);
-  if (generated == 0) {
-    return (collision){0};
-  }
-
-  return single_contact;
 }
 
 collision sphere_plane_check_collision(const rigidbody *sphere_rb, float radius, Vector3 plane_point, Vector3 plane_normal) {

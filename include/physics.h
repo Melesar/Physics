@@ -49,6 +49,7 @@ typedef struct {
 
 Vector3 cylinder_inertia_tensor(cylinder c, float mass);
 Vector3 sphere_inertia_tensor(float radius, float mass);
+Vector3 box_inertia_tensor(Vector3 size, float mass);
 
 // ==== RIGIDBODY =====
 
@@ -95,11 +96,14 @@ typedef struct {
 
 Vector3 sphere_support(Vector3 center, float radius, Vector3 direction);
 Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction);
+Vector3 box_support(Vector3 center, Vector3 size, Quaternion rotation, Vector3 direction);
 
 int cylinder_sphere_contact_manifold(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius, collision *contacts, int max_contacts);
-collision cylinder_sphere_check_collision(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius);
-collision cylinder_plane_check_collision(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal);
 int cylinder_plane_contact_manifold(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_contacts);
+int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_collisions);
+int box_box_contact_manifold(const rigidbody *box_a, const rigidbody *box_b, Vector3 size_a, Vector3 size_b, collision *contacts, int max_collisions);
+
+
 collision sphere_plane_check_collision(const rigidbody *shpere_rb, float radius, Vector3 plane_point, Vector3 plane_normal);
 
 // ==== CONSTRAINTS ====
