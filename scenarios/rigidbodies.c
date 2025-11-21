@@ -4,48 +4,29 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "gizmos.h"
+
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
-const float sphere_radius = 1;
-const float cylinder_mass = 3;
-const cylinder cylinder_shape = { .height = 2.5, .radius = 1 };
+#define NUM_BOXES 20
 
-rigidbody sphere_body;
-rigidbody cylinder_body;
-struct object cylinder_graphics;
-Mesh cylinder_mesh;
-Model sphere_model;
-Model cylinder_model;
-
-float input_impulse_strength = 15;
 float velocity_damping = 0.998;
 float restitution_coeff = 0.7;
 float baumgarde_coeff = 0.2;
 float friction_coeff = 0.3;
 int solver_iterations = 1;
 
-const Vector3 initial_position = { 0, 4, 0 };
-const Vector3 initial_moment_of_inertia = { 0, 0, 0 };
-const Vector3 mesh_origin_offset = { 0, -0.5 * cylinder_shape.height, 0 };
+const Vector3 box_size = { 1, 1, 1 };
+const float box_mass = 3;
+const int max_collisions = 3 * NUM_BOXES / 2 * (2 + NUM_BOXES - 1) + 8 * NUM_BOXES;
 
-static struct object generate_cylinder_graphics(Shader shader) {
-  cylinder_mesh = GenMeshCylinder(cylinder_shape.radius, cylinder_shape.height, 32);
-  Vector3 *vertices = (Vector3*)cylinder_mesh.vertices;
-  for (int i = 0; i < cylinder_mesh.vertexCount; ++i) {
-    vertices[i] = Vector3Add(vertices[i], mesh_origin_offset);
-  }
-  UpdateMeshBuffer(cylinder_mesh, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, vertices, cylinder_mesh.vertexCount * sizeof(Vector3), 0);
+rigidbody boxes[NUM_BOXES];
+Material box_materials[NUM_BOXES];
+Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE  };
+Mesh box_mesh;
 
-  Material m = LoadMaterialDefault();
-  m.maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GREEN_ACTIVE;
-  m.shader = shader;
-
-  return (struct object) {
-    .mesh = cylinder_mesh,
-    .material = m,
-    .label = "Cylinder"
-  };
-}
+collision *collisions;
 
 void initialize_program(program_config* config) {
   config->window_title = "Rigidbodies";  
@@ -53,38 +34,50 @@ void initialize_program(program_config* config) {
   config->camera_target = (Vector3) { 0, 0, 0 };
 }
 
+static void create_box(rigidbody *box, int offset_x, int offset_y, int offset_z) {
+  Vector3 half = scale(box_size, 0.5);
+
+  *box = (rigidbody) { 0 };
+  box->p = (Vector3) { (offset_x - 1) * box_size.x, (offset_z + 0.5) * box_size.y, (offset_y - 1) * box_size.z };
+  box->r = QuaternionIdentity();
+  box->mass = box_mass;
+  box->i0_inv = Vector3Invert(box_inertia_tensor(box_size, box_mass));
+}
+
 void setup_scene(Shader shader) {
-  Vector3 inertia = cylinder_inertia_tensor(cylinder_shape, cylinder_mass);
-  cylinder_body = rb_new(initial_position, cylinder_mass);
-  cylinder_body.r = QuaternionFromEuler(0, 0, 30 * DEG2RAD);
-  cylinder_body.i0_inv = Vector3Invert(inertia);
-  cylinder_body.l = initial_moment_of_inertia;
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      create_box(&boxes[i * 3 + j], i, j, 0);
+    }
+  }
 
-  cylinder_graphics = generate_cylinder_graphics(shader);
+  for (int i = 0; i < 3; ++i) {
+    create_box(&boxes[9 + i], 0, i, 1);
+    create_box(&boxes[12 + i], 2, i, 1);
+  }
 
-  cylinder_model = LoadModelFromMesh(cylinder_mesh);
-  cylinder_model.materials[0] = cylinder_graphics.material;
+  create_box(&boxes[15], 1, 0, 1);
+  create_box(&boxes[16], 1, 1, 1);
 
-  Mesh sphere_mesh = GenMeshSphere(sphere_radius, 32, 32);
-  sphere_model = LoadModelFromMesh(sphere_mesh);
-  sphere_model.materials[0].shader = shader;
+  for (int i = 0; i < 3; ++i) {
+    create_box(&boxes[17 + i], i, 0, 2);
+  }
 
-  inertia = sphere_inertia_tensor(sphere_radius, cylinder_mass);
-  sphere_body = rb_new(add(initial_position, scale(up(), 3)), cylinder_mass);
-  sphere_body.i0_inv = Vector3Invert(inertia);
+  box_mesh = GenMeshCube(1, 1, 1);
 
-  register_gizmo(&cylinder_body.p, &cylinder_body.r);
-  register_gizmo(&sphere_body.p, &sphere_body.r);
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    Material m = LoadMaterialDefault();
+    m.shader = shader;
+    m.maps[MATERIAL_MAP_DIFFUSE].color = colors[i];
+
+    box_materials[i] = m;
+  }
+
+  collisions = malloc(max_collisions * sizeof(collision));
+  memset(collisions, 0, max_collisions * sizeof(collision));
 }
 
-void reset() {
-  cylinder_body.l = cylinder_body.v = zero();
-  cylinder_body.r = QuaternionFromEuler(0, 0, 30 * DEG2RAD);
-  cylinder_body.p = initial_position;
-
-  sphere_body.p = add(cylinder_body.p, scale(up(), 3));
-  sphere_body.v = zero();
-}
+void reset() {}
 
 void on_input(Camera *camera) {}
 
@@ -194,85 +187,74 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
 }
 
 void simulate(float dt) {
-  const int num_bodies = 2;
-  const int max_collisions = 2;
-  
-  rigidbody *bodies[] = { &sphere_body, &cylinder_body };
-  Vector3 omegas[num_bodies];
-  float inv_masses[num_bodies];
-  Matrix inertias[num_bodies];
+  memset(collisions, 0, max_collisions * sizeof(collision));
 
-
-  for (int i = 0; i < num_bodies; ++i) {
-    rigidbody *rb = bodies[i];
-
-    rb_apply_force(rb, GRAVITY_V);
-
-    rb->l = add(rb->l, rb->ti);
-    rb->l = add(rb->l, scale(rb->t, dt));
-
-    float inv_mass = 1.0 / rb->mass;
-    Vector3 acc = scale(add(rb->fi, scale(rb->f, dt)), inv_mass);
-    rb->v = add(rb->v, acc);
-
-    inv_masses[i] = inv_mass;
-    rb_angular_params(rb, &inertias[i], &omegas[i]);
+  int offset = 0;
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    for (int j = 0; j < i; ++j) {
+      box_box_contact_manifold(&boxes[i], &boxes[j], box_size, box_size, &collisions[offset], 3);
+      offset += 3;
+    }
   }
 
-  const int max_cylinder_collisions = 6;
-  collision cylinder_manifold[max_cylinder_collisions];
-  int num_cylinder_collisions = cylinder_plane_contact_manifold(&cylinder_body, cylinder_shape.height, cylinder_shape.radius, zero(), up(), cylinder_manifold, max_cylinder_collisions);
+  offset = max_collisions - 8 * NUM_BOXES;
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 8);
+    offset += 8;
+  }
 
-  collision sphere_collision = sphere_plane_check_collision(&sphere_body, sphere_radius, zero(), up());
+  Vector3 omegas[NUM_BOXES];
+  Matrix inertias[NUM_BOXES];
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    boxes[i].v = add(boxes[i].v, scale(GRAVITY_V, dt));
+    rb_angular_params(&boxes[i], &inertias[i], &omegas[i]);
+  }
+  
+  offset = 0;
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    for (int j = 0; j < i; ++j) {
+      rigidbody *box_a = &boxes[i];
+      rigidbody *box_b = &boxes[j];
 
-  collision shapes_manifold[3];
-  int num_shape_collisions = cylinder_sphere_contact_manifold(&cylinder_body, &sphere_body, cylinder_shape.height, cylinder_shape.radius, sphere_radius, shapes_manifold, 3);
-
-  rigidbody plane_dummy = {0};
-  plane_dummy.mass = INFINITY;
-  plane_dummy.r = QuaternionIdentity();
-
-  Vector3 plane_omega;
-  for (int iteration = 0; iteration < solver_iterations; ++iteration) {
-    for(int i = 0; i < num_cylinder_collisions; ++i) {
-      collision col = cylinder_manifold[i];
-      if (!col.valid) {
-        continue;
+      for (int k = 0; k < 3; ++k) {
+        collision c = collisions[offset + k];
+        if (c.valid)
+          contact_constraint_solve(box_a, box_b, &omegas[i], &omegas[j], &c, dt);
       }
 
-      plane_omega = zero();
-      contact_constraint_solve(&cylinder_body, &plane_dummy, &omegas[1], &plane_omega, &col, dt);
+      offset += 3;
     }
-
-    plane_omega = zero();
-    if (sphere_collision.valid)
-      contact_constraint_solve(&sphere_body, &plane_dummy, &omegas[0], &plane_omega, &sphere_collision, dt);
-
-    for (int i = 0; i < num_shape_collisions; ++i) {
-      if (shapes_manifold[i].valid)
-        contact_constraint_solve(&cylinder_body, &sphere_body, &omegas[1], &omegas[0], &shapes_manifold[i], dt);
-      
-    }
-    // if (shapes_collision.valid)
-    //   contact_constraint_solve(bodies[1], bodies[0], &omegas[1], &omegas[0], &shapes_collision, dt);
   }
 
-  for (int i = 0; i < num_bodies; ++i) {
+  rigidbody plane_dummy = { 0 };
+  plane_dummy.r = QuaternionIdentity();
+  plane_dummy.mass = INFINITY;
+
+  offset = max_collisions - 8 * NUM_BOXES;
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    for (int j = 0; j < 8; ++j) {
+      collision c = collisions[offset + j];
+      Vector3 o = zero();
+      if (c.valid)
+        contact_constraint_solve(&plane_dummy, &boxes[i], &o, &omegas[i], &c, dt);
+    }
+
+    offset += 8;
+  }
+
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    rigidbody *box = &boxes[i];
     Vector3 omega = omegas[i];
-    rigidbody *rb = bodies[i];
-
     Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
-    Quaternion dq = qscale(qmul(q_omega, rb->r), 0.5 * dt);
-    Quaternion q_orientation = qadd(rb->r, dq);
-    rb->r = qnormalize(q_orientation);
-    rb->t = rb->ti = zero();
+    Quaternion dq = qscale(qmul(q_omega, box->r), 0.5 * dt);
+    Quaternion orientation = qadd(box->r, dq);
 
-    rb->p = add(rb->p, scale(rb->v, dt));
-    rb->f = rb->fi = zero();
-
-    rb->v = scale(rb->v, velocity_damping);
-    rb->l = scale(rb->l, velocity_damping);
+    box->r = qnormalize(orientation);
+    box->p = add(box->p, scale(box->v, dt));
+    box->v = scale(box->v, velocity_damping);
+    box->l = scale(box->l, velocity_damping);
   }
+  
 }
 
 static void draw_collision(const collision *c) {
@@ -287,18 +269,14 @@ static void draw_collision(const collision *c) {
 }
 
 void draw(float interpolation) {
-  cylinder_model.transform = rb_transformation(&cylinder_body);
-
-  draw_model_with_wireframe(cylinder_model, Vector3Zero(), 1.0f, COLOR_GREEN_ACTIVE);
-  draw_model_with_wireframe(sphere_model, sphere_body.p, 1.0f, COLOR_BLUE_STATIC);
+  for (int i = 0; i < NUM_BOXES; ++i) {
+    DrawMesh(box_mesh, box_materials[i], rb_transformation(&boxes[i]));
+  }
 }
 
 void draw_ui(struct nk_context* ctx) {
   if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 350, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
-    nk_layout_row_static(ctx, 30, 200, 1);
-    nk_label(ctx, cylinder_graphics.label, NK_TEXT_ALIGN_LEFT);
 
-    draw_property_float(ctx, "#impulse_strength", &input_impulse_strength, 0, 100, 1, 0.5);
     draw_property_float(ctx, "#damping", &velocity_damping, 0.990, 0.999, 0.001, 0.001);
     draw_property_float(ctx, "#baumgarde", &baumgarde_coeff, 0, 1, 0.1, 0.05);
     draw_property_float(ctx, "#restitution", &restitution_coeff, 0, 1, 0.1, 0.05);
