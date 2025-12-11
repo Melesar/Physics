@@ -14,10 +14,16 @@
 // #define NUM_BOXES 2
 
 float velocity_damping = 0.998;
-float restitution_coeff = 0.1;
+
+float restitution_coeff = 0.3;
 float baumgarde_coeff = 0.1;
+
 float kinetic_friction_coeff = 0.3;
 float static_friction_coeff = 0.95;
+
+float penetration_slop = 0.05;
+float restitution_slop = 0.5;
+
 int solver_iterations = 50;
 
 const Vector3 box_size = { 1, 1, 1 };
@@ -158,8 +164,8 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
   float closing_velocity = dot(sub(add(rb_a->v, cross(*omega_a, collision->local_contact_a)), add(rb_b->v, cross(*omega_b, collision->local_contact_b))), n);
-  float restitution = restitution_coeff * closing_velocity;
-  float bias = -baumgarde_coeff * collision->depth / dt + restitution;
+  float restitution = restitution_coeff * fmax(closing_velocity - restitution_slop, 0);
+  float bias = -baumgarde_coeff * fmax(collision->depth - penetration_slop, 0) / dt + restitution;
   float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
   constraint_calculate_velocities(&c, lambda_normal, delta);
