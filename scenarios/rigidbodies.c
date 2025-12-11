@@ -8,18 +8,21 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define NUM_BOXES 20
+// #define NUM_BOXES 2
 
 float velocity_damping = 0.998;
-float restitution_coeff = 0.7;
-float baumgarde_coeff = 0.2;
-float friction_coeff = 0.3;
-int solver_iterations = 1;
+float restitution_coeff = 0.1;
+float baumgarde_coeff = 0.1;
+float kinetic_friction_coeff = 0.3;
+float static_friction_coeff = 0.95;
+int solver_iterations = 50;
 
 const Vector3 box_size = { 1, 1, 1 };
 const float box_mass = 3;
-const int max_collisions = 3 * NUM_BOXES / 2 * (2 + NUM_BOXES - 1) + 8 * NUM_BOXES;
+const int max_collisions = 3 * NUM_BOXES / 2 * (NUM_BOXES - 1) + 8 * NUM_BOXES;
 
 rigidbody boxes[NUM_BOXES];
 Material box_materials[NUM_BOXES];
@@ -40,6 +43,7 @@ static void create_box(rigidbody *box, int offset_x, int offset_y, int offset_z)
   *box = (rigidbody) { 0 };
   box->p = (Vector3) { (offset_x - 1) * box_size.x, (offset_z + 0.5) * box_size.y, (offset_y - 1) * box_size.z };
   box->r = QuaternionIdentity();
+  // box->l = one();
   box->mass = box_mass;
   box->i0_inv = Vector3Invert(box_inertia_tensor(box_size, box_mass));
 }
@@ -62,6 +66,11 @@ void setup_scene(Shader shader) {
   for (int i = 0; i < 3; ++i) {
     create_box(&boxes[17 + i], i, 0, 2);
   }
+
+  TraceLog(LOG_DEBUG, "Max collisions: %d", max_collisions);
+
+  // create_box(&boxes[0], 0, 0, 0);
+  // create_box(&boxes[1], 0, 0, 1);
 
   box_mesh = GenMeshCube(1, 1, 1);
 
@@ -122,7 +131,7 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   Matrix inertias[] = { rb_inertia_world(rb_a), rb_inertia_world(rb_b) };
   float inv_masses[] = { 1.0 / rb_a->mass, 1.0 / rb_b->mass };
   
-  Vector3 n = negate(collision->normal);
+  Vector3 n = collision->normal;
   Vector3 ra = collision->local_contact_a;
   Vector3 rb = collision->local_contact_b;
 
@@ -148,7 +157,8 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   float effective_mass, v_proj;
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float restitution = restitution_coeff * dot(add(sub(negate(rb_a->v), cross(*omega_a, collision->local_contact_a)), add(rb_b->v, cross(*omega_b, collision->local_contact_b))), n);
+  float closing_velocity = dot(sub(add(rb_a->v, cross(*omega_a, collision->local_contact_a)), add(rb_b->v, cross(*omega_b, collision->local_contact_b))), n);
+  float restitution = restitution_coeff * closing_velocity;
   float bias = -baumgarde_coeff * collision->depth / dt + restitution;
   float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
@@ -160,7 +170,8 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   c.jacobian[3] = cross(rb, collision->tangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float limit_friction = fabs(friction_coeff * lambda_normal);
+  float friction_coef = fabs(closing_velocity) > 0.1 ? kinetic_friction_coeff : static_friction_coeff;
+  float limit_friction = fabs(friction_coef * lambda_normal);
   float lambda_tangent = -v_proj / effective_mass;
   lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, lambda_tangent));
 
@@ -210,36 +221,38 @@ void simulate(float dt) {
     rb_angular_params(&boxes[i], &inertias[i], &omegas[i]);
   }
   
-  offset = 0;
-  for (int i = 0; i < NUM_BOXES; ++i) {
-    for (int j = 0; j < i; ++j) {
-      rigidbody *box_a = &boxes[i];
-      rigidbody *box_b = &boxes[j];
+  for (int h = 0; h < solver_iterations; ++h) {
+    offset = 0;
+    for (int i = 0; i < NUM_BOXES; ++i) {
+      for (int j = 0; j < i; ++j) {
+        rigidbody *box_a = &boxes[i];
+        rigidbody *box_b = &boxes[j];
 
-      for (int k = 0; k < 3; ++k) {
-        collision c = collisions[offset + k];
+        for (int k = 0; k < 3; ++k) {
+          collision c = collisions[offset + k];
+          if (c.valid)
+            contact_constraint_solve(box_a, box_b, &omegas[i], &omegas[j], &c, dt);
+        }
+
+        offset += 3;
+      }
+    }
+
+    rigidbody plane_dummy = { 0 };
+    plane_dummy.r = QuaternionIdentity();
+    plane_dummy.mass = INFINITY;
+
+    offset = max_collisions - 8 * NUM_BOXES;
+    for (int i = 0; i < NUM_BOXES; ++i) {
+      for (int j = 0; j < 8; ++j) {
+        collision c = collisions[offset + j];
+        Vector3 o = zero();
         if (c.valid)
-          contact_constraint_solve(box_a, box_b, &omegas[i], &omegas[j], &c, dt);
+          contact_constraint_solve(&boxes[i], &plane_dummy, &omegas[i], &o, &c, dt);
       }
 
-      offset += 3;
+      offset += 8;
     }
-  }
-
-  rigidbody plane_dummy = { 0 };
-  plane_dummy.r = QuaternionIdentity();
-  plane_dummy.mass = INFINITY;
-
-  offset = max_collisions - 8 * NUM_BOXES;
-  for (int i = 0; i < NUM_BOXES; ++i) {
-    for (int j = 0; j < 8; ++j) {
-      collision c = collisions[offset + j];
-      Vector3 o = zero();
-      if (c.valid)
-        contact_constraint_solve(&plane_dummy, &boxes[i], &o, &omegas[i], &c, dt);
-    }
-
-    offset += 8;
   }
 
   for (int i = 0; i < NUM_BOXES; ++i) {

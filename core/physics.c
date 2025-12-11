@@ -613,7 +613,7 @@ int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector
     if (distance < contact_epsilon) {
       collision *contact = &contacts[contact_count++];
       contact->valid = true;
-      contact->normal = normal;
+      contact->normal = negate(normal);
       contact->tangent = tangent;
       contact->bitangent = bitangent;
       contact->depth = fmaxf(0.0f, -distance);
