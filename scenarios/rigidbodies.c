@@ -35,6 +35,7 @@ Material box_materials[NUM_BOXES];
 Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE  };
 Mesh box_mesh;
 
+collision *prev_collisions;
 collision *collisions;
 
 void initialize_program(program_config* config) {
@@ -73,11 +74,6 @@ void setup_scene(Shader shader) {
     create_box(&boxes[17 + i], i, 0, 2);
   }
 
-  TraceLog(LOG_DEBUG, "Max collisions: %d", max_collisions);
-
-  // create_box(&boxes[0], 0, 0, 0);
-  // create_box(&boxes[1], 0, 0, 1);
-
   box_mesh = GenMeshCube(1, 1, 1);
 
   for (int i = 0; i < NUM_BOXES; ++i) {
@@ -89,7 +85,10 @@ void setup_scene(Shader shader) {
   }
 
   collisions = malloc(max_collisions * sizeof(collision));
+  prev_collisions = malloc(max_collisions * sizeof(collision));
+
   memset(collisions, 0, max_collisions * sizeof(collision));
+  memset(prev_collisions, 0, max_collisions * sizeof(collision));
 }
 
 void reset() {}
@@ -120,7 +119,7 @@ static void constraint_calculate_pre_lambda(const constraint *c, float *effectiv
   }
 }
 
-static void constraint_calculate_velocities(const constraint *c, float lambda, Vector3 *delta) {
+static void constraint_calculate_impulses(const constraint *c, float lambda, Vector3 *delta) {
   for (int i = 0; i < 2; ++i) {
     delta[i * 2] = add(delta[i * 2], scale(c->jacobian[i * 2], c->inv_mass[i] * lambda));
 
@@ -133,6 +132,13 @@ static void constraint_calculate_velocities(const constraint *c, float lambda, V
   }
 }
 
+static void update_jacobian(constraint *c, Vector3 ra, Vector3 rb, Vector3 dir) {
+  c->jacobian[0] = negate(dir);
+  c->jacobian[1] = negate(cross(ra, dir));
+  c->jacobian[2] = dir;
+  c->jacobian[3] = cross(rb, dir);
+}
+
 static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *omega_a, Vector3 *omega_b, const collision *collision, float dt) {
   Matrix inertias[] = { rb_inertia_world(rb_a), rb_inertia_world(rb_b) };
   float inv_masses[] = { 1.0 / rb_a->mass, 1.0 / rb_b->mass };
@@ -142,10 +148,7 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   Vector3 rb = collision->local_contact_b;
 
   constraint c = { 0 };
-  c.jacobian[0] = negate(n);
-  c.jacobian[1] = negate(cross(ra, n));
-  c.jacobian[2] = n;
-  c.jacobian[3] = cross(rb, n);
+  update_jacobian(&c, ra, rb, n);
 
   c.inv_mass[0] = inv_masses[0];
   c.inv_mass[1] = inv_masses[1];
@@ -168,12 +171,9 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   float bias = -baumgarde_coeff * fmax(collision->depth - penetration_slop, 0) / dt + restitution;
   float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
 
-  constraint_calculate_velocities(&c, lambda_normal, delta);
+  constraint_calculate_impulses(&c, lambda_normal, delta);
 
-  c.jacobian[0] = negate(collision->tangent);
-  c.jacobian[1] = negate(cross(ra, collision->tangent));
-  c.jacobian[2] = collision->tangent;
-  c.jacobian[3] = cross(rb, collision->tangent);
+  update_jacobian(&c, ra, rb, collision->tangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
   float friction_coef = fabs(closing_velocity) > 0.1 ? kinetic_friction_coeff : static_friction_coeff;
@@ -181,18 +181,15 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   float lambda_tangent = -v_proj / effective_mass;
   lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, lambda_tangent));
 
-  constraint_calculate_velocities(&c, lambda_tangent, delta);
+  constraint_calculate_impulses(&c, lambda_tangent, delta);
   
-  c.jacobian[0] = negate(collision->bitangent);
-  c.jacobian[1] = negate(cross(ra, collision->bitangent));
-  c.jacobian[2] = collision->bitangent;
-  c.jacobian[3] = cross(rb, collision->bitangent);
+  update_jacobian(&c, ra, rb, collision->bitangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
   float lambda_bitangent = -v_proj / effective_mass;
   lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, lambda_bitangent));
 
-  constraint_calculate_velocities(&c, lambda_bitangent, delta);
+  constraint_calculate_impulses(&c, lambda_bitangent, delta);
 
   rb_a->v = add(rb_a->v, delta[0]);
   rb_a->l = add(rb_a->l, delta[1]);
@@ -204,6 +201,10 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
 }
 
 void simulate(float dt) {
+  collision* cs = collisions;
+  collisions = prev_collisions;
+  prev_collisions = cs;
+
   memset(collisions, 0, max_collisions * sizeof(collision));
 
   int offset = 0;

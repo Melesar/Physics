@@ -91,6 +91,7 @@ typedef struct {
   Vector3 normal;
   Vector3 tangent, bitangent;
   float depth;
+  float pn, pt, pb;
   bool valid;
 } collision;
 
