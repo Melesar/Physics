@@ -86,6 +86,7 @@ rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
 // ==== COLLISIONS ====
 
 typedef struct {
+  rigidbody *body_a, *body_b;
   Vector3 world_contact_a, world_contact_b;
   Vector3 local_contact_a, local_contact_b;
   Vector3 normal;

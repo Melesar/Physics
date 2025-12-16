@@ -25,6 +25,8 @@ typedef struct {
   Vector3 support_b;
 } support_point;
 
+static rigidbody plane_dummy = { .mass = INFINITY, .r = { 0, 0, 0, 1 } };
+
 Vector3 cylinder_inertia_tensor(cylinder c, float mass) {
   float principal =  mass * (3 * c.radius * c.radius + c.height * c.height) / 12.0;
   return (Vector3){ principal, mass * c.radius * c.radius / 2.0, principal };
@@ -426,6 +428,8 @@ static int epa(support_point *points, int num_points, shape_type shape_a, shape_
     contact->world_contact_b = vertex.support_b;
     contact->local_contact_a = sub(vertex.support_a, rb_a->p);
     contact->local_contact_b = sub(vertex.support_b, rb_b->p);
+    contact->body_a = (rigidbody*)rb_a;
+    contact->body_b = (rigidbody*)rb_b;
   }
 
   if (contact_count == 0) {
@@ -441,6 +445,8 @@ static int epa(support_point *points, int num_points, shape_type shape_a, shape_
     contact->world_contact_b = add(support_b, scale(min_normal, min_distance * 0.5f));
     contact->local_contact_a = sub(contact->world_contact_a, rb_a->p);
     contact->local_contact_b = sub(contact->world_contact_b, rb_b->p);
+    contact->body_a = (rigidbody*)rb_a;
+    contact->body_b = (rigidbody*)rb_b;
   }
 
   return contact_count;
@@ -622,6 +628,8 @@ int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector
       contact->world_contact_b = sub(world_corner, scale(normal, distance));
       contact->local_contact_a = sub(world_corner, box_rb->p);
       contact->local_contact_b = sub(contact->world_contact_b, plane_point);
+      contact->body_a = (rigidbody*)box_rb;
+      contact->body_b = &plane_dummy;
     }
   }
 

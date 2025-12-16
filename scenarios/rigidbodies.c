@@ -200,6 +200,58 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   *omega_b = transform(rb_b->l, inertias[1]);
 }
 
+static void warm_up_collisions() {
+  const float distance_threshold_sqr = 0.0001;
+
+  for (int i = 0; i < max_collisions; ++i) {
+    collision *c1 = &prev_collisions[i];
+
+    for (int j = 0; j < max_collisions; ++j) {
+      collision *c2 = &collisions[j];
+
+      if (c1->valid && c2->valid &&
+          Vector3DistanceSqr(c1->world_contact_a, c2->world_contact_a) < distance_threshold_sqr &&
+          Vector3DistanceSqr(c1->world_contact_b, c2->world_contact_b) < distance_threshold_sqr) {
+        c2->pn = c1->pn;
+        c2->pt = c1->pt;
+        c2->pb = c1->pb;
+      }
+      
+    }
+  }
+}
+
+static void apply_cached_impulses() {
+  for (int i = 0; i < max_collisions; ++i) {
+    collision *col = &collisions[i];
+    if (!col->valid)
+      continue;
+
+    Vector3 delta[4] = { 0 };
+    constraint c = { 0 };
+
+    c.inv_mass[0] = 1.0 / col->body_a->mass;
+    c.inv_mass[1] = 1.0 / col->body_b->mass;
+
+    c.I[0] = rb_inertia_world(col->body_a);
+    c.I[1] = rb_inertia_world(col->body_b);
+
+    update_jacobian(&c, col->local_contact_a, col->local_contact_b, col->normal);
+    constraint_calculate_impulses(&c, col->pn, delta);
+
+    update_jacobian(&c, col->local_contact_a, col->local_contact_b, col->tangent);
+    constraint_calculate_impulses(&c, col->pt, delta);
+
+    update_jacobian(&c, col->local_contact_a, col->local_contact_b, col->bitangent);
+    constraint_calculate_impulses(&c, col->pb, delta);
+    
+    col->body_a->v = add(col->body_a->v, delta[0]);
+    col->body_a->l = add(col->body_a->l, delta[1]);
+    col->body_b->v = add(col->body_b->v, delta[2]);
+    col->body_b->l = add(col->body_b->l, delta[3]);
+  }
+}
+
 void simulate(float dt) {
   collision* cs = collisions;
   collisions = prev_collisions;
@@ -220,6 +272,9 @@ void simulate(float dt) {
     box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 8);
     offset += 8;
   }
+
+  warm_up_collisions();
+  apply_cached_impulses();
 
   Vector3 omegas[NUM_BOXES];
   Matrix inertias[NUM_BOXES];
