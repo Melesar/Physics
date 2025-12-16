@@ -139,8 +139,13 @@ static void update_jacobian(constraint *c, Vector3 ra, Vector3 rb, Vector3 dir) 
   c->jacobian[3] = cross(rb, dir);
 }
 
-static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *omega_a, Vector3 *omega_b, const collision *collision, float dt) {
-  Matrix inertias[] = { rb_inertia_world(rb_a), rb_inertia_world(rb_b) };
+static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, collision *collision, float dt) {
+  Matrix inertias[2];
+  Vector3 omegas[2];
+
+  rb_angular_params(rb_a, &inertias[0], &omegas[0]);
+  rb_angular_params(rb_b, &inertias[1], &omegas[1]);
+    
   float inv_masses[] = { 1.0 / rb_a->mass, 1.0 / rb_b->mass };
   
   Vector3 n = collision->normal;
@@ -156,8 +161,8 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   c.v[0] = rb_a->v;
   c.v[1] = rb_b->v;
 
-  c.omega[0] = *omega_a;
-  c.omega[1] = *omega_b;
+  c.omega[0] = omegas[0];
+  c.omega[1] = omegas[1];
 
   c.I[0] = inertias[0];
   c.I[1] = inertias[1];
@@ -166,57 +171,68 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, Vector3 *
   float effective_mass, v_proj;
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float closing_velocity = dot(sub(add(rb_a->v, cross(*omega_a, collision->local_contact_a)), add(rb_b->v, cross(*omega_b, collision->local_contact_b))), n);
+  float closing_velocity = dot(sub(add(rb_a->v, cross(omegas[0], collision->local_contact_a)), add(rb_b->v, cross(omegas[1], collision->local_contact_b))), n);
   float restitution = restitution_coeff * fmax(closing_velocity - restitution_slop, 0);
   float bias = -baumgarde_coeff * fmax(collision->depth - penetration_slop, 0) / dt + restitution;
-  float lambda_normal = fmaxf(-(v_proj + bias) / effective_mass, 0.0f);
+  float d_lambda_normal = -(v_proj + bias) / effective_mass;
+  float new_lambda_normal = fmaxf(collision->pn + d_lambda_normal, 0.0);
 
-  constraint_calculate_impulses(&c, lambda_normal, delta);
+  float d_lambda = new_lambda_normal - collision->pn;
+  constraint_calculate_impulses(&c, d_lambda, delta);
+  collision->pn = new_lambda_normal;
 
   update_jacobian(&c, ra, rb, collision->tangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
   float friction_coef = fabs(closing_velocity) > 0.1 ? kinetic_friction_coeff : static_friction_coeff;
-  float limit_friction = fabs(friction_coef * lambda_normal);
-  float lambda_tangent = -v_proj / effective_mass;
-  lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, lambda_tangent));
+  float limit_friction = fabs(friction_coef * new_lambda_normal);
+  float d_lambda_tangent = -v_proj / effective_mass;
+  float new_lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, collision->pt + d_lambda_tangent));
 
-  constraint_calculate_impulses(&c, lambda_tangent, delta);
+  d_lambda = new_lambda_tangent - collision->pt;
+  constraint_calculate_impulses(&c, d_lambda, delta);
+  collision->pt = new_lambda_tangent;
   
   update_jacobian(&c, ra, rb, collision->bitangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float lambda_bitangent = -v_proj / effective_mass;
-  lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, lambda_bitangent));
+  float d_lambda_bitangent = -v_proj / effective_mass;
+  float new_lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, collision->pb + d_lambda_bitangent));
 
-  constraint_calculate_impulses(&c, lambda_bitangent, delta);
+  d_lambda = new_lambda_bitangent - collision->pb;
+  constraint_calculate_impulses(&c, d_lambda, delta);
+  collision->pb = new_lambda_bitangent;
 
   rb_a->v = add(rb_a->v, delta[0]);
   rb_a->l = add(rb_a->l, delta[1]);
   rb_b->v = add(rb_b->v, delta[2]);
   rb_b->l = add(rb_b->l, delta[3]);
 
-  *omega_a = transform(rb_a->l, inertias[0]);
-  *omega_b = transform(rb_b->l, inertias[1]);
+  omegas[0] = transform(rb_a->l, inertias[0]);
+  omegas[1] = transform(rb_b->l, inertias[1]);
 }
 
 static void warm_up_collisions() {
   const float distance_threshold_sqr = 0.0001;
 
   for (int i = 0; i < max_collisions; ++i) {
-    collision *c1 = &prev_collisions[i];
+    collision *current = &collisions[i];
+    if (!current->valid)
+      return;
 
     for (int j = 0; j < max_collisions; ++j) {
-      collision *c2 = &collisions[j];
+      collision *prev = &prev_collisions[j];
+      if (!prev->valid)
+        break;
 
-      if (c1->valid && c2->valid &&
-          Vector3DistanceSqr(c1->world_contact_a, c2->world_contact_a) < distance_threshold_sqr &&
-          Vector3DistanceSqr(c1->world_contact_b, c2->world_contact_b) < distance_threshold_sqr) {
-        c2->pn = c1->pn;
-        c2->pt = c1->pt;
-        c2->pb = c1->pb;
+      if (Vector3DistanceSqr(prev->world_contact_a, current->world_contact_a) < distance_threshold_sqr &&
+          Vector3DistanceSqr(prev->world_contact_b, current->world_contact_b) < distance_threshold_sqr) {
+        current->pn = prev->pn;
+        current->pt = prev->pt;
+        current->pb = prev->pb;
+
+        break;
       }
-      
     }
   }
 }
@@ -225,7 +241,7 @@ static void apply_cached_impulses() {
   for (int i = 0; i < max_collisions; ++i) {
     collision *col = &collisions[i];
     if (!col->valid)
-      continue;
+      return;
 
     Vector3 delta[4] = { 0 };
     constraint c = { 0 };
@@ -262,64 +278,34 @@ void simulate(float dt) {
   int offset = 0;
   for (int i = 0; i < NUM_BOXES; ++i) {
     for (int j = 0; j < i; ++j) {
-      box_box_contact_manifold(&boxes[i], &boxes[j], box_size, box_size, &collisions[offset], 3);
-      offset += 3;
+      offset += box_box_contact_manifold(&boxes[i], &boxes[j], box_size, box_size, &collisions[offset], 3);
     }
   }
 
-  offset = max_collisions - 8 * NUM_BOXES;
   for (int i = 0; i < NUM_BOXES; ++i) {
-    box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 8);
-    offset += 8;
+    offset += box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 8);
   }
 
   warm_up_collisions();
   apply_cached_impulses();
 
-  Vector3 omegas[NUM_BOXES];
-  Matrix inertias[NUM_BOXES];
   for (int i = 0; i < NUM_BOXES; ++i) {
     boxes[i].v = add(boxes[i].v, scale(GRAVITY_V, dt));
-    rb_angular_params(&boxes[i], &inertias[i], &omegas[i]);
   }
   
   for (int h = 0; h < solver_iterations; ++h) {
-    offset = 0;
-    for (int i = 0; i < NUM_BOXES; ++i) {
-      for (int j = 0; j < i; ++j) {
-        rigidbody *box_a = &boxes[i];
-        rigidbody *box_b = &boxes[j];
+    for (int i = 0; i < max_collisions; ++i) {
+      collision *c = &collisions[i];
+      if (!c->valid)
+        break;
 
-        for (int k = 0; k < 3; ++k) {
-          collision c = collisions[offset + k];
-          if (c.valid)
-            contact_constraint_solve(box_a, box_b, &omegas[i], &omegas[j], &c, dt);
-        }
-
-        offset += 3;
-      }
-    }
-
-    rigidbody plane_dummy = { 0 };
-    plane_dummy.r = QuaternionIdentity();
-    plane_dummy.mass = INFINITY;
-
-    offset = max_collisions - 8 * NUM_BOXES;
-    for (int i = 0; i < NUM_BOXES; ++i) {
-      for (int j = 0; j < 8; ++j) {
-        collision c = collisions[offset + j];
-        Vector3 o = zero();
-        if (c.valid)
-          contact_constraint_solve(&boxes[i], &plane_dummy, &omegas[i], &o, &c, dt);
-      }
-
-      offset += 8;
+      contact_constraint_solve(c->body_a, c->body_b, c, dt);
     }
   }
 
   for (int i = 0; i < NUM_BOXES; ++i) {
     rigidbody *box = &boxes[i];
-    Vector3 omega = omegas[i];
+    Vector3 omega = rb_angular_velocity(box);
     Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
     Quaternion dq = qscale(qmul(q_omega, box->r), 0.5 * dt);
     Quaternion orientation = qadd(box->r, dq);
