@@ -413,7 +413,7 @@ static int epa(support_point *points, int num_points, shape_type shape_a, shape_
 
   int face_base = min_face_index * 3;
   int contact_count = 0;
-  float penetration = fmaxf(0.0f, min_distance + 0.001f);
+  float penetration = fmaxf(0.0f, min_distance + 0.0001f);
 
   for (int i = 0; i < 3 && contact_count < max_contacts; ++i) {
     int idx = indices[face_base + i];

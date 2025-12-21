@@ -10,7 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define NUM_BOXES 20
+#define NUM_BOXES 9
 // #define NUM_BOXES 2
 
 float velocity_damping = 0.998;
@@ -18,8 +18,8 @@ float velocity_damping = 0.998;
 float restitution_coeff = 0.3;
 float baumgarde_coeff = 0.1;
 
-float kinetic_friction_coeff = 0.3;
-float static_friction_coeff = 0.95;
+float kinetic_friction_coeff = 0.4;
+float static_friction_coeff = 0.7;
 
 float penetration_slop = 0.05;
 float restitution_slop = 0.5;
@@ -62,17 +62,17 @@ void setup_scene(Shader shader) {
     }
   }
 
-  for (int i = 0; i < 3; ++i) {
-    create_box(&boxes[9 + i], 0, i, 1);
-    create_box(&boxes[12 + i], 2, i, 1);
-  }
+  // for (int i = 0; i < 3; ++i) {
+  //   create_box(&boxes[9 + i], 0, i, 1);
+  //   create_box(&boxes[12 + i], 2, i, 1);
+  // }
 
-  create_box(&boxes[15], 1, 0, 1);
-  create_box(&boxes[16], 1, 1, 1);
+  // create_box(&boxes[15], 1, 0, 1);
+  // create_box(&boxes[16], 1, 1, 1);
 
-  for (int i = 0; i < 3; ++i) {
-    create_box(&boxes[17 + i], i, 0, 2);
-  }
+  // for (int i = 0; i < 3; ++i) {
+  //   create_box(&boxes[17 + i], i, 0, 2);
+  // }
 
   box_mesh = GenMeshCube(1, 1, 1);
 
@@ -139,10 +139,12 @@ static void update_jacobian(constraint *c, Vector3 ra, Vector3 rb, Vector3 dir) 
   c->jacobian[3] = cross(rb, dir);
 }
 
-static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, collision *collision, float dt) {
+static void contact_constraint_solve(collision *collision, float dt) {
+  rigidbody *rb_a = collision->body_a;
+  rigidbody *rb_b = collision->body_b;
+
   Matrix inertias[2];
   Vector3 omegas[2];
-
   rb_angular_params(rb_a, &inertias[0], &omegas[0]);
   rb_angular_params(rb_b, &inertias[1], &omegas[1]);
     
@@ -184,10 +186,12 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, collision
   update_jacobian(&c, ra, rb, collision->tangent);
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
-  float friction_coef = fabs(closing_velocity) > 0.1 ? kinetic_friction_coeff : static_friction_coeff;
-  float limit_friction = fabs(friction_coef * new_lambda_normal);
+  float max_friction = static_friction_coeff * new_lambda_normal;
+
   float d_lambda_tangent = -v_proj / effective_mass;
-  float new_lambda_tangent = fmaxf(-limit_friction, fminf(limit_friction, collision->pt + d_lambda_tangent));
+  float new_lambda_tangent = collision->pt + d_lambda_tangent;
+  if (fabsf(new_lambda_tangent) > static_friction_coeff * new_lambda_normal)
+    new_lambda_tangent = (v_proj > 0 ? -1.0 : 1.0) * kinetic_friction_coeff * new_lambda_normal;
 
   d_lambda = new_lambda_tangent - collision->pt;
   constraint_calculate_impulses(&c, d_lambda, delta);
@@ -197,7 +201,9 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, collision
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
   float d_lambda_bitangent = -v_proj / effective_mass;
-  float new_lambda_bitangent = fmaxf(-limit_friction, fmin(limit_friction, collision->pb + d_lambda_bitangent));
+  float new_lambda_bitangent = collision->pb + d_lambda_bitangent;
+  if (fabsf(new_lambda_bitangent) > static_friction_coeff * new_lambda_normal)
+    new_lambda_bitangent = (v_proj > 0 ? -1.0 : 1.0) * kinetic_friction_coeff * new_lambda_normal;
 
   d_lambda = new_lambda_bitangent - collision->pb;
   constraint_calculate_impulses(&c, d_lambda, delta);
@@ -207,9 +213,6 @@ static void contact_constraint_solve(rigidbody *rb_a, rigidbody *rb_b, collision
   rb_a->l = add(rb_a->l, delta[1]);
   rb_b->v = add(rb_b->v, delta[2]);
   rb_b->l = add(rb_b->l, delta[3]);
-
-  omegas[0] = transform(rb_a->l, inertias[0]);
-  omegas[1] = transform(rb_b->l, inertias[1]);
 }
 
 static void warm_up_collisions() {
@@ -293,13 +296,13 @@ void simulate(float dt) {
     boxes[i].v = add(boxes[i].v, scale(GRAVITY_V, dt));
   }
   
-  for (int h = 0; h < solver_iterations; ++h) {
-    for (int i = 0; i < max_collisions; ++i) {
+  for (int i = 0; i < max_collisions; ++i) {
       collision *c = &collisions[i];
       if (!c->valid)
         break;
 
-      contact_constraint_solve(c->body_a, c->body_b, c, dt);
+    for (int h = 0; h < solver_iterations; ++h) {
+      contact_constraint_solve(c, dt);
     }
   }
 
@@ -338,10 +341,12 @@ void draw(float interpolation) {
 void draw_ui(struct nk_context* ctx) {
   if (nk_begin_titled(ctx, "debug", "Debug", nk_rect(50, 50, 350, 550), NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_CLOSABLE)) {
 
+    draw_property_int(ctx, "#solver_iterations", &solver_iterations, 0, 50, 1, 1);
     draw_property_float(ctx, "#damping", &velocity_damping, 0.990, 0.999, 0.001, 0.001);
     draw_property_float(ctx, "#baumgarde", &baumgarde_coeff, 0, 1, 0.1, 0.05);
     draw_property_float(ctx, "#restitution", &restitution_coeff, 0, 1, 0.1, 0.05);
-    draw_property_int(ctx, "#solver_iterations", &solver_iterations, 0, 50, 1, 1);
+    draw_property_float(ctx, "#penetration_slop", &penetration_slop, 0, 1, 0.001, 0.0005);
+    draw_property_float(ctx, "#restitution_slop", &restitution_slop, 0, 5, 0.1, 0.05);
   }
 
   nk_end(ctx);
