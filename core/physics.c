@@ -600,12 +600,12 @@ int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector
   Vector3 half = scale(box_size, 0.5f);
   Vector3 local_corners[8] = {
     { half.x,  half.y,  half.z},
-    { half.x,  half.y, -half.z},
-    { half.x, -half.y,  half.z},
-    { half.x, -half.y, -half.z},
     {-half.x,  half.y,  half.z},
-    {-half.x,  half.y, -half.z},
+    { half.x, -half.y,  half.z},
+    { half.x,  half.y, -half.z},
     {-half.x, -half.y,  half.z},
+    { half.x, -half.y, -half.z},
+    {-half.x,  half.y, -half.z},
     {-half.x, -half.y, -half.z},
   };
 

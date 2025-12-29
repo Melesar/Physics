@@ -10,8 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define NUM_BOXES 9
-// #define NUM_BOXES 2
+#define NUM_BOXES 1
 
 float velocity_damping = 0.998;
 
@@ -21,8 +20,8 @@ float baumgarde_coeff = 0.1;
 float kinetic_friction_coeff = 0.4;
 float static_friction_coeff = 0.7;
 
-float penetration_slop = 0.05;
-float restitution_slop = 0.5;
+float penetration_slop = 0;
+float restitution_slop = 0.1;
 
 int solver_iterations = 50;
 
@@ -50,30 +49,12 @@ static void create_box(rigidbody *box, int offset_x, int offset_y, int offset_z)
   *box = (rigidbody) { 0 };
   box->p = (Vector3) { (offset_x - 1) * box_size.x, (offset_z + 0.5) * box_size.y, (offset_y - 1) * box_size.z };
   box->r = QuaternionIdentity();
-  // box->l = one();
+  box->l = one();
   box->mass = box_mass;
   box->i0_inv = Vector3Invert(box_inertia_tensor(box_size, box_mass));
 }
 
 void setup_scene(Shader shader) {
-  for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 3; ++j) {
-      create_box(&boxes[i * 3 + j], i, j, 0);
-    }
-  }
-
-  // for (int i = 0; i < 3; ++i) {
-  //   create_box(&boxes[9 + i], 0, i, 1);
-  //   create_box(&boxes[12 + i], 2, i, 1);
-  // }
-
-  // create_box(&boxes[15], 1, 0, 1);
-  // create_box(&boxes[16], 1, 1, 1);
-
-  // for (int i = 0; i < 3; ++i) {
-  //   create_box(&boxes[17 + i], i, 0, 2);
-  // }
-
   box_mesh = GenMeshCube(1, 1, 1);
 
   for (int i = 0; i < NUM_BOXES; ++i) {
@@ -87,11 +68,33 @@ void setup_scene(Shader shader) {
   collisions = malloc(max_collisions * sizeof(collision));
   prev_collisions = malloc(max_collisions * sizeof(collision));
 
-  memset(collisions, 0, max_collisions * sizeof(collision));
-  memset(prev_collisions, 0, max_collisions * sizeof(collision));
+  reset();
 }
 
-void reset() {}
+void reset() {
+  memset(collisions, 0, max_collisions * sizeof(collision));
+  memset(prev_collisions, 0, max_collisions * sizeof(collision));
+
+  create_box(&boxes[0], 0, 0, 2);
+
+  // for (int i = 0; i < 3; ++i) {
+  //   for (int j = 0; j < 3; ++j) {
+  //     create_box(&boxes[i * 3 + j], i, j, 0);
+  //   }
+  // }
+
+  // for (int i = 0; i < 3; ++i) {
+  //   create_box(&boxes[9 + i], 0, i, 1);
+  //   create_box(&boxes[12 + i], 2, i, 1);
+  // }
+
+  // create_box(&boxes[15], 1, 0, 1);
+  // create_box(&boxes[16], 1, 1, 1);
+
+  // for (int i = 0; i < 3; ++i) {
+  //   create_box(&boxes[17 + i], i, 0, 2);
+  // }
+}
 
 void on_input(Camera *camera) {}
 
@@ -139,7 +142,7 @@ static void update_jacobian(constraint *c, Vector3 ra, Vector3 rb, Vector3 dir) 
   c->jacobian[3] = cross(rb, dir);
 }
 
-static void contact_constraint_solve(collision *collision, float dt) {
+static void contact_constraint_solve(collision *collision, float dt, Vector3* delta) {
   rigidbody *rb_a = collision->body_a;
   rigidbody *rb_b = collision->body_b;
 
@@ -169,7 +172,6 @@ static void contact_constraint_solve(collision *collision, float dt) {
   c.I[0] = inertias[0];
   c.I[1] = inertias[1];
 
-  Vector3 delta[4] = { 0 };
   float effective_mass, v_proj;
   constraint_calculate_pre_lambda(&c, &effective_mass, &v_proj);
 
@@ -208,11 +210,6 @@ static void contact_constraint_solve(collision *collision, float dt) {
   d_lambda = new_lambda_bitangent - collision->pb;
   constraint_calculate_impulses(&c, d_lambda, delta);
   collision->pb = new_lambda_bitangent;
-
-  rb_a->v = add(rb_a->v, delta[0]);
-  rb_a->l = add(rb_a->l, delta[1]);
-  rb_b->v = add(rb_b->v, delta[2]);
-  rb_b->l = add(rb_b->l, delta[3]);
 }
 
 static void warm_up_collisions() {
@@ -286,7 +283,7 @@ void simulate(float dt) {
   }
 
   for (int i = 0; i < NUM_BOXES; ++i) {
-    offset += box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 8);
+    offset += box_plane_contact_manifold(&boxes[i], box_size, zero(), up(), &collisions[offset], 4);
   }
 
   warm_up_collisions();
@@ -296,14 +293,19 @@ void simulate(float dt) {
     boxes[i].v = add(boxes[i].v, scale(GRAVITY_V, dt));
   }
   
-  for (int i = 0; i < max_collisions; ++i) {
+  for (int h = 0; h < solver_iterations; ++h) {
+    Vector3 delta[4] = { 0 };
+
+    for (int i = 0; i < max_collisions; ++i) {
       collision *c = &collisions[i];
       if (!c->valid)
         break;
 
-    for (int h = 0; h < solver_iterations; ++h) {
-      contact_constraint_solve(c, dt);
+      contact_constraint_solve(c, dt, delta);
     }
+
+    boxes[0].v = add(boxes[0].v, delta[0]);
+    boxes[0].l = add(boxes[0].l, delta[1]);
   }
 
   for (int i = 0; i < NUM_BOXES; ++i) {
@@ -336,6 +338,10 @@ void draw(float interpolation) {
   for (int i = 0; i < NUM_BOXES; ++i) {
     DrawMesh(box_mesh, box_materials[i], rb_transformation(&boxes[i]));
   }
+
+  // for (int i = 0; i < max_collisions; ++i) {
+  //   draw_collision(&collisions[i]);
+  // }
 }
 
 void draw_ui(struct nk_context* ctx) {
@@ -347,6 +353,15 @@ void draw_ui(struct nk_context* ctx) {
     draw_property_float(ctx, "#restitution", &restitution_coeff, 0, 1, 0.1, 0.05);
     draw_property_float(ctx, "#penetration_slop", &penetration_slop, 0, 1, 0.001, 0.0005);
     draw_property_float(ctx, "#restitution_slop", &restitution_slop, 0, 5, 0.1, 0.05);
+    draw_property_float(ctx, "#static_friction", &static_friction_coeff, 0, 1, 0.1, 0.05);
+    draw_property_float(ctx, "#kinetic_friction", &kinetic_friction_coeff, 0, 1, 0.1, 0.05);
+
+    int num_collisions = 0;
+    while(collisions[num_collisions++].valid) {}
+
+    num_collisions -= 1;
+
+    draw_property_int(ctx, "#num_collisions", &num_collisions, 0, 10, 1, 1);
   }
 
   nk_end(ctx);
