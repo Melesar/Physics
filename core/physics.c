@@ -1,3 +1,4 @@
+#include "core.h"
 #include "raylib.h"
 #include "physics.h"
 #include "raymath.h"
@@ -10,24 +11,26 @@
   count_t count; \
   Vector3* positions; \
   Quaternion* rotations; \
-  body_shape* shapes; \
-  float *inv_masses;
+  body_shape* shapes;
 
 typedef struct {
   COMMON_FIELDS
 } common_data;
 
+typedef struct {
+  COMMON_FIELDS
+
+  float *inv_masses;
+  Vector3 *velocities;
+  Vector3 *angular_momenta;
+  Matrix *inv_inertia_tensors;
+} dynamic_bodies;
+
+typedef common_data static_bodies;
+
 struct physics_world {
-  struct {
-    COMMON_FIELDS
-
-    Vector3 *angular_momenta;
-    Matrix *inv_inertia_tensors;
-  } dynamics;
-
-  struct {
-    COMMON_FIELDS
-  } statics;
+  dynamic_bodies dynamics;
+  static_bodies statics;
 };
 
 static Matrix inertia_tensor_matrix(Vector3 inertia) {
@@ -71,7 +74,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
   return as_common((physics_world*) world, type);
 }
 
-physics_config default_physics_config() {
+physics_config physics_default_config() {
   return (physics_config) { .dynamics_capacity = 32, .statics_capacity = 8 };
 }
 
@@ -84,29 +87,31 @@ physics_world* physics_init(const physics_config *config) {
     world->type.positions = malloc(sizeof(Vector3) * cap); \
     world->type.rotations = malloc(sizeof(Quaternion) * cap); \
     world->type.shapes = malloc(sizeof(body_shape) * cap); \
-    world->type.inv_masses = malloc(sizeof(float) * cap);
 
   INIT_COMMONS(dynamics, config->dynamics_capacity);
   INIT_COMMONS(statics, config->statics_capacity);
 
   #undef INIT_COMMONS
 
+  world->dynamics.inv_masses = malloc(sizeof(float) * config->dynamics_capacity);
+  world->dynamics.velocities = malloc(sizeof(Vector3) * config->dynamics_capacity);
   world->dynamics.angular_momenta = malloc(sizeof(Vector3) * config->dynamics_capacity);
   world->dynamics.inv_inertia_tensors = malloc(sizeof(Matrix) * config->dynamics_capacity);
 
   return world;
 }
 
-void add_physics_body(physics_world* world, body_type type, body_shape shape, body_initial_state state) {
+void physics_add_body(physics_world* world, body_type type, body_shape shape, body_initial_state state) {
   common_data *commons = as_common(world, type);
   if (commons->capacity < commons->count + 1) {
     commons->capacity = commons->capacity << 1;
     commons->positions = realloc(commons->positions, sizeof(Vector3) * commons->capacity);
     commons->rotations = realloc(commons->rotations, sizeof(Quaternion) * commons->capacity);
     commons->shapes = realloc(commons->shapes, sizeof(body_shape) * commons->capacity);
-    commons->inv_masses = realloc(commons->inv_masses, sizeof(float) * commons->capacity);
 
     if (type == BODY_DYNAMIC) {
+      world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
+      world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(Vector3) * commons->capacity);
       world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(Vector3) * commons->capacity);
       world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(Matrix) * commons->capacity);
     }
@@ -115,15 +120,16 @@ void add_physics_body(physics_world* world, body_type type, body_shape shape, bo
   count_t index = commons->count;
   commons->positions[index] = state.position;
   commons->rotations[index] = state.rotation;
-  commons->inv_masses[index] = 1.0 / state.mass;
 
   if (type == BODY_DYNAMIC) {
+    world->dynamics.inv_masses[index] = state.mass;
+    world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = state.angular_momentum;
 
     Matrix *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
       case SHAPE_BOX:
-        *inv_inertia_tensor = MatrixInvert(inertia_tensor_matrix(box_inertia(shape.box.size, state.mass)));
+        *inv_inertia_tensor = inertia_tensor_matrix(Vector3Invert(box_inertia(shape.box.size, state.mass)));
         break;
 
       default:
@@ -135,11 +141,11 @@ void add_physics_body(physics_world* world, body_type type, body_shape shape, bo
   commons->count += 1;
 }
 
-size_t body_count(const physics_world* world, body_type type) {
+size_t physics_body_count(const physics_world* world, body_type type) {
   return as_common_const(world, type)->count;
 }
 
-bool body(const physics_world* world, body_type type, size_t index, body_snapshot* body) {
+bool physics_body(const physics_world* world, body_type type, size_t index, body_snapshot* body) {
   const common_data *commons = as_common_const(world, type);
 
   if (index >= commons->count)
@@ -148,28 +154,47 @@ bool body(const physics_world* world, body_type type, size_t index, body_snapsho
   body->position = commons->positions[index];
   body->rotation = commons->rotations[index];
   body->shape = commons->shapes[index];
-  body->mass = 1.0 / commons->inv_masses[index];
+  body->mass = type == BODY_DYNAMIC ? 1.0 / world->dynamics.inv_masses[index] : INFINITY;
 
   return true;
 }
 
 void physics_step(physics_world* world, float dt) {
+  Vector3 gravity_acc = scale(GRAVITY_V, dt);
 
+  dynamic_bodies *dynamics = &world->dynamics;
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
+    dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
+
+    Quaternion rotation = dynamics->rotations[i];
+    Matrix orientation = as_matrix(rotation);
+    Matrix inertia = mul(mul(orientation, dynamics->inv_inertia_tensors[i]), transpose(orientation));
+    Vector3 omega = transform(dynamics->angular_momenta[i], inertia);
+
+    Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
+    Quaternion dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
+
+    Quaternion q_orientation = qadd(rotation, dq);
+    dynamics->rotations[i] = qnormalize(q_orientation);
+  }
 }
 
 void physics_teardown(physics_world* world) {
   #define TEARDOWN_COMMONS(type) \
     free(world->type.positions); \
     free(world->type.rotations); \
-    free(world->type.shapes); \
-    free(world->type.inv_masses);
+    free(world->type.shapes);
 
   TEARDOWN_COMMONS(dynamics);
   TEARDOWN_COMMONS(statics);
 
   #undef TEARDOWN_COMMONS
 
+  free(world->dynamics.inv_masses);
+  free(world->dynamics.velocities);
   free(world->dynamics.angular_momenta);
   free(world->dynamics.inv_inertia_tensors);
+
   free(world);
 }

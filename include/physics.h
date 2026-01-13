@@ -90,14 +90,14 @@ struct physics_world;
 
 typedef struct physics_world physics_world;
 
-physics_config default_physics_config();
+physics_config physics_default_config();
 
 physics_world* physics_init(const physics_config *config);
 
-void add_physics_body(physics_world* world, body_type type, body_shape shape, body_initial_state state);
+void physics_add_body(physics_world* world, body_type type, body_shape shape, body_initial_state state);
 
-size_t body_count(const physics_world* world, body_type type);
-bool body(const physics_world* world, body_type type, size_t index, body_snapshot* body);
+size_t physics_body_count(const physics_world* world, body_type type);
+bool physics_body(const physics_world* world, body_type type, size_t index, body_snapshot* body);
 
 void physics_step(physics_world* world, float dt);
 

@@ -40,11 +40,11 @@ void reset() {
   if (world)
     physics_teardown(world);
 
-  physics_config config = default_physics_config();
+  physics_config config = physics_default_config();
   world = physics_init(&config);
 
-  add_physics_body(world, BODY_STATIC, (body_shape){ .type = SHAPE_PLANE, .plane = { .normal = { 0, 1, 0 } } }, (body_initial_state){ 0 });
-  add_physics_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_BOX, .box = { .size = { 1, 1, 1 } } }, (body_initial_state) { .position = {0, 3, 0 }, .rotation = qidentity(), .angular_momentum = { 1, 1, 1 }});
+  physics_add_body(world, BODY_STATIC, (body_shape){ .type = SHAPE_PLANE, .plane = { .normal = { 0, 1, 0 } } }, (body_initial_state){ 0 });
+  physics_add_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_BOX, .box = { .size = { 1, 1, 1 } } }, (body_initial_state) { .position = { 0, 6, 0 }, .rotation = qidentity(), .angular_momentum = { 1, 1, 1 }, .mass = 3});
 }
 
 void on_input(Camera *camera) {}
@@ -54,11 +54,11 @@ void simulate(float dt) {
 }
 
 void draw(float interpolation) {
-  size_t dynamic_count = body_count(world, BODY_DYNAMIC);
+  size_t dynamic_count = physics_body_count(world, BODY_DYNAMIC);
 
   for (size_t i = 0; i < dynamic_count; ++i) {
     body_snapshot snapshot;
-    if (!body(world, BODY_DYNAMIC, i, &snapshot))
+    if (!physics_body(world, BODY_DYNAMIC, i, &snapshot))
       continue;
 
     Matrix transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));

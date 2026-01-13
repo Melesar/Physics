@@ -1,0 +1,17 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "label": "Debug rigidbodies",
+    "build": {
+      "command": "make",
+      "args": ["-j8", "-C", "build", "rigidbodies"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+    "program": "$ZED_WORKTREE_ROOT/rigidbodies",
+    "request": "launch",
+    "adapter": "CodeLLDB",
+  },
+]
