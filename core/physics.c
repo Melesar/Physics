@@ -1,9 +1,11 @@
 #include "core.h"
+#include "collisions.h"
 #include "raylib.h"
 #include "physics.h"
 #include "raymath.h"
 #include "stdlib.h"
 #include "string.h"
+#include <math.h>
 #include <stdlib.h>
 
 #define COMMON_FIELDS \
@@ -75,7 +77,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
 }
 
 physics_config physics_default_config() {
-  return (physics_config) { .dynamics_capacity = 32, .statics_capacity = 8 };
+  return (physics_config) { .dynamics_capacity = 32, .statics_capacity = 8, .linear_damping = 0.997, .angular_damping = 0.997 };
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -117,7 +119,7 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
     }
   }
 
-  count_t index = commons->count;
+  count_t index = commons->count++;
   commons->positions[index] = state.position;
   commons->rotations[index] = state.rotation;
 
@@ -137,8 +139,6 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
         break;
     }
   }
-
-  commons->count += 1;
 }
 
 size_t physics_body_count(const physics_world* world, body_type type) {
@@ -161,11 +161,15 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 
 void physics_step(physics_world* world, float dt) {
   Vector3 gravity_acc = scale(GRAVITY_V, dt);
+  float linear_damping = powf(world->linear_damping, dt);
+  float angular_damping = powf(world->angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->count; ++i) {
     dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
-    dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
+    dynamics->velocities[i] = scale(dynamics->velocities[i], linear_damping);
+
+    dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
 
     Quaternion rotation = dynamics->rotations[i];
     Matrix orientation = as_matrix(rotation);
@@ -176,7 +180,9 @@ void physics_step(physics_world* world, float dt) {
     Quaternion dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
 
     Quaternion q_orientation = qadd(rotation, dq);
+
     dynamics->rotations[i] = qnormalize(q_orientation);
+    dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
   }
 }
 

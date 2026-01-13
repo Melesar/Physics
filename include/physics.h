@@ -84,6 +84,8 @@ typedef struct {
 typedef struct {
   count_t dynamics_capacity;
   count_t statics_capacity;
+  float linear_damping;
+  float angular_damping;
 } physics_config;
 
 struct physics_world;
