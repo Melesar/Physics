@@ -3,20 +3,9 @@
 #include "physics.h"
 #include "raymath.h"
 #include "stdlib.h"
-#include "string.h"
+#include "core.h"
 #include <math.h>
 #include <stdlib.h>
-
-#define COMMON_FIELDS \
-  count_t capacity; \
-  count_t count; \
-  Vector3* positions; \
-  Quaternion* rotations; \
-  body_shape* shapes;
-
-typedef struct {
-  COMMON_FIELDS
-} common_data;
 
 typedef struct {
   COMMON_FIELDS
@@ -32,6 +21,10 @@ typedef common_data static_bodies;
 struct physics_world {
   dynamic_bodies dynamics;
   static_bodies statics;
+
+  collisions *collisions;
+
+  float linear_damping, angular_damping;
 };
 
 static Matrix inertia_tensor_matrix(Vector3 inertia) {
@@ -99,6 +92,11 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.angular_momenta = malloc(sizeof(Vector3) * config->dynamics_capacity);
   world->dynamics.inv_inertia_tensors = malloc(sizeof(Matrix) * config->dynamics_capacity);
 
+  world->linear_damping = config->linear_damping;
+  world->angular_damping = config->angular_damping;
+
+  world->collisions = collisions_init(config);
+
   return world;
 }
 
@@ -121,9 +119,10 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
   count_t index = commons->count++;
   commons->positions[index] = state.position;
   commons->rotations[index] = state.rotation;
+  commons->shapes[index] = shape;
 
   if (type == BODY_DYNAMIC) {
-    world->dynamics.inv_masses[index] = state.mass;
+    world->dynamics.inv_masses[index] = 1.0 / state.mass;
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = state.angular_momentum;
 
@@ -182,6 +181,29 @@ void physics_step(physics_world* world, float dt) {
     dynamics->rotations[i] = qnormalize(q_orientation);
     dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
   }
+
+  collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
+}
+
+void physics_draw_collisions(const physics_world *world) {
+  count_t count = collisions_count(world->collisions);
+
+  for (count_t i = 0; i < count; ++i) {
+    collision c;
+    collision_get(world->collisions, i, &c);
+
+    for (count_t j = 0; j < c.contacts_count; ++j) {
+      contact contact;
+      contact_get(world->collisions, j, &c, &contact);
+
+
+      draw_arrow(contact.point, contact.normal, RED);
+    }
+  }
+}
+
+bool physics_has_collisions(const physics_world *world) {
+  return collisions_count(world->collisions);
 }
 
 void physics_teardown(physics_world* world) {
@@ -199,6 +221,8 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.velocities);
   free(world->dynamics.angular_momenta);
   free(world->dynamics.inv_inertia_tensors);
+
+  collisions_teardown(world->collisions);
 
   free(world);
 }

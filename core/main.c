@@ -47,6 +47,8 @@ bool step_forward = false;
 static Model groundModel;
 static bool groundInitialized = false;
 
+void toggle_pause(bool is_pause) { simulation_running = !is_pause; }
+
 int main(int argc, char** argv) {
 
   program_config config = {0};
@@ -88,7 +90,7 @@ int main(int argc, char** argv) {
 
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
-      
+
         simulate(simulation_step);
 
         step_forward = false;
@@ -99,7 +101,7 @@ int main(int argc, char** argv) {
 
     draw_ui(ctx);
     draw_scene(camera, accum, ctx, shader);
-    
+
     accum -= sim_count * simulation_step;
     deltaTime = GetFrameTime();
   }

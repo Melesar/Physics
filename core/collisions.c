@@ -27,6 +27,8 @@ struct collisions {
 static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
 
   Vector3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
+  Vector3 plane_normal = data_b->shapes[index_b].plane.normal;
+
   Vector3 corners[] = {
     { extents.x, extents.y, extents.z },
     { extents.x, -extents.y, extents.z },
@@ -38,19 +40,29 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
     { -extents.x, extents.y, -extents.z },
   };
 
+  const count_t max_contacts = 4;
 
-  bool collision_found = false;
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->contacts_count + max_contacts, collisions->contacts_capacity, contact)
+
   count_t contact_count = 0;
-  for (count_t i = 0; i < 8; ++i) {
+  contact *contacts = collisions->contacts + collisions->contacts_count;
+  for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
     Vector3 corner = add(data_a->positions[index_a], rotate(corners[i], data_a->rotations[index_a]));
-    float distance = dot(sub(corner, data_b->positions[index_b]), data_b->shapes[index_b].plane.normal);
+    float distance = dot(sub(corner, data_b->positions[index_b]), plane_normal);
     if (distance > 0)
       continue;
 
-    collision_found = true;
+    contact *new_contact = &contacts[contact_count++];
+    new_contact->normal = plane_normal;
+    new_contact->point = add(corner, scale(plane_normal, -0.5 * distance));
+    new_contact->depth = -distance;
   }
 
+  if (contact_count == 0)
+    return contact_count;
+
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+
   collision c = { .index_a = index_a, .index_b = index_b, .contacts_count = contact_count, .contacts_offset = collisions->contacts_count };
   collisions->collisions[collisions->collisions_count++] = c;
   collisions->contacts_count += contact_count;
@@ -89,17 +101,20 @@ bool contact_get(collisions *collisions, count_t index, const collision* collisi
   return true;
 }
 
-void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics) {
+void collisions_detect(collisions* collisions, const common_data *data_a, const common_data *data_b) {
   collisions->collisions_count = 0;
   collisions->contacts_count = 0;
 
-  for (count_t i = 0; i < dynamics->count; ++i) {
-    for (count_t j = 0; j < statics->count; ++j) {
-      body_shape dynamic_shape = dynamics->shapes[i];
-      body_shape static_shape = statics->shapes[j];
+  for (count_t i = 0; i < data_a->count; ++i) {
+    for (count_t j = 0; j < data_b->count; ++j) {
+      if (data_a == data_b && i == j)
+        continue;
 
-      if (dynamic_shape.type == SHAPE_BOX && static_shape.type == SHAPE_PLANE) {
-        box_plane_collision(collisions, i, j, dynamics, statics);
+      body_shape shape_a = data_a->shapes[i];
+      body_shape shape_b = data_b->shapes[j];
+
+      if (shape_a.type == SHAPE_BOX && shape_b.type == SHAPE_PLANE) {
+        box_plane_collision(collisions, i, j, data_a, data_b);
       }
     }
   }

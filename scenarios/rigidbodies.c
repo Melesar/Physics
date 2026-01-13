@@ -1,3 +1,4 @@
+#include "collisions.h"
 #include "core.h"
 #include "physics.h"
 #include "raylib.h"
@@ -10,7 +11,7 @@
 Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE  };
 
 const size_t num_materials = sizeof(colors) / sizeof(Color);
-Material materials[num_materials];
+Material materials[20];
 
 Mesh box_mesh;
 
@@ -73,6 +74,8 @@ void draw(float interpolation) {
         break;
     }
   }
+
+  // physics_draw_collisions(world);
 }
 
 void draw_ui(struct nk_context* ctx) {
