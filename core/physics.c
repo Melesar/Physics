@@ -1,4 +1,3 @@
-#include "core.h"
 #include "collisions.h"
 #include "raylib.h"
 #include "physics.h"
@@ -77,7 +76,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
 }
 
 physics_config physics_default_config() {
-  return (physics_config) { .dynamics_capacity = 32, .statics_capacity = 8, .linear_damping = 0.997, .angular_damping = 0.997 };
+  return (physics_config) { .dynamics_capacity = 32, .statics_capacity = 8, .collisions_capacity = 64, .linear_damping = 0.997, .angular_damping = 0.997 };
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -178,7 +177,6 @@ void physics_step(physics_world* world, float dt) {
 
     Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
     Quaternion dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-
     Quaternion q_orientation = qadd(rotation, dq);
 
     dynamics->rotations[i] = qnormalize(q_orientation);

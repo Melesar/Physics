@@ -3,6 +3,7 @@
 
 #include "raylib.h"
 #include "stdbool.h"
+#include "core.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -45,7 +46,6 @@
 
 // ====== PHYSICS WORLD =======
 
-typedef uint32_t count_t;
 
 typedef enum {
   SHAPE_BOX,
@@ -84,9 +84,21 @@ typedef struct {
 typedef struct {
   count_t dynamics_capacity;
   count_t statics_capacity;
+  count_t collisions_capacity;
   float linear_damping;
   float angular_damping;
 } physics_config;
+
+#define COMMON_FIELDS \
+  count_t capacity; \
+  count_t count; \
+  Vector3* positions; \
+  Quaternion* rotations; \
+  body_shape* shapes;
+
+typedef struct {
+  COMMON_FIELDS
+} common_data;
 
 struct physics_world;
 
