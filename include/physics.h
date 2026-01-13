@@ -3,12 +3,14 @@
 
 #include "raylib.h"
 #include "stdbool.h"
+#include <stddef.h>
+#include <stdint.h>
 
 #define GRAVITY 9.81f
 #define GRAVITY_V (Vector3) { 0, -9.81f, 0 }
 
 // ==== MATH  ======
- 
+
 #define cross(x, y) Vector3CrossProduct(x, y)
 #define dot(x, y) Vector3DotProduct(x, y)
 #define add(x, y) Vector3Add(x, y)
@@ -41,107 +43,64 @@
 #define lerp(x, y, t) Lerp(x, y, t)
 #define slerp(x, y, t) QuaternionSlerp(x, y, t)
 
-// ==== SHAPES =====
+// ====== PHYSICS WORLD =======
+
+typedef uint32_t count_t;
+
+typedef enum {
+  SHAPE_BOX,
+  SHAPE_PLANE,
+} shape_type;
 
 typedef struct {
-  float height, radius;
-} cylinder;
+  shape_type type;
 
-Vector3 cylinder_inertia_tensor(cylinder c, float mass);
-Vector3 sphere_inertia_tensor(float radius, float mass);
-Vector3 box_inertia_tensor(Vector3 size, float mass);
+  union {
+    struct { Vector3 size; } box;
+    struct { Vector3 normal; } plane;
+  };
 
-// ==== RIGIDBODY =====
+} body_shape;
+
+typedef enum {
+    BODY_DYNAMIC,
+    BODY_STATIC,
+} body_type;
 
 typedef struct {
-  Vector3 f, fi; // Linear force applied to the center of mass
-  Vector3 v; // Linear velocity
-  Vector3 p; // Position of the center of mass
-
-  Vector3 t, ti; // Torque
-  Quaternion r; // Orientation
-  Vector3 i0_inv; // Inversed inertia tensor in body space
-  Vector3 l; // Moment of inertia
-
+  Vector3 position;
+  Quaternion rotation;
+  Vector3 angular_momentum;
   float mass;
-} rigidbody;
-
-rigidbody rb_new(Vector3 position, float mass);
-
-Matrix rb_transformation(const rigidbody* rb);
-Matrix rb_transformation_with_offset(const rigidbody *rb, Vector3 offset);
-Matrix rb_inertia_world(const rigidbody* rb);
-Vector3 rb_angular_velocity(const rigidbody* rb);
-void rb_angular_params(const rigidbody *rb, Matrix *inertia, Vector3 *omega);
-
-void rb_apply_impulse_at(rigidbody* rb, Vector3 at, Vector3 impulse);
-void rb_apply_force_at(rigidbody* rb, Vector3 at, Vector3 force);
-void rb_apply_impulse(rigidbody* rb, Vector3 impulse);
-void rb_apply_force(rigidbody* rb, Vector3 force);
-
-void rb_simulate(rigidbody* r, float dt);
-
-rigidbody rb_interpolate(const rigidbody* from, const rigidbody* to, float t);
-
-// ==== COLLISIONS ====
+} body_initial_state;
 
 typedef struct {
-  rigidbody *body_a, *body_b;
-  Vector3 world_contact_a, world_contact_b;
-  Vector3 local_contact_a, local_contact_b;
-  Vector3 normal;
-  Vector3 tangent, bitangent;
-  float depth;
-  float pn, pt, pb;
-  bool valid;
-} collision;
-
-Vector3 sphere_support(Vector3 center, float radius, Vector3 direction);
-Vector3 cylinder_support(Vector3 center, float radius, float height, Quaternion rotation, Vector3 direction);
-Vector3 box_support(Vector3 center, Vector3 size, Quaternion rotation, Vector3 direction);
-
-int cylinder_sphere_contact_manifold(const rigidbody *cylinder_rb, const rigidbody *sphere_rb, float cylinder_height, float cylinder_radius, float sphere_radius, collision *contacts, int max_contacts);
-int cylinder_plane_contact_manifold(const rigidbody *cylinder_rb, float cylinder_height, float cylinder_radius, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_contacts);
-int box_plane_contact_manifold(const rigidbody *box_rb, Vector3 box_size, Vector3 plane_point, Vector3 plane_normal, collision *contacts, int max_collisions);
-int box_box_contact_manifold(const rigidbody *box_a, const rigidbody *box_b, Vector3 size_a, Vector3 size_b, collision *contacts, int max_collisions);
-
-
-collision sphere_plane_check_collision(const rigidbody *shpere_rb, float radius, Vector3 plane_point, Vector3 plane_normal);
-
-// ==== CONSTRAINTS ====
+  Vector3 position;
+  Quaternion rotation;
+  body_shape shape;
+  float mass;
+} body_snapshot;
 
 typedef struct {
-  int num_constraints, num_dof, num_bodies;
-  int gauss_seidel_iterations;
+  count_t dynamics_capacity;
+  count_t statics_capacity;
+} physics_config;
 
-  float beta;
+struct physics_world;
 
-  float *j;
-  float *errors;
-  float *inv_m;
-  float *v;
+typedef struct physics_world physics_world;
 
-  float *a;
-  float *b;
-  float *lambda;
+physics_config default_physics_config();
 
-  float *dv;
- 
-} constraints;
+physics_world* physics_init(const physics_config *config);
 
-constraints constraints_new(int num_bodies, int num_constraints, int num_dof, float stabilization, int gauss_seidel_iterations);
-void constraints_solve(constraints *c, float dt);
-void constraints_free(constraints c);
+void add_physics_body(physics_world* world, body_type type, body_shape shape, body_initial_state state);
 
-// ==== MISC ====
+size_t body_count(const physics_world* world, body_type type);
+bool body(const physics_world* world, body_type type, size_t index, body_snapshot* body);
 
-typedef struct {
-  int num_turns;
-  double timestamp; 
-  double period;
-} oscillation_period;
+void physics_step(physics_world* world, float dt);
 
-oscillation_period oscillation_period_new();
-void oscillation_period_track(oscillation_period* period, const rigidbody* current, const rigidbody* prev);
+void physics_teardown(physics_world* world);
 
 #endif
