@@ -70,6 +70,28 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   return contact_count;
 }
 
+Matrix contact_basis(const contact *contact) {
+  Vector3 y_axis = contact->normal;
+  Vector3 x_axis, z_axis;
+
+  if (y_axis.y > y_axis.x) {
+    x_axis = normalize(cross(y_axis, (Vector3) {1, 0, 0}));
+  } else {
+    x_axis = normalize(cross(y_axis, (Vector3) {0, 1, 0}));
+  }
+
+  z_axis = normalize(cross(x_axis, y_axis));
+
+  Vector4 basis[] = {
+    { x_axis.x, y_axis.x, z_axis.x, 0 },
+    { x_axis.y, y_axis.y, z_axis.y, 0 },
+    { x_axis.z, y_axis.z, z_axis.z, 0 },
+    { 0 }
+  };
+
+  return *(Matrix*)basis;
+}
+
 collisions* collisions_init(const physics_config *config) {
   collisions* result =  malloc(sizeof(collisions));
 
