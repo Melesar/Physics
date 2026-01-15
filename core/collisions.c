@@ -71,7 +71,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   return contact_count;
 }
 
-static Matrix contact_basis(const contact *contact) {
+Matrix contact_space_transform(const contact *contact) {
   Vector3 y_axis = contact->normal;
   Vector3 x_axis, z_axis;
 

@@ -1,5 +1,6 @@
 #include "collisions.h"
 #include "core.h"
+#include "gizmos.h"
 #include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -74,8 +75,6 @@ void draw(float interpolation) {
         break;
     }
   }
-
-  // physics_draw_collisions(world);
 }
 
 void draw_ui(struct nk_context* ctx) {

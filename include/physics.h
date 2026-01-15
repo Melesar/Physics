@@ -86,6 +86,7 @@ typedef struct {
   count_t collisions_capacity;
   float linear_damping;
   float angular_damping;
+  float restitution;
 } physics_config;
 
 #define COMMON_FIELDS \
