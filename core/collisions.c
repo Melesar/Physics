@@ -1,6 +1,7 @@
 #include "collisions.h"
 #include "physics.h"
 #include "raymath.h"
+#include <math.h>
 #include <stdlib.h>
 
 #define ARRAY(type) \
@@ -70,17 +71,33 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   return contact_count;
 }
 
-Matrix contact_basis(const contact *contact) {
+static Matrix contact_basis(const contact *contact) {
   Vector3 y_axis = contact->normal;
   Vector3 x_axis, z_axis;
 
-  if (y_axis.y > y_axis.x) {
-    x_axis = normalize(cross(y_axis, (Vector3) {1, 0, 0}));
-  } else {
-    x_axis = normalize(cross(y_axis, (Vector3) {0, 1, 0}));
-  }
+  if (fabsf(y_axis.y) > fabsf(y_axis.z)) {
+    // Take (1, 0, 0) as initial guess
+    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
 
-  z_axis = normalize(cross(x_axis, y_axis));
+    z_axis.x = 0;
+    z_axis.y = s * y_axis.z;
+    z_axis.z = -s * y_axis.y;
+
+    x_axis.x = z_axis.y * y_axis.z - y_axis.y * z_axis.z;
+    x_axis.y = y_axis.x * z_axis.z;
+    x_axis.z = y_axis.x * z_axis.y;
+  } else {
+    // Take (0, 0, 1) as initial guess
+    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
+
+    x_axis.x = -s * y_axis.y;
+    x_axis.y = s * y_axis.x;
+    x_axis.z = 0;
+
+    z_axis.x = -y_axis.z * x_axis.y;
+    z_axis.y = x_axis.x * y_axis.z;
+    z_axis.z = y_axis.x * x_axis.y - x_axis.x * y_axis.y;
+  }
 
   Vector4 basis[] = {
     { x_axis.x, y_axis.x, z_axis.x, 0 },
