@@ -4,26 +4,19 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define ARRAY(type) \
-  count_t type##s_capacity; \
-  count_t type##s_count; \
-  type* type##s;
-
 #define ARRAY_INIT(base, type, capacity) \
   base->type##s_capacity = capacity; \
   base->type##s_count = 0; \
   base->type##s = malloc(base->type##s_capacity * sizeof(type));
 
 #define ARRAY_RESIZE_IF_NEEDED(array, count, capacity, type) \
-  if (count >= capacity) { \
-    capacity *= 2; \
-    array = realloc(array, capacity * sizeof(type)); \
+  while (count >= capacity) { \
+    capacity <<= 1; \
+    if (count <= capacity) { \
+      array = realloc(array, capacity * sizeof(type)); \
+      break; \
+    } \
   }
-
-struct collisions {
-  ARRAY(collision)
-  ARRAY(contact)
-};
 
 static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
 
@@ -160,14 +153,19 @@ bool collision_get(collisions *collisions, count_t index, collision *collision) 
   return true;
 }
 
-bool contact_get(collisions *collisions, count_t index, const collision* collision, contact *contact) {
-  count_t i = collision->contacts_offset + index;
-
-  if (i >= collisions->contacts_count || index >= collision->contacts_count)
+bool contact_get(collisions *collisions, count_t index, contact *contact) {
+  if (index >= collisions->contacts_count || index < 0)
     return false;
 
-  *contact = collisions->contacts[i];
+  *contact = collisions->contacts[index];
   return true;
+}
+
+void contact_update_penetration(collisions *collisions,count_t index, float penetration) {
+  if (index >= collisions->contacts_count || index < 0)
+    return;
+
+  collisions->contacts[index].depth = penetration;
 }
 
 void collisions_detect(collisions* collisions, const common_data *data_a, const common_data *data_b) {

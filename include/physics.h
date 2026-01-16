@@ -89,6 +89,8 @@ typedef struct {
   float linear_damping;
   float angular_damping;
   float restitution;
+
+  count_t max_interpenetration_iterations;
 } physics_config;
 
 #define COMMON_FIELDS \
