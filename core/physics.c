@@ -33,7 +33,7 @@ struct physics_world {
   float linear_damping, angular_damping;
   float restitution;
 
-  count_t max_interpenetration_iterations;
+  count_t max_resolution_iterations;
 };
 
 static Matrix inertia_tensor_matrix(Vector3 inertia) {
@@ -89,7 +89,7 @@ physics_config physics_default_config() {
     .linear_damping = 0.997,
     .angular_damping = 0.997,
     .restitution = 0.3,
-    .max_interpenetration_iterations = 10,
+    .max_resolution_iterations = 10,
   };
 }
 
@@ -120,7 +120,7 @@ physics_world* physics_init(const physics_config *config) {
   world->angular_damping = config->angular_damping;
   world->restitution = config->restitution;
 
-  world->max_interpenetration_iterations = config->max_interpenetration_iterations;
+  world->max_resolution_iterations = config->max_resolution_iterations;
 
   world->collisions = collisions_init(config);
 
@@ -347,16 +347,16 @@ static void update_penetration_depths(physics_world *world, count_t worst_body_i
 }
 
 static void resolve_interpenetrations(physics_world *world) {
-  float penetration_epsilon = 0.0001f;
-  count_t iterations = 0;
-  count_t count = collisions_count(world->collisions);
+  const count_t count = collisions_count(world->collisions);
 
   if (count == 0)
     return;
 
+  const float penetration_epsilon = 0.0001f;
+  count_t iterations = 0;
   collision collision;
   contact contact;
-  while (iterations < world->max_interpenetration_iterations) {
+  while (iterations < world->max_resolution_iterations) {
     float max_penetration = -INFINITY;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
@@ -391,8 +391,34 @@ static void resolve_interpenetrations(physics_world *world) {
   }
 }
 
+static void resolve_velocities(physics_world *world) {
+  const float velocity_epsilon = 0.00001f;
+  const count_t count = collisions_count(world->collisions);
+  if (count == 0)
+    return;
+
+  count_t iterations = 0;
+  collision collision;
+  contact contact;
+  while (iterations < world->max_resolution_iterations) {
+    float max_velocity = -INFINITY;
+    count_t worst_contact_index = -1;
+    count_t worst_collision_index = -1;
+    for (count_t i = 0; i < count; ++i) {
+      collision_get(world->collisions, i, &collision);
+
+      for (count_t j = 0; j < count; ++j) {
+        Vector3 angular_velocity =
+        Vector3 closing_velocity = add(world->dynamics.velocities[collision.index_a], cross());
+      }
+    }
+    iterations += 1;
+  }
+}
+
 static void resolve_collisions(physics_world *world, float dt) {
   resolve_interpenetrations(world);
+  resolve_velocities(world);
   // collisions *collisions = world->collisions;
   // count_t count = collisions_count(collisions);
 

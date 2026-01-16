@@ -90,7 +90,7 @@ typedef struct {
   float angular_damping;
   float restitution;
 
-  count_t max_interpenetration_iterations;
+  count_t max_resolution_iterations;
 } physics_config;
 
 #define COMMON_FIELDS \
