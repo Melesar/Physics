@@ -15,6 +15,7 @@ const size_t num_materials = sizeof(colors) / sizeof(Color);
 Material materials[20];
 
 Mesh box_mesh;
+Mesh sphere_mesh;
 
 physics_world* world = NULL;
 
@@ -28,6 +29,7 @@ void setup_scene(Shader shader) {
   reset();
 
   box_mesh = GenMeshCube(1, 1, 1);
+  sphere_mesh = GenMeshSphere(1, 16, 16);
 
   for (size_t i = 0; i < num_materials; ++i) {
     Material m = LoadMaterialDefault();
@@ -47,6 +49,7 @@ void reset() {
 
   physics_add_body(world, BODY_STATIC, (body_shape){ .type = SHAPE_PLANE, .plane = { .normal = { 0, 1, 0 } } }, (body_initial_state){ 0 });
   physics_add_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_BOX, .box = { .size = { 1, 1, 1 } } }, (body_initial_state) { .position = { 0, 6, 0 }, .rotation = qidentity(), .angular_momentum = { 1, 1, 1 }, .mass = 3});
+  physics_add_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = 1 } }, (body_initial_state) { .position = { -1, 5, 4 }, .rotation = qidentity(), .mass = 2, .angular_momentum = zero() });
 }
 
 void on_input(Camera *camera) {}
@@ -63,12 +66,19 @@ void draw(float interpolation) {
     if (!physics_body(world, BODY_DYNAMIC, i, &snapshot))
       continue;
 
+    Matrix scale;
     Matrix transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));
     Material material = materials[i % num_materials];
 
     switch (snapshot.shape.type) {
       case SHAPE_BOX:
-        DrawMesh(box_mesh, material, transform);
+        scale = MatrixScale(snapshot.shape.box.size.x, snapshot.shape.box.size.y, snapshot.shape.box.size.z);
+        DrawMesh(box_mesh, material, mul(scale, transform));
+        break;
+
+      case SHAPE_SPHERE:
+        scale = MatrixScale(snapshot.shape.sphere.radius, snapshot.shape.sphere.radius, snapshot.shape.sphere.radius);
+        DrawMesh(sphere_mesh, material, mul(scale, transform));
         break;
 
       default:

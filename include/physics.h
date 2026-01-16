@@ -48,6 +48,7 @@
 
 typedef enum {
   SHAPE_BOX,
+  SHAPE_SPHERE,
   SHAPE_PLANE,
 } shape_type;
 
@@ -57,6 +58,7 @@ typedef struct {
   union {
     struct { Vector3 size; } box;
     struct { Vector3 normal; } plane;
+    struct { float radius; } sphere;
   };
 
 } body_shape;

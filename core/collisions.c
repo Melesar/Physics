@@ -71,6 +71,36 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   return contact_count;
 }
 
+static count_t sphere_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  Vector3 plane_point = data_b->positions[index_b];
+  Vector3 plane_normal = data_b->shapes[index_b].plane.normal;
+  Vector3 sphere_center = data_a->positions[index_a];
+  float sphere_radius = data_a->shapes[index_a].sphere.radius;
+
+  float plane_sphere_distance = dot(sub(sphere_center, plane_point), plane_normal);
+  if (plane_sphere_distance > sphere_radius)
+    return 0;
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision *collision = &collisions->collisions[collisions->collisions_count++];
+  contact *contact = &collisions->contacts[collisions->contacts_count];
+
+  collision->index_a = index_a;
+  collision->index_b = index_b;
+  collision->contacts_offset = collisions->contacts_count;
+  collision->contacts_count = 1;
+
+  contact->normal = plane_normal;
+  contact->point = add(sphere_center, scale(plane_normal, -plane_sphere_distance));
+  contact->depth = sphere_radius - plane_sphere_distance;
+
+  collisions->contacts_count++;
+
+  return 1;
+}
+
 Matrix contact_space_transform(const contact *contact) {
   Vector3 y_axis = contact->normal;
   Vector3 x_axis, z_axis;
@@ -154,6 +184,8 @@ void collisions_detect(collisions* collisions, const common_data *data_a, const 
 
       if (shape_a.type == SHAPE_BOX && shape_b.type == SHAPE_PLANE) {
         box_plane_collision(collisions, i, j, data_a, data_b);
+      } else if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_PLANE) {
+        sphere_plane_collision(collisions, i, j, data_a, data_b);
       }
     }
   }
