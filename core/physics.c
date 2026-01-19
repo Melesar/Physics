@@ -195,6 +195,11 @@ void physics_step(physics_world* world, float dt) {
   }
 
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
+
+  // if (world->collisions->collisions_count > 0) {
+  //   toggle_pause(true);
+  // }
+
   resolve_collisions(world, dt);
 }
 
@@ -326,9 +331,6 @@ static void update_penetration_depths(physics_world *world, count_t worst_body_i
 
     for (count_t j = 0; j < collision.contacts_count; ++j) {
       count_t index = collision.contacts_offset + j;
-      if (index == worst_contact_index)
-        continue;
-
       contact_get(world->collisions, index, &contact);
 
       v3 delta_position = add(deltas[0], cross(deltas[1], sub(contact.point, world->dynamics.positions[worst_body_index])));
@@ -361,7 +363,7 @@ static void resolve_interpenetrations(physics_world *world) {
 
         if (contact.depth > max_penetration) {
           max_penetration = contact.depth;
-          max_penetration_index = j;
+          max_penetration_index = collision.contacts_offset + j;
           collision_index = i;
         }
       }
@@ -371,7 +373,7 @@ static void resolve_interpenetrations(physics_world *world) {
       break;
 
     collision_get(world->collisions, collision_index, &collision);
-    contact_get(world->collisions, collision.contacts_offset + max_penetration_index, &contact);
+    contact_get(world->collisions, max_penetration_index, &contact);
 
     count_t body_index = collision.index_a;
     v3 deltas[2];
@@ -384,12 +386,16 @@ static void resolve_interpenetrations(physics_world *world) {
 }
 
 static void resolve_velocity_contact(physics_world *world, count_t body_index, contact *contact, v3 *deltas) {
-  float inv_mass = world->dynamics.inv_masses[body_index];
-  float velocity_change_per_unit_impulse = inv_mass; // Linear component (second body is static, mass = INF).
-  velocity_change_per_unit_impulse += contact->local_velocity.y; // Velocity of the contact point along the contact normal.
+  v3 delta_velocity_world = cross(contact->relative_position, contact->normal);
+  delta_velocity_world = transform(delta_velocity_world, world->dynamics.inv_intertias[body_index]);
+  delta_velocity_world = cross(delta_velocity_world, contact->relative_position);
 
-  float delta_velocity = contact->desired_delta_velocity; // Y-component of the contact space velocity is the velocity along the contact normal.
-  v3 contact_space_impulse = { 0, delta_velocity / velocity_change_per_unit_impulse, 0 };
+  float inv_mass = world->dynamics.inv_masses[body_index];
+  float delta_velocity = dot(delta_velocity_world, contact->normal);
+  delta_velocity += inv_mass;
+
+  float desired_delta_velocity = contact->desired_delta_velocity; // Y-component of the contact space velocity is the velocity along the contact normal.
+  v3 contact_space_impulse = { 0, desired_delta_velocity / delta_velocity, 0 };
   v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
 
   v3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
@@ -421,9 +427,6 @@ static void update_velocity_deltas(physics_world *world, count_t worst_contact_i
 
     for (count_t j = 0; j < collision.contacts_count; ++j) {
       count_t index = collision.contacts_offset + j;
-      if (index == worst_contact_index)
-        continue;
-
       contact *contact = &world->collisions->contacts[index];
 
       v3 delta_velocity = add(deltas[0], cross(deltas[1], contact->relative_position));
