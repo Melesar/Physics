@@ -5,7 +5,6 @@
 #include "stdlib.h"
 #include "core.h"
 #include "gizmos.h"
-#include <CarbonCore/OSUtils.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -19,7 +18,6 @@ typedef struct {
 
   // Derived values.
   m4 *inv_intertias;
-  v3 *angular_velocities;
 } dynamic_bodies;
 
 typedef common_data static_bodies;
@@ -30,10 +28,7 @@ struct physics_world {
 
   collisions *collisions;
 
-  float linear_damping, angular_damping;
-  float restitution;
-
-  count_t max_resolution_iterations;
+  physics_config config;
 };
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
@@ -106,13 +101,8 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.inv_inertia_tensors = malloc(sizeof(m4) * config->dynamics_capacity);
 
   world->dynamics.inv_intertias = malloc(sizeof(m4) * config->dynamics_capacity);
-  world->dynamics.angular_velocities = malloc(sizeof(v3) * config->dynamics_capacity);
 
-  world->linear_damping = config->linear_damping;
-  world->angular_damping = config->angular_damping;
-  world->restitution = config->restitution;
-
-  world->max_resolution_iterations = config->max_resolution_iterations;
+  world->config = *config;
 
   world->collisions = collisions_init(config);
 
@@ -133,7 +123,6 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
       world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * commons->capacity);
       world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m4) * commons->capacity);
       world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m4) * commons->capacity);
-      world->dynamics.angular_velocities = realloc(world->dynamics.angular_velocities, sizeof(v3) * commons->capacity);
     }
   }
 
@@ -182,8 +171,8 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 
 void physics_step(physics_world* world, float dt) {
   v3 gravity_acc = scale(GRAVITY_V, dt);
-  float linear_damping = powf(world->linear_damping, dt);
-  float angular_damping = powf(world->angular_damping, dt);
+  float linear_damping = powf(world->config.linear_damping, dt);
+  float angular_damping = powf(world->config.angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->count; ++i) {
@@ -246,16 +235,19 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.angular_momenta);
   free(world->dynamics.inv_inertia_tensors);
   free(world->dynamics.inv_intertias);
-  free(world->dynamics.angular_velocities);
 
   collisions_teardown(world->collisions);
 
   free(world);
 }
 
-static void prepare_contacts(physics_world *world) {
+static void update_desired_velocity_delta(physics_world *world, contact *contact) {
   const static float velocity_limit = 0.25f;
+  float restitution = fabsf(contact->local_velocity.y) >= velocity_limit ? world->config.restitution : 0.0f;
+  contact->desired_delta_velocity = -contact->local_velocity.y - restitution * contact->local_velocity.y;
+}
 
+static void prepare_contacts(physics_world *world) {
   for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
     collision collision = world->collisions->collisions[i];
     count_t body_index = collision.index_a;
@@ -263,6 +255,8 @@ static void prepare_contacts(physics_world *world) {
     m4 rotation_matrix = as_matrix(world->dynamics.rotations[body_index]);
     m4 inv_inertia = mul(mul(rotation_matrix, world->dynamics.inv_inertia_tensors[body_index]), transpose(rotation_matrix));
     v3 angular_velocity = transform(world->dynamics.angular_momenta[body_index], inv_inertia);
+
+    world->dynamics.inv_intertias[body_index] = inv_inertia;
 
     for (count_t j = collision.contacts_offset; j < collision.contacts_offset + collision.contacts_count; ++j) {
       contact *contact = &world->collisions->contacts[j];
@@ -272,15 +266,14 @@ static void prepare_contacts(physics_world *world) {
       contact->local_velocity = add(world->dynamics.velocities[body_index], cross(angular_velocity, contact->relative_position));
       contact->local_velocity = matrix_rotate_inverse(contact->local_velocity, contact->basis);
 
-      float restitution = fabsf(contact->local_velocity.y) >= velocity_limit ? world->restitution : 0.0f;
-      contact->desired_delta_velocity = -contact->local_velocity.y - restitution * contact->local_velocity.y;
+      update_desired_velocity_delta(world, contact);
     }
   }
 }
 
 static void resolve_interpenetration_contact(physics_world *world, count_t body_index, const contact *contact, v3 *deltas) {
   v3 position = world->dynamics.positions[body_index];
-  m4 inv_inertia_tensor = world->dynamics.inv_intertias[body_index]; // TODO: Undefined, recalculate
+  m4 inv_inertia_tensor = world->dynamics.inv_intertias[body_index];
   float inv_mass = world->dynamics.inv_masses[body_index];
   quat rotation = world->dynamics.rotations[body_index];
 
@@ -332,11 +325,15 @@ static void update_penetration_depths(physics_world *world, count_t worst_body_i
     }
 
     for (count_t j = 0; j < collision.contacts_count; ++j) {
-      contact_get(world->collisions, collision.contacts_offset + j, &contact);
+      count_t index = collision.contacts_offset + j;
+      if (index == worst_contact_index)
+        continue;
+
+      contact_get(world->collisions, index, &contact);
 
       v3 delta_position = add(deltas[0], cross(deltas[1], sub(contact.point, world->dynamics.positions[worst_body_index])));
       float new_penetration = contact.depth - dot(delta_position, contact.normal);
-      contact_update_penetration(world->collisions, collision.contacts_offset + j, new_penetration);
+      contact_update_penetration(world->collisions, index, new_penetration);
     }
   }
 }
@@ -351,7 +348,7 @@ static void resolve_interpenetrations(physics_world *world) {
   count_t iterations = 0;
   collision collision;
   contact contact;
-  while (iterations < world->max_resolution_iterations) {
+  while (iterations < world->config.max_resolution_iterations) {
     float max_penetration = penetration_epsilon;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
@@ -408,6 +405,34 @@ static void resolve_velocity_contact(physics_world *world, count_t body_index, c
   deltas[1] = angular_impulse_delta;
 }
 
+static void update_velocity_deltas(physics_world *world, count_t worst_contact_index, count_t body_index, const v3 *deltas) {
+  contact worst_contact;
+  collision collision;
+
+  contact_get(world->collisions, worst_contact_index, &worst_contact);
+
+  count_t count = collisions_count(world->collisions);
+  for (count_t i = 0; i < count; ++i) {
+    collision_get(world->collisions, i, &collision);
+
+    if (collision.index_a != body_index) {
+      continue;
+    }
+
+    for (count_t j = 0; j < collision.contacts_count; ++j) {
+      count_t index = collision.contacts_offset + j;
+      if (index == worst_contact_index)
+        continue;
+
+      contact *contact = &world->collisions->contacts[index];
+
+      v3 delta_velocity = add(deltas[0], cross(deltas[1], contact->relative_position));
+      contact->local_velocity = add(contact->local_velocity, matrix_rotate_inverse(delta_velocity, contact->basis));
+      update_desired_velocity_delta(world, contact);
+    }
+  }
+}
+
 static void resolve_velocities(physics_world *world) {
   const float velocity_epsilon = 0.00001f;
   const count_t count = collisions_count(world->collisions);
@@ -417,7 +442,7 @@ static void resolve_velocities(physics_world *world) {
   count_t iterations = 0;
   collision collision;
   contact contact;
-  while (iterations < world->max_resolution_iterations) {
+  while (iterations < world->config.max_resolution_iterations) {
     float max_velocity = velocity_epsilon;
     count_t worst_contact_index = -1;
     count_t worst_collision_index = -1;
@@ -444,7 +469,7 @@ static void resolve_velocities(physics_world *world) {
 
     v3 deltas[2];
     resolve_velocity_contact(world, collision.index_a, &contact, deltas);
-    // TODO adjust velocity delta
+    update_velocity_deltas(world, worst_collision_index, collision.index_a, deltas);
 
     iterations += 1;
   }
