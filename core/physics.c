@@ -2,10 +2,10 @@
 #include "raylib.h"
 #include "physics.h"
 #include "raylib.h"
-#include "raymath.h"
 #include "stdlib.h"
 #include "core.h"
 #include "gizmos.h"
+#include <CarbonCore/OSUtils.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -13,13 +13,13 @@ typedef struct {
   COMMON_FIELDS
 
   float *inv_masses;
-  Vector3 *velocities;
-  Vector3 *angular_momenta;
-  Matrix *inv_inertia_tensors;
+  v3 *velocities;
+  v3 *angular_momenta;
+  m4 *inv_inertia_tensors;
 
   // Derived values.
-  Matrix *inv_intertias;
-  Vector3 *angular_velocities;
+  m4 *inv_intertias;
+  v3 *angular_velocities;
 } dynamic_bodies;
 
 typedef common_data static_bodies;
@@ -36,31 +36,23 @@ struct physics_world {
   count_t max_resolution_iterations;
 };
 
-static Matrix inertia_tensor_matrix(Vector3 inertia) {
-  Matrix tensor = { 0 };
-  tensor.m0 = inertia.x;
-  tensor.m5 = inertia.y;
-  tensor.m10 = inertia.z;
-  return tensor;
-}
-
-static Vector3 cylinder_inertia(float radius, float height, float mass) {
+static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
-  return (Vector3){ principal, mass * radius * radius / 2.0, principal };
+  return (v3){ principal, mass * radius * radius / 2.0, principal };
 }
 
-static Vector3 sphere_inertia(float radius, float mass) {
+static v3 sphere_inertia(float radius, float mass) {
   float scale = 2.0 * mass * radius * radius / 5.0;
   return scale(one(), scale);
 }
 
-static Vector3 box_inertia(Vector3 size, float mass) {
+static v3 box_inertia(v3 size, float mass) {
   float m = mass / 12;
   float xx = size.x * size.x;
   float yy = size.y * size.y;
   float zz = size.z * size.z;
 
-  Vector3 i = { yy + zz, xx + zz, xx + yy };
+  v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
 }
 
@@ -79,7 +71,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
 }
 
 static void resolve_collisions(physics_world *world, float dt);
-static void calculate_derivatives(physics_world *world);
+static void prepare_contacts(physics_world *world);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -99,8 +91,8 @@ physics_world* physics_init(const physics_config *config) {
   #define INIT_COMMONS(type, cap) \
     world->type.capacity = cap; \
     world->type.count = 0; \
-    world->type.positions = malloc(sizeof(Vector3) * cap); \
-    world->type.rotations = malloc(sizeof(Quaternion) * cap); \
+    world->type.positions = malloc(sizeof(v3) * cap); \
+    world->type.rotations = malloc(sizeof(quat) * cap); \
     world->type.shapes = malloc(sizeof(body_shape) * cap); \
 
   INIT_COMMONS(dynamics, config->dynamics_capacity);
@@ -109,12 +101,12 @@ physics_world* physics_init(const physics_config *config) {
   #undef INIT_COMMONS
 
   world->dynamics.inv_masses = malloc(sizeof(float) * config->dynamics_capacity);
-  world->dynamics.velocities = malloc(sizeof(Vector3) * config->dynamics_capacity);
-  world->dynamics.angular_momenta = malloc(sizeof(Vector3) * config->dynamics_capacity);
-  world->dynamics.inv_inertia_tensors = malloc(sizeof(Matrix) * config->dynamics_capacity);
+  world->dynamics.velocities = malloc(sizeof(v3) * config->dynamics_capacity);
+  world->dynamics.angular_momenta = malloc(sizeof(v3) * config->dynamics_capacity);
+  world->dynamics.inv_inertia_tensors = malloc(sizeof(m4) * config->dynamics_capacity);
 
-  world->dynamics.inv_intertias = malloc(sizeof(Matrix) * config->dynamics_capacity);
-  world->dynamics.angular_velocities = malloc(sizeof(Vector3) * config->dynamics_capacity);
+  world->dynamics.inv_intertias = malloc(sizeof(m4) * config->dynamics_capacity);
+  world->dynamics.angular_velocities = malloc(sizeof(v3) * config->dynamics_capacity);
 
   world->linear_damping = config->linear_damping;
   world->angular_damping = config->angular_damping;
@@ -131,17 +123,17 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
   common_data *commons = as_common(world, type);
   if (commons->capacity < commons->count + 1) {
     commons->capacity = commons->capacity << 1;
-    commons->positions = realloc(commons->positions, sizeof(Vector3) * commons->capacity);
-    commons->rotations = realloc(commons->rotations, sizeof(Quaternion) * commons->capacity);
+    commons->positions = realloc(commons->positions, sizeof(v3) * commons->capacity);
+    commons->rotations = realloc(commons->rotations, sizeof(quat) * commons->capacity);
     commons->shapes = realloc(commons->shapes, sizeof(body_shape) * commons->capacity);
 
     if (type == BODY_DYNAMIC) {
       world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
-      world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(Vector3) * commons->capacity);
-      world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(Vector3) * commons->capacity);
-      world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(Matrix) * commons->capacity);
-      world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(Matrix) * commons->capacity);
-      world->dynamics.angular_velocities = realloc(world->dynamics.angular_velocities, sizeof(Vector3) * commons->capacity);
+      world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * commons->capacity);
+      world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * commons->capacity);
+      world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m4) * commons->capacity);
+      world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m4) * commons->capacity);
+      world->dynamics.angular_velocities = realloc(world->dynamics.angular_velocities, sizeof(v3) * commons->capacity);
     }
   }
 
@@ -155,14 +147,14 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = state.angular_momentum;
 
-    Matrix *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
+    m4 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
       case SHAPE_BOX:
-        *inv_inertia_tensor = inertia_tensor_matrix(Vector3Invert(box_inertia(shape.box.size, state.mass)));
+        *inv_inertia_tensor = inertia_tensor_matrix(invert(box_inertia(shape.box.size, state.mass)));
         break;
 
       default:
-        *inv_inertia_tensor = MatrixIdentity();
+        *inv_inertia_tensor = m4identity();
         break;
     }
 
@@ -189,7 +181,7 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 }
 
 void physics_step(physics_world* world, float dt) {
-  Vector3 gravity_acc = scale(GRAVITY_V, dt);
+  v3 gravity_acc = scale(GRAVITY_V, dt);
   float linear_damping = powf(world->linear_damping, dt);
   float angular_damping = powf(world->angular_damping, dt);
 
@@ -200,22 +192,20 @@ void physics_step(physics_world* world, float dt) {
 
     dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
 
-    Quaternion rotation = dynamics->rotations[i];
-    Matrix orientation = as_matrix(rotation);
-    Matrix inertia = mul(mul(orientation, dynamics->inv_inertia_tensors[i]), transpose(orientation));
-    Vector3 omega = transform(dynamics->angular_momenta[i], inertia);
+    quat rotation = dynamics->rotations[i];
+    m4 orientation = as_matrix(rotation);
+    m4 inertia = mul(mul(orientation, dynamics->inv_inertia_tensors[i]), transpose(orientation));
+    v3 omega = transform(dynamics->angular_momenta[i], inertia);
 
-    Quaternion q_omega = { omega.x, omega.y, omega.z, 0 };
-    Quaternion dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-    Quaternion q_orientation = qadd(rotation, dq);
+    quat q_omega = { omega.x, omega.y, omega.z, 0 };
+    quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
+    quat q_orientation = qadd(rotation, dq);
 
     dynamics->rotations[i] = qnormalize(q_orientation);
     dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
   }
 
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
-
-  calculate_derivatives(world);
   resolve_collisions(world, dt);
 }
 
@@ -263,37 +253,42 @@ void physics_teardown(physics_world* world) {
   free(world);
 }
 
-static void calculate_derivatives(physics_world *world) {
-  count_t count = world->dynamics.count;
+static void prepare_contacts(physics_world *world) {
+  const static float velocity_limit = 0.25f;
 
-  for (count_t i = 0; i < count; ++i) {
-    Quaternion rotation = world->dynamics.rotations[i];
-    Matrix rotation_matrix = as_matrix(rotation);
-    Matrix inv_inertia = mul(mul(rotation_matrix, world->dynamics.inv_inertia_tensors[i]), transpose(rotation_matrix));
-    Vector3 angular_velocity = transform(world->dynamics.angular_momenta[i], inv_inertia);
+  for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
+    collision collision = world->collisions->collisions[i];
+    count_t body_index = collision.index_a;
 
-    world->dynamics.inv_intertias[i] = inv_inertia;
-    world->dynamics.angular_velocities[i] = angular_velocity;
+    m4 rotation_matrix = as_matrix(world->dynamics.rotations[body_index]);
+    m4 inv_inertia = mul(mul(rotation_matrix, world->dynamics.inv_inertia_tensors[body_index]), transpose(rotation_matrix));
+    v3 angular_velocity = transform(world->dynamics.angular_momenta[body_index], inv_inertia);
+
+    for (count_t j = collision.contacts_offset; j < collision.contacts_offset + collision.contacts_count; ++j) {
+      contact *contact = &world->collisions->contacts[j];
+
+      contact->basis = contact_space_transform(contact);
+      contact->relative_position = sub(contact->point, world->dynamics.positions[body_index]);
+      contact->local_velocity = add(world->dynamics.velocities[body_index], cross(angular_velocity, contact->relative_position));
+      contact->local_velocity = matrix_rotate_inverse(contact->local_velocity, contact->basis);
+
+      float restitution = fabsf(contact->local_velocity.y) >= velocity_limit ? world->restitution : 0.0f;
+      contact->desired_delta_velocity = -contact->local_velocity.y - restitution * contact->local_velocity.y;
+    }
   }
 }
 
-static void resolve_interpenetration_contact(physics_world *world, count_t body_index, const contact *contact, Vector3 *deltas) {
-  Vector3 position = world->dynamics.positions[body_index];
-  Vector3 angular_velocity = world->dynamics.angular_velocities[body_index];
-  Matrix inv_inertia_tensor = world->dynamics.inv_intertias[body_index];
+static void resolve_interpenetration_contact(physics_world *world, count_t body_index, const contact *contact, v3 *deltas) {
+  v3 position = world->dynamics.positions[body_index];
+  m4 inv_inertia_tensor = world->dynamics.inv_intertias[body_index]; // TODO: Undefined, recalculate
   float inv_mass = world->dynamics.inv_masses[body_index];
-  Quaternion rotation = world->dynamics.rotations[body_index];
+  quat rotation = world->dynamics.rotations[body_index];
 
-  Matrix contact_to_world = contact_space_transform(contact);
-  Matrix world_to_contact = transpose(contact_to_world);
+  v3 torque_per_impulse = cross(contact->relative_position, contact->normal);
 
-  Vector3 point_relative_position = sub(contact->point, position);
-  Vector3 point_rotational_velocity = cross(angular_velocity, point_relative_position);
-  Vector3 torque_per_impulse = cross(point_relative_position, contact->normal);
-
-  Vector3 angular_inertia_world = torque_per_impulse;
+  v3 angular_inertia_world = torque_per_impulse;
   angular_inertia_world = transform(angular_inertia_world, inv_inertia_tensor);
-  angular_inertia_world = cross(angular_inertia_world, point_relative_position);
+  angular_inertia_world = cross(angular_inertia_world, contact->relative_position);
 
   float angular_inertia_contact = dot(angular_inertia_world, contact->normal);
   float linear_inertia = inv_mass;
@@ -301,7 +296,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t body_
   float inv_inertia = 1 / total_inertia;
   float linear_move = contact->depth * linear_inertia * inv_inertia;
   float angular_move = contact->depth * angular_inertia_contact * inv_inertia;
-  Vector3 linear_delta = scale(contact->normal, linear_move);
+  v3 linear_delta = scale(contact->normal, linear_move);
 
   world->dynamics.positions[body_index] = add(position, linear_delta);
   deltas[0] = linear_delta;
@@ -311,18 +306,18 @@ static void resolve_interpenetration_contact(physics_world *world, count_t body_
     return;
   }
 
-  Vector3 impulse_per_move = transform(torque_per_impulse, inv_inertia_tensor);
-  Vector3 rotation_per_move = scale(impulse_per_move, 1.0 / angular_inertia_contact);
-  Vector3 rotation_delta = scale(rotation_per_move, angular_move);
+  v3 impulse_per_move = transform(torque_per_impulse, inv_inertia_tensor);
+  v3 rotation_per_move = scale(impulse_per_move, 1.0 / angular_inertia_contact);
+  v3 rotation_delta = scale(rotation_per_move, angular_move);
 
-  Quaternion q_omega = { rotation_delta.x, rotation_delta.y, rotation_delta.z, 0 };
-  Quaternion dq = qmul(q_omega, rotation);
+  quat q_omega = { rotation_delta.x, rotation_delta.y, rotation_delta.z, 0 };
+  quat dq = qmul(q_omega, rotation);
   world->dynamics.rotations[body_index] = qnormalize(qadd(rotation, dq));
 
   deltas[1] = rotation_delta;
 }
 
-static void update_penetration_depths(physics_world *world, count_t worst_body_index, count_t worst_contact_index, const Vector3 *deltas) {
+static void update_penetration_depths(physics_world *world, count_t worst_body_index, count_t worst_contact_index, const v3 *deltas) {
   contact worst_contact, contact;
   collision collision;
 
@@ -339,7 +334,7 @@ static void update_penetration_depths(physics_world *world, count_t worst_body_i
     for (count_t j = 0; j < collision.contacts_count; ++j) {
       contact_get(world->collisions, collision.contacts_offset + j, &contact);
 
-      Vector3 delta_position = add(deltas[0], cross(deltas[1], sub(contact.point, world->dynamics.positions[worst_body_index])));
+      v3 delta_position = add(deltas[0], cross(deltas[1], sub(contact.point, world->dynamics.positions[worst_body_index])));
       float new_penetration = contact.depth - dot(delta_position, contact.normal);
       contact_update_penetration(world->collisions, collision.contacts_offset + j, new_penetration);
     }
@@ -357,7 +352,7 @@ static void resolve_interpenetrations(physics_world *world) {
   collision collision;
   contact contact;
   while (iterations < world->max_resolution_iterations) {
-    float max_penetration = -INFINITY;
+    float max_penetration = penetration_epsilon;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
 
@@ -375,20 +370,42 @@ static void resolve_interpenetrations(physics_world *world) {
       }
     }
 
-    if (max_penetration < penetration_epsilon)
+    if (collision_index == -1)
       break;
 
     collision_get(world->collisions, collision_index, &collision);
     contact_get(world->collisions, collision.contacts_offset + max_penetration_index, &contact);
 
     count_t body_index = collision.index_a;
-    Vector3 deltas[2];
+    v3 deltas[2];
 
     resolve_interpenetration_contact(world, body_index, &contact, deltas);
     update_penetration_depths(world, body_index, max_penetration_index, deltas);
 
     iterations += 1;
   }
+}
+
+static void resolve_velocity_contact(physics_world *world, count_t body_index, contact *contact, v3 *deltas) {
+  float inv_mass = world->dynamics.inv_masses[body_index];
+  float velocity_change_per_unit_impulse = inv_mass; // Linear component (second body is static, mass = INF).
+  velocity_change_per_unit_impulse += contact->local_velocity.y; // Velocity of the contact point along the contact normal.
+
+  float delta_velocity = contact->desired_delta_velocity; // Y-component of the contact space velocity is the velocity along the contact normal.
+  v3 contact_space_impulse = { 0, delta_velocity / velocity_change_per_unit_impulse, 0 };
+  v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
+
+  v3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
+  v3 angular_impulse_delta = cross(world_space_impulse, contact->relative_position);
+
+  v3 *velocity = &world->dynamics.velocities[body_index];
+  v3 *angular_momentum = &world->dynamics.angular_momenta[body_index];
+
+  *velocity = add(*velocity, linear_impulse_delta);
+  *angular_momentum = add(*angular_momentum, angular_impulse_delta);
+
+  deltas[0] = linear_impulse_delta;
+  deltas[1] = angular_impulse_delta;
 }
 
 static void resolve_velocities(physics_world *world) {
@@ -401,73 +418,40 @@ static void resolve_velocities(physics_world *world) {
   collision collision;
   contact contact;
   while (iterations < world->max_resolution_iterations) {
-    float max_velocity = -INFINITY;
+    float max_velocity = velocity_epsilon;
     count_t worst_contact_index = -1;
     count_t worst_collision_index = -1;
     for (count_t i = 0; i < count; ++i) {
       collision_get(world->collisions, i, &collision);
 
-      for (count_t j = 0; j < count; ++j) {
-        Vector3 angular_velocity =
-        Vector3 closing_velocity = add(world->dynamics.velocities[collision.index_a], cross());
+      for (count_t j = 0; j < collision.contacts_count; ++j) {
+        contact_get(world->collisions, collision.contacts_offset + j, &contact);
+
+        if (contact.desired_delta_velocity > max_velocity) {
+          max_velocity = contact.desired_delta_velocity;
+          worst_contact_index = collision.contacts_offset + j;
+          worst_collision_index = i;
+        }
       }
     }
+
+    if (worst_contact_index == -1) {
+      break;
+    }
+
+    collision_get(world->collisions, worst_collision_index, &collision);
+    contact_get(world->collisions, worst_contact_index, &contact);
+
+    v3 deltas[2];
+    resolve_velocity_contact(world, collision.index_a, &contact, deltas);
+    // TODO adjust velocity delta
+
     iterations += 1;
   }
 }
 
 static void resolve_collisions(physics_world *world, float dt) {
+  prepare_contacts(world);
   resolve_interpenetrations(world);
   resolve_velocities(world);
-  // collisions *collisions = world->collisions;
-  // count_t count = collisions_count(collisions);
-
-  // collision c;
-  // contact contact;
-  // for (count_t i = 0; i < count; ++i) {
-  //   collision_get(collisions, i, &c);
-
-  //   count_t body_index = c.index_a;
-  //   float inv_mass = world->dynamics.inv_masses[body_index];
-  //   Vector3 position = world->dynamics.positions[body_index];
-  //   Vector3 velocity = world->dynamics.velocities[body_index];
-  //   Quaternion rotation = world->dynamics.rotations[body_index];
-  //   Vector3 angular_momentum = world->dynamics.angular_momenta[body_index];
-  //   Vector3 angular_velocity = world->dynamics.angular_velocities[body_index];
-  //   Matrix inv_inertia_tensor = world->dynamics.inv_intertias[body_index];
-
-  //   for (count_t j = 0; j < c.contacts_count; ++j) {
-  //     contact_get(collisions, c.contacts_offset + j, &contact);
-
-  //     Matrix contact_to_world = contact_space_transform(&contact);
-  //     Matrix world_to_contact = transpose(contact_to_world);
-
-  //     Vector3 point_relative_position = sub(contact.point, position);
-  //     Vector3 point_rotational_velocity = cross(angular_velocity, point_relative_position);
-  //     Vector3 torque_per_impulse = cross(point_relative_position, contact.normal);
-
-
-  //     // Resolve velocity
-  //     float velocity_change_per_unit_impulse = inv_mass; // Linear component (second body is static, mass = INF).
-  //     velocity_change_per_unit_impulse += dot(point_rotational_velocity, contact.normal); // Velocity of the contact point along the contact normal.
-
-  //     Vector3 closing_velocity = add(velocity, point_rotational_velocity);
-  //     Vector3 contact_space_velocity = transform(closing_velocity, world_to_contact);
-
-  //     float delta_velocity = -contact_space_velocity.y * (1 + world->restitution); // Y-component of the contact space velocity is the velocity along the contact normal.
-  //     Vector3 contact_space_impulse = { 0, delta_velocity / velocity_change_per_unit_impulse, 0 };
-  //     Vector3 world_space_impulse = transform(contact_space_impulse, contact_to_world);
-
-  //     Vector3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
-  //     Vector3 angular_impulse_delta = cross(world_space_impulse, point_relative_position);
-
-  //     velocity = add(velocity, linear_impulse_delta);
-  //     angular_momentum = add(angular_momentum, angular_impulse_delta);
-  //   }
-
-  //   world->dynamics.positions[body_index] = position;
-  //   world->dynamics.rotations[body_index] = rotation;
-  //   world->dynamics.velocities[body_index] = velocity;
-  //   world->dynamics.angular_momenta[body_index] = angular_momentum;
-  // }
 }

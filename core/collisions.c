@@ -19,11 +19,10 @@
   }
 
 static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  v3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
+  v3 plane_normal = data_b->shapes[index_b].plane.normal;
 
-  Vector3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
-  Vector3 plane_normal = data_b->shapes[index_b].plane.normal;
-
-  Vector3 corners[] = {
+  v3 corners[] = {
     { extents.x, extents.y, extents.z },
     { extents.x, -extents.y, extents.z },
     { extents.x, -extents.y, -extents.z },
@@ -41,7 +40,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   count_t contact_count = 0;
   contact *contacts = collisions->contacts + collisions->contacts_count;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
-    Vector3 corner = add(data_a->positions[index_a], rotate(corners[i], data_a->rotations[index_a]));
+    v3 corner = add(data_a->positions[index_a], rotate(corners[i], data_a->rotations[index_a]));
     float distance = dot(sub(corner, data_b->positions[index_b]), plane_normal);
     if (distance > 0)
       continue;
@@ -65,9 +64,9 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
 }
 
 static count_t sphere_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
-  Vector3 plane_point = data_b->positions[index_b];
-  Vector3 plane_normal = data_b->shapes[index_b].plane.normal;
-  Vector3 sphere_center = data_a->positions[index_a];
+  v3 plane_point = data_b->positions[index_b];
+  v3 plane_normal = data_b->shapes[index_b].plane.normal;
+  v3 sphere_center = data_a->positions[index_a];
   float sphere_radius = data_a->shapes[index_a].sphere.radius;
 
   float plane_sphere_distance = dot(sub(sphere_center, plane_point), plane_normal);
@@ -94,9 +93,9 @@ static count_t sphere_plane_collision(collisions *collisions, count_t index_a, c
   return 1;
 }
 
-Matrix contact_space_transform(const contact *contact) {
-  Vector3 y_axis = contact->normal;
-  Vector3 x_axis, z_axis;
+m3 contact_space_transform(const contact *contact) {
+  v3 y_axis = contact->normal;
+  v3 x_axis, z_axis;
 
   if (fabsf(y_axis.y) > fabsf(y_axis.z)) {
     // Take (1, 0, 0) as initial guess
@@ -122,14 +121,7 @@ Matrix contact_space_transform(const contact *contact) {
     z_axis.z = y_axis.x * x_axis.y - x_axis.x * y_axis.y;
   }
 
-  Vector4 basis[] = {
-    { x_axis.x, y_axis.x, z_axis.x, 0 },
-    { x_axis.y, y_axis.y, z_axis.y, 0 },
-    { x_axis.z, y_axis.z, z_axis.z, 0 },
-    { 0 }
-  };
-
-  return *(Matrix*)basis;
+  return matrix_from_basis(x_axis, y_axis, z_axis);
 }
 
 collisions* collisions_init(const physics_config *config) {

@@ -15,9 +15,14 @@ typedef struct {
 } collision;
 
 typedef struct {
-  Vector3 point;
-  Vector3 normal;
+  v3 point;
+  v3 normal;
   float depth;
+
+  m3 basis;
+  v3 relative_position;
+  v3 local_velocity;
+  float desired_delta_velocity;
 } contact;
 
 typedef struct {
@@ -31,7 +36,8 @@ count_t collisions_count(collisions *collisions);
 bool collision_get(collisions *collisions, count_t index, collision *collision);
 
 bool contact_get(collisions *collisions, count_t index, contact *contact);
-Matrix contact_space_transform(const contact* contact);
+m3 contact_space_transform(const contact* contact);
+
 void contact_update_penetration(collisions *collisions, count_t index, float penetration);
 
 void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);

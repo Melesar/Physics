@@ -21,8 +21,8 @@ physics_world* world = NULL;
 
 void initialize_program(program_config* config) {
   config->window_title = "Rigidbodies";
-  config->camera_position = (Vector3) { 22.542, 11.645, 20.752 };
-  config->camera_target = (Vector3) { 0, 0, 0 };
+  config->camera_position = (v3) { 22.542, 11.645, 20.752 };
+  config->camera_target = (v3) { 0, 0, 0 };
 }
 
 void setup_scene(Shader shader) {
@@ -66,8 +66,8 @@ void draw(float interpolation) {
     if (!physics_body(world, BODY_DYNAMIC, i, &snapshot))
       continue;
 
-    Matrix scale;
-    Matrix transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));
+    m4 scale;
+    m4 transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));
     Material material = materials[i % num_materials];
 
     switch (snapshot.shape.type) {
