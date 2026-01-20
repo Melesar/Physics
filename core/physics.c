@@ -400,7 +400,7 @@ static void resolve_velocity_contact(physics_world *world, count_t body_index, c
   v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
 
   v3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
-  v3 angular_impulse_delta = cross(world_space_impulse, contact->relative_position);
+  v3 angular_impulse_delta = cross(contact->relative_position, world_space_impulse);
 
   v3 *velocity = &world->dynamics.velocities[body_index];
   v3 *angular_momentum = &world->dynamics.angular_momenta[body_index];
@@ -430,7 +430,8 @@ static void update_velocity_deltas(physics_world *world, count_t worst_contact_i
       count_t index = collision.contacts_offset + j;
       contact *contact = &world->collisions->contacts[index];
 
-      v3 delta_velocity = add(deltas[0], cross(deltas[1], contact->relative_position));
+      v3 angular_velocity_delta = transform(deltas[1], world->dynamics.inv_intertias[body_index]);
+      v3 delta_velocity = add(deltas[0], cross(angular_velocity_delta, contact->relative_position));
       contact->local_velocity = add(contact->local_velocity, matrix_rotate_inverse(delta_velocity, contact->basis));
       update_desired_velocity_delta(world, contact, dt);
     }
