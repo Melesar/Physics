@@ -66,7 +66,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
 }
 
 static void resolve_collisions(physics_world *world, float dt);
-static void prepare_contacts(physics_world *world);
+static void prepare_contacts(physics_world *world, float dt);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -246,13 +246,14 @@ void physics_teardown(physics_world* world) {
   free(world);
 }
 
-static void update_desired_velocity_delta(physics_world *world, contact *contact) {
+static void update_desired_velocity_delta(physics_world *world, contact *contact, float dt) {
   const static float velocity_limit = 0.25f;
   float restitution = fabsf(contact->local_velocity.y) >= velocity_limit ? world->config.restitution : 0.0f;
-  contact->desired_delta_velocity = -contact->local_velocity.y - restitution * contact->local_velocity.y;
+  float acceleration_velocity = dot(GRAVITY_V, contact->normal) * dt;
+  contact->desired_delta_velocity = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 }
 
-static void prepare_contacts(physics_world *world) {
+static void prepare_contacts(physics_world *world, float dt) {
   for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
     collision collision = world->collisions->collisions[i];
     count_t body_index = collision.index_a;
@@ -271,7 +272,7 @@ static void prepare_contacts(physics_world *world) {
       contact->local_velocity = add(world->dynamics.velocities[body_index], cross(angular_velocity, contact->relative_position));
       contact->local_velocity = matrix_rotate_inverse(contact->local_velocity, contact->basis);
 
-      update_desired_velocity_delta(world, contact);
+      update_desired_velocity_delta(world, contact, dt);
     }
   }
 }
@@ -385,7 +386,7 @@ static void resolve_interpenetrations(physics_world *world) {
   }
 }
 
-static void resolve_velocity_contact(physics_world *world, count_t body_index, contact *contact, v3 *deltas) {
+static void resolve_velocity_contact(physics_world *world, count_t body_index, contact *contact, v3 *deltas, float dt) {
   v3 delta_velocity_world = cross(contact->relative_position, contact->normal);
   delta_velocity_world = transform(delta_velocity_world, world->dynamics.inv_intertias[body_index]);
   delta_velocity_world = cross(delta_velocity_world, contact->relative_position);
@@ -411,7 +412,7 @@ static void resolve_velocity_contact(physics_world *world, count_t body_index, c
   deltas[1] = angular_impulse_delta;
 }
 
-static void update_velocity_deltas(physics_world *world, count_t worst_contact_index, count_t body_index, const v3 *deltas) {
+static void update_velocity_deltas(physics_world *world, count_t worst_contact_index, count_t body_index, const v3 *deltas, float dt) {
   contact worst_contact;
   collision collision;
 
@@ -431,12 +432,12 @@ static void update_velocity_deltas(physics_world *world, count_t worst_contact_i
 
       v3 delta_velocity = add(deltas[0], cross(deltas[1], contact->relative_position));
       contact->local_velocity = add(contact->local_velocity, matrix_rotate_inverse(delta_velocity, contact->basis));
-      update_desired_velocity_delta(world, contact);
+      update_desired_velocity_delta(world, contact, dt);
     }
   }
 }
 
-static void resolve_velocities(physics_world *world) {
+static void resolve_velocities(physics_world *world, float dt) {
   const float velocity_epsilon = 0.00001f;
   const count_t count = collisions_count(world->collisions);
   if (count == 0)
@@ -471,15 +472,15 @@ static void resolve_velocities(physics_world *world) {
     contact_get(world->collisions, worst_contact_index, &contact);
 
     v3 deltas[2];
-    resolve_velocity_contact(world, collision.index_a, &contact, deltas);
-    update_velocity_deltas(world, worst_collision_index, collision.index_a, deltas);
+    resolve_velocity_contact(world, collision.index_a, &contact, deltas, dt);
+    update_velocity_deltas(world, worst_collision_index, collision.index_a, deltas, dt);
 
     iterations += 1;
   }
 }
 
 static void resolve_collisions(physics_world *world, float dt) {
-  prepare_contacts(world);
+  prepare_contacts(world, dt);
   resolve_interpenetrations(world);
-  resolve_velocities(world);
+  resolve_velocities(world, dt);
 }
