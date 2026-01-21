@@ -18,6 +18,10 @@
     } \
   }
 
+static count_t box_box_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  return 0;
+}
+
 static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
   v3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
   v3 plane_normal = data_b->shapes[index_b].plane.normal;
@@ -52,7 +56,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   }
 
   if (contact_count == 0)
-    return contact_count;
+    return 0;
 
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
 
@@ -60,7 +64,40 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   collisions->collisions[collisions->collisions_count++] = c;
   collisions->contacts_count += contact_count;
 
-  return contact_count;
+  return 1;
+}
+
+count_t box_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+  return 0;
+}
+
+count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+  v3 p1 = data_a->positions[i];
+  v3 p2 = data_b->positions[j];
+  float r1 = data_a->shapes[i].sphere.radius;
+  float r2 = data_b->shapes[j].sphere.radius;
+
+  v3 offset = sub(p2, p1);
+  float distance = len(offset);
+  float radii = r1 + r2;
+  if (distance > radii) {
+    return 0;
+  }
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision col = { .index_a = i, .index_b = j, .contacts_count = 1, .contacts_offset = collisions->contacts_count };
+  contact contact = {
+    .point = add(p1, scale(offset, 0.5)),
+    .normal = normalize(offset),
+    .depth = radii - distance
+  };
+
+  collisions->collisions[collisions->collisions_count++] = col;
+  collisions->contacts[collisions->contacts_count++] = contact;
+
+  return 1;
 }
 
 static count_t sphere_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
@@ -146,7 +183,7 @@ bool collision_get(collisions *collisions, count_t index, collision *collision) 
 }
 
 bool contact_get(collisions *collisions, count_t index, contact *contact) {
-  if (index >= collisions->contacts_count || index < 0)
+  if (index >= collisions->contacts_count)
     return false;
 
   *contact = collisions->contacts[index];
@@ -154,28 +191,70 @@ bool contact_get(collisions *collisions, count_t index, contact *contact) {
 }
 
 void contact_update_penetration(collisions *collisions,count_t index, float penetration) {
-  if (index >= collisions->contacts_count || index < 0)
+  if (index >= collisions->contacts_count)
     return;
 
   collisions->contacts[index].depth = penetration;
 }
 
-void collisions_detect(collisions* collisions, const common_data *data_a, const common_data *data_b) {
+void collisions_detect(collisions *collisions, const common_data *dynamics, const common_data *statics) {
   collisions->collisions_count = 0;
   collisions->contacts_count = 0;
+  collisions->dynamic_collisions_count = 0;
 
-  for (count_t i = 0; i < data_a->count; ++i) {
-    for (count_t j = 0; j < data_b->count; ++j) {
-      if (data_a == data_b && i == j)
-        continue;
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    for (count_t j = 0; j < i; ++j) {
+      body_shape shape_a = dynamics->shapes[i];
+      body_shape shape_b = dynamics->shapes[j];
 
-      body_shape shape_a = data_a->shapes[i];
-      body_shape shape_b = data_b->shapes[j];
+      switch(shape_a.type) {
+        case SHAPE_BOX:
+          switch(shape_b.type) {
+            case SHAPE_BOX:
+              collisions->dynamic_collisions_count += box_box_collision(collisions, i, j, dynamics, dynamics);
+              break;
 
-      if (shape_a.type == SHAPE_BOX && shape_b.type == SHAPE_PLANE) {
-        box_plane_collision(collisions, i, j, data_a, data_b);
-      } else if (shape_a.type == SHAPE_SPHERE && shape_b.type == SHAPE_PLANE) {
-        sphere_plane_collision(collisions, i, j, data_a, data_b);
+            case SHAPE_SPHERE:
+              collisions->dynamic_collisions_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              break;
+
+            default:
+              break;
+          }
+
+        case SHAPE_SPHERE:
+          switch(shape_b.type) {
+            case SHAPE_BOX:
+              collisions->dynamic_collisions_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              break;
+
+            case SHAPE_SPHERE:
+              collisions->dynamic_collisions_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
+              break;
+          }
+          break;
+      }
+    }
+  }
+
+  for (count_t i = 0; i < dynamics->count; ++i) {
+    for (count_t j = 0; j < statics->count; ++j) {
+      body_shape shape_a = dynamics->shapes[i];
+      body_shape shape_b = statics->shapes[j];
+
+      if (shape_b.type == SHAPE_PLANE) {
+        switch (shape_a.type) {
+          case SHAPE_BOX:
+            box_plane_collision(collisions, i, j, dynamics, statics);
+            break;
+
+          case SHAPE_SPHERE:
+            sphere_plane_collision(collisions, i, j, dynamics, statics);
+            break;
+
+          default:
+            break;
+        }
       }
     }
   }

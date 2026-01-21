@@ -20,7 +20,7 @@ typedef struct {
   float depth;
 
   m3 basis;
-  v3 relative_position;
+  v3 relative_position[2];
   v3 local_velocity;
   float desired_delta_velocity;
 } contact;
@@ -28,6 +28,8 @@ typedef struct {
 typedef struct {
   ARRAY(collision)
   ARRAY(contact)
+
+  count_t dynamic_collisions_count;
 } collisions;
 
 collisions* collisions_init(const physics_config *config);

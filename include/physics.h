@@ -57,6 +57,8 @@ typedef struct {
   float restitution;
 
   count_t max_resolution_iterations;
+
+  float restitution_damping_limit;
 } physics_config;
 
 #define COMMON_FIELDS \

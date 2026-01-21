@@ -8,6 +8,8 @@
 #define sub(x, y) Vector3Subtract(x, y)
 #define len(x) Vector3Length(x)
 #define lensq(x) Vector3LengthSqr(x)
+#define distance(x, y) Vector3Distance(x, y)
+#define distancesqr(x, y) Vector3DistanceSqr(x, y)
 #define zero() Vector3Zero()
 #define one() Vector3One()
 #define up() ((Vector3) { 0, 1, 0 })
