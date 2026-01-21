@@ -47,9 +47,17 @@ void reset() {
   physics_config config = physics_default_config();
   world = physics_init(&config);
 
-  physics_add_body(world, BODY_STATIC, (body_shape){ .type = SHAPE_PLANE, .plane = { .normal = { 0, 1, 0 } } }, (body_initial_state){ 0 });
-  physics_add_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_BOX, .box = { .size = { 1, 1, 1 } } }, (body_initial_state) { .position = { 0, 6, 0 }, .rotation = qidentity(), .angular_momentum = { 1, 1, 1 }, .mass = 3});
-  physics_add_body(world, BODY_DYNAMIC, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = 1 } }, (body_initial_state) { .position = { -1, 5, 4 }, .rotation = qidentity(), .mass = 2, .angular_momentum = zero() });
+  physics_add_plane(world, zero(), up());
+
+  body box_1 = physics_add_box(world, BODY_DYNAMIC, 3, (v3){ 1, 1, 1});
+  *box_1.position = (v3) { 4, 6, 0 };
+  *box_1.velocity = (v3) { -5, 0, 0 };
+  *box_1.angular_momentum = (v3) { 1, 1, 1 };
+
+  body box_2 = physics_add_box(world, BODY_DYNAMIC, 3, (v3){ 1, 1, 1});
+  *box_2.position = (v3) { -4, 6, 0 };
+  *box_2.velocity = (v3) { 5, 0, 0 };
+  *box_2.angular_momentum = (v3) { 1, 1, 1 };
 }
 
 void on_input(Camera *camera) {}

@@ -35,11 +35,11 @@ typedef enum {
 } body_type;
 
 typedef struct {
-  v3 position;
-  quat rotation;
-  v3 angular_momentum;
-  float mass;
-} body_initial_state;
+  v3* position;
+  quat* rotation;
+  v3* velocity;
+  v3* angular_momentum;
+} body;
 
 typedef struct {
   v3 position;
@@ -78,7 +78,10 @@ physics_config physics_default_config();
 
 physics_world* physics_init(const physics_config *config);
 
-void physics_add_body(physics_world* world, body_type type, body_shape shape, body_initial_state state);
+void physics_add_plane(physics_world *world, v3 point, v3 normal);
+
+body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
+body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
 
 size_t physics_body_count(const physics_world* world, body_type type);
 bool physics_body(const physics_world* world, body_type type, size_t index, body_snapshot* body);

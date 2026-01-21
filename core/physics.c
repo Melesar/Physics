@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "physics.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "stdlib.h"
 #include "core.h"
 #include "gizmos.h"
@@ -109,7 +110,7 @@ physics_world* physics_init(const physics_config *config) {
   return world;
 }
 
-void physics_add_body(physics_world* world, body_type type, body_shape shape, body_initial_state state) {
+static count_t physics_add_body(physics_world* world, body_type type, body_shape shape, float mass) {
   common_data *commons = as_common(world, type);
   if (commons->capacity < commons->count + 1) {
     commons->capacity = commons->capacity << 1;
@@ -127,19 +128,19 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
   }
 
   count_t index = commons->count++;
-  commons->positions[index] = state.position;
-  commons->rotations[index] = state.rotation;
   commons->shapes[index] = shape;
+  commons->positions[index] = zero();
+  commons->rotations[index] = qidentity();
 
   if (type == BODY_DYNAMIC) {
-    world->dynamics.inv_masses[index] = 1.0 / state.mass;
+    world->dynamics.inv_masses[index] = mass;
     world->dynamics.velocities[index] = zero();
-    world->dynamics.angular_momenta[index] = state.angular_momentum;
+    world->dynamics.angular_momenta[index] = zero();
 
     m4 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
       case SHAPE_BOX:
-        *inv_inertia_tensor = inertia_tensor_matrix(invert(box_inertia(shape.box.size, state.mass)));
+        *inv_inertia_tensor = inertia_tensor_matrix(invert(box_inertia(shape.box.size, mass)));
         break;
 
       default:
@@ -149,6 +150,35 @@ void physics_add_body(physics_world* world, body_type type, body_shape shape, bo
 
     register_gizmo(&commons->positions[index], &commons->rotations[index]);
   }
+
+  return index;
+}
+
+void physics_add_plane(physics_world *world, v3 point, v3 normal) {
+  count_t index = physics_add_body(world, BODY_STATIC, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } }, INFINITY);
+  world->statics.positions[index] = point;
+}
+
+body physics_add_box(physics_world *world, body_type type, float mass, v3 size) {
+  common_data *common = as_common(world, type);
+  count_t index = physics_add_body(world, type, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
+  return (body) {
+    .position = &common->positions[index],
+    .rotation = &common->rotations[index],
+    .velocity = type == BODY_DYNAMIC ? &world->dynamics.velocities[index] : NULL,
+    .angular_momentum = type == BODY_DYNAMIC ? &world->dynamics.angular_momenta[index] : NULL,
+  };
+}
+
+body physics_add_sphere(physics_world *world, body_type type, float mass, float radius) {
+  common_data *common = as_common(world, type);
+  count_t index = physics_add_body(world, type, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+  return (body) {
+    .position = &common->positions[index],
+    .rotation = &common->rotations[index],
+    .velocity = type == BODY_DYNAMIC ? &world->dynamics.velocities[index] : NULL,
+    .angular_momentum = type == BODY_DYNAMIC ? &world->dynamics.angular_momenta[index] : NULL,
+  };
 }
 
 size_t physics_body_count(const physics_world* world, body_type type) {
