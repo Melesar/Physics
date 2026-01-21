@@ -77,7 +77,7 @@ count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, co
   float r1 = data_a->shapes[i].sphere.radius;
   float r2 = data_b->shapes[j].sphere.radius;
 
-  v3 offset = sub(p2, p1);
+  v3 offset = sub(p1, p2);
   float distance = len(offset);
   float radii = r1 + r2;
   if (distance > radii) {
