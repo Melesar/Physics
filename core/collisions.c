@@ -50,6 +50,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
       continue;
 
     contact *new_contact = &contacts[contact_count++];
+
     new_contact->normal = plane_normal;
     new_contact->point = add(corner, scale(plane_normal, -0.5 * distance));
     new_contact->depth = -distance;
@@ -68,12 +69,65 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
 }
 
 count_t box_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
-  return 0;
+  v3 box_center = data_a->positions[i];
+  quat box_rotation = data_a->rotations[i];
+  v3 box_half_extents = scale(data_a->shapes[i].box.size, 0.5);
+
+  v3 sphere_center = data_b->positions[j];
+  float sphere_radius = data_b->shapes[j].sphere.radius;
+
+  m4 box_transform = mul(as_matrix(box_rotation), MatrixTranslate(box_center.x, box_center.y, box_center.z));
+  v3 relative_sphere_center = transform(sphere_center, inverse(box_transform));
+
+  if (fabsf(relative_sphere_center.x) > box_half_extents.x + sphere_radius ||
+      fabsf(relative_sphere_center.y) > box_half_extents.y + sphere_radius ||
+      fabsf(relative_sphere_center.z) > box_half_extents.z + sphere_radius) {
+    return 0;
+  }
+
+  v3 closest_point;
+  float distance = relative_sphere_center.x;
+  if (relative_sphere_center.x > box_half_extents.x) distance = box_half_extents.x;
+  else if (relative_sphere_center.x < -box_half_extents.x) distance = -box_half_extents.x;
+  closest_point.x = distance;
+
+  distance = relative_sphere_center.y;
+  if (relative_sphere_center.y > box_half_extents.y) distance = box_half_extents.y;
+  else if (relative_sphere_center.y < -box_half_extents.y) distance = -box_half_extents.y;
+  closest_point.y = distance;
+
+  distance = relative_sphere_center.z;
+  if (relative_sphere_center.z > box_half_extents.z) distance = box_half_extents.z;
+  else if (relative_sphere_center.z < -box_half_extents.z) distance = -box_half_extents.z;
+  closest_point.z = distance;
+
+  distance = distancesqr(closest_point, relative_sphere_center);
+  if (distance > sphere_radius * sphere_radius)
+    return 0;
+
+  closest_point = transform(closest_point, box_transform);
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->contacts_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision *collision = &collisions->collisions[collisions->collisions_count++];
+  collision->contacts_count = 1;
+  collision->contacts_offset = collisions->contacts_count;
+  collision->index_a = i;
+  collision->index_b = j;
+
+  contact *contact = &collisions->contacts[collisions->contacts_count++];
+  contact->point = closest_point;
+  contact->normal = normalize(sub(closest_point, sphere_center));
+  contact->depth = sphere_radius - sqrtf(distance);
+
+  return 1;
 }
 
 count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 p1 = data_a->positions[i];
   v3 p2 = data_b->positions[j];
+
   float r1 = data_a->shapes[i].sphere.radius;
   float r2 = data_b->shapes[j].sphere.radius;
 
@@ -179,6 +233,7 @@ bool collision_get(collisions *collisions, count_t index, collision *collision) 
     return false;
 
   *collision = collisions->collisions[index];
+
   return true;
 }
 
@@ -187,6 +242,7 @@ bool contact_get(collisions *collisions, count_t index, contact *contact) {
     return false;
 
   *contact = collisions->contacts[index];
+
   return true;
 }
 
@@ -202,6 +258,7 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
   collisions->contacts_count = 0;
   collisions->dynamic_collisions_count = 0;
 
+  count_t *dyn_count = &collisions->dynamic_collisions_count;
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
       body_shape shape_a = dynamics->shapes[i];
@@ -211,11 +268,11 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_BOX:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              collisions->dynamic_collisions_count += box_box_collision(collisions, i, j, dynamics, dynamics);
+              *dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics);
               break;
 
             case SHAPE_SPHERE:
-              collisions->dynamic_collisions_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              *dyn_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
               break;
 
             default:
@@ -225,11 +282,11 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_SPHERE:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              collisions->dynamic_collisions_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              *dyn_count += box_sphere_collision(collisions, j, i, dynamics, dynamics);
               break;
 
             case SHAPE_SPHERE:
-              collisions->dynamic_collisions_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
+              *dyn_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
               break;
           }
           break;

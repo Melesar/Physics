@@ -31,6 +31,7 @@
 #define mul(x, y) MatrixMultiply(x, y)
 #define transpose(x) MatrixTranspose(x)
 #define translate(x, y, z) MatrixTranslate(x, y, z)
+#define inverse(x) MatrixInvert(x)
 #define m4identity(x) MatrixIdentity(x)
 
 #define vlerp(x, y, t) Vector3Lerp(x, y, t)
