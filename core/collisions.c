@@ -1,5 +1,6 @@
 #include "collisions.h"
 #include "physics.h"
+#include "raylib.h"
 #include "raymath.h"
 #include <math.h>
 #include <stdlib.h>
@@ -18,9 +19,237 @@
     } \
   }
 
+typedef struct {
+  v3 center;
+  v3 size;
+  v3 axis[3];
+} collision_box;
+
+collision_box collision_box_make(const common_data *data, count_t index) {
+  quat rotation = data->rotations[index];
+
+  return (collision_box) {
+    .center = data->positions[index],
+    .size = data->shapes[index].box.size,
+    .axis = { rotate(right(), rotation), rotate(up(), rotation), rotate(forward(), rotation) }
+  };
+}
+
+m4 collision_box_transform(const collision_box *box) {
+  m4 rotation = { 0 };
+  rotation.m0 = box->axis[0].x;
+  rotation.m1 = box->axis[0].y;
+  rotation.m2 = box->axis[0].z;
+
+  rotation.m4 = box->axis[1].x;
+  rotation.m5 = box->axis[1].y;
+  rotation.m6 = box->axis[1].z;
+
+  rotation.m8 = box->axis[2].x;
+  rotation.m9 = box->axis[2].y;
+  rotation.m10 = box->axis[2].z;
+
+  m4 translation = MatrixTranslate(box->center.x, box->center.y, box->center.z);
+
+  return mul(rotation, translation);
+}
+
+static v3 contact_point(
+  v3 point_a, v3 axis_a, float half_size_a,
+  v3 point_b, v3 axis_b, float half_size_b,
+  bool use_a
+) {
+  float len_a = lensq(axis_a);
+  float len_b = lensq(axis_b);
+  float dp = dot(point_a, point_b);
+
+  v3 offset = sub(point_a, point_b);
+
+  float dp_a = dot(axis_a, offset);
+  float dp_b = dot(axis_b, offset);
+
+  float denom = len_a * len_b - dp_a * dp_b;
+
+  if (fabsf(denom) < 0.0001f)
+    return use_a ? point_a : point_b;
+
+  float a = (dp * dp_b - len_b * dp_a) / denom;
+  float b = (len_a * dp_b - dp * dp_a) / denom;
+
+  if (a > half_size_a || a < -half_size_a || b > half_size_b || b < -half_size_b)
+    return use_a ? point_a : point_b;
+
+  v3 c_a = add(point_a, scale(axis_a, a));
+  v3 c_b = add(point_b, scale(axis_b, b));
+
+  return add(scale(c_a, 0.5), scale(c_b, 0.5));
+}
+
+
+static void fill_point_face_box_box(
+  const collision_box *box_a,
+  const collision_box *box_b,
+  v3 offset,
+  count_t best_axis,
+  float penetration,
+  collisions *collisions) {
+
+  v3 normal = box_b->axis[best_axis];
+
+  if (dot(box_a->axis[best_axis], offset) > 0)
+    normal = scale(normal, -1);
+
+  v3 vertex = scale(box_b->size, 0.5);
+  if (dot(box_b->axis[0], normal) < 0) vertex.x = -vertex.x;
+  if (dot(box_b->axis[1], normal) < 0) vertex.y = -vertex.y;
+  if (dot(box_b->axis[2], normal) < 0) vertex.z = -vertex.z;
+
+  contact *contact = &collisions->contacts[collisions->contacts_count++];
+  contact->point = transform(vertex, collision_box_transform(box_b));
+  contact->normal = normal;
+  contact->depth = penetration;
+}
+
+static float transform_to_axis(const collision_box *box, v3 axis) {
+  v3 half_size = scale(box->size, 0.5);
+  return
+    half_size.x + fabsf(dot(axis, box->axis[0])) +
+    half_size.y + fabsf(dot(axis, box->axis[1])) +
+    half_size.z + fabsf(dot(axis, box->axis[2]));
+}
+
+static bool try_axis(const collision_box *box_a, const collision_box *box_b, v3 axis, count_t index, v3 offset, float *min_penetration, count_t *min_index) {
+  if (lensq(axis) < 0.0001)
+    return true;
+
+  axis = normalize(axis);
+
+  float project_a = transform_to_axis(box_a, axis);
+  float project_b = transform_to_axis(box_b, axis);
+
+  float distance = fabsf(dot(offset, axis));
+  float penetration = project_a + project_b - distance;
+
+  if (penetration < 0)
+    return false;
+
+  if (penetration < *min_penetration) {
+    *min_penetration = penetration;
+    *min_index = index;
+  }
+
+  return true;
+}
+
+#define CHECK_OVERLAP(axis, index) \
+  if (!try_axis(&box_a, &box_b, (axis), (index), offset, &penetration, &best_axis)) return 0;
+
 static count_t box_box_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  collision_box box_a = collision_box_make(data_a, index_a);
+  collision_box box_b = collision_box_make(data_b, index_b);
+
+  v3 offset = sub(box_a.center, box_b.center);
+
+  float penetration = INFINITY;
+  count_t best_axis = -1;
+
+  CHECK_OVERLAP(box_a.axis[0], 0)
+  CHECK_OVERLAP(box_a.axis[1], 1)
+  CHECK_OVERLAP(box_a.axis[2], 2)
+
+  CHECK_OVERLAP(box_b.axis[0], 3)
+  CHECK_OVERLAP(box_b.axis[1], 4)
+  CHECK_OVERLAP(box_b.axis[2], 5)
+
+  count_t best_single_axis = best_axis;
+
+  CHECK_OVERLAP(cross(box_a.axis[0], box_b.axis[0]), 6)
+  CHECK_OVERLAP(cross(box_a.axis[0], box_b.axis[1]), 7)
+  CHECK_OVERLAP(cross(box_a.axis[0], box_b.axis[2]), 8)
+  CHECK_OVERLAP(cross(box_a.axis[1], box_b.axis[0]), 9)
+  CHECK_OVERLAP(cross(box_a.axis[1], box_b.axis[1]), 10)
+  CHECK_OVERLAP(cross(box_a.axis[1], box_b.axis[2]), 11)
+  CHECK_OVERLAP(cross(box_a.axis[2], box_b.axis[0]), 12)
+  CHECK_OVERLAP(cross(box_a.axis[2], box_b.axis[1]), 13)
+  CHECK_OVERLAP(cross(box_a.axis[2], box_b.axis[2]), 14)
+
+  if (best_axis == -1) {
+    return 0;
+  }
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision *collision = &collisions->collisions[collisions->collisions_count++];
+  collision->index_a = index_a;
+  collision->index_b = index_b;
+  collision->contacts_count = 1;
+  collision->contacts_offset = collisions->contacts_count;
+
+  if (best_axis < 3) {
+    // We've got a vertex of box two on a face of box one.
+    fill_point_face_box_box(&box_a, &box_b, offset, best_axis, penetration, collisions);
+    return 1;
+  } else if (best_axis < 6) {
+    // We've got a vertex of box one on a face of box two.
+    // We use the same algorithm as above, but swap around
+    // one and two (and therefore also the vector between their
+    // centres).
+    fill_point_face_box_box(&box_a, &box_b, scale(offset, -1), best_axis - 3, penetration, collisions);
+    return 1;
+  } else {
+    // We've got an edge-edge contact. Find out which axes
+    best_axis -= 6;
+    count_t axis_a_index = best_axis / 3;
+    count_t axis_b_index = best_axis % 3;
+    v3 axis_a = box_a.axis[axis_a_index];
+    v3 axis_b = box_b.axis[axis_b_index];
+    v3 axis = normalize(cross(axis_a, axis_b));
+
+    if (dot(axis, offset) > 0)
+      axis = scale(axis, -1);
+
+    v3 half_size_a = scale(box_a.size, 0.5);
+    v3 half_size_b = scale(box_b.size, 0.5);
+    v3 edge_point_a = half_size_a;
+    v3 edge_point_b = half_size_b;
+    for (count_t i = 0; i < 3; ++i) {
+      float *p_a = (float*)&edge_point_a;
+      float *p_b = (float*)&edge_point_b;
+
+      if (i == axis_a_index)
+        p_a[i] = 0;
+      else if (dot(box_a.axis[i], axis) > 0)
+        p_a[i] = -p_a[i];
+
+      if (i == axis_b_index)
+        p_b[i] = 0;
+      else if (dot(box_b.axis[i], axis) < 0)
+        p_b[i] = -p_b[i];
+    }
+
+    edge_point_a = transform(edge_point_a, collision_box_transform(&box_a));
+    edge_point_b = transform(edge_point_b, collision_box_transform(&box_b));
+
+    v3 vertex = contact_point(
+      edge_point_a, axis_a, *((float*)&half_size_a + axis_a_index),
+      edge_point_b, axis_b, *((float*)&half_size_b + axis_b_index),
+      best_single_axis > 2);
+
+
+    contact *contact = &collisions->contacts[collisions->contacts_count++];
+
+    contact->point = vertex;
+    contact->normal = axis;
+    contact->depth = penetration;
+
+    return 1;
+  }
+
   return 0;
 }
+
+#undef CHECK_OVERLAP
 
 static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
   v3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
@@ -256,9 +485,8 @@ void contact_update_penetration(collisions *collisions,count_t index, float pene
 void collisions_detect(collisions *collisions, const common_data *dynamics, const common_data *statics) {
   collisions->collisions_count = 0;
   collisions->contacts_count = 0;
-  collisions->dynamic_collisions_count = 0;
 
-  count_t *dyn_count = &collisions->dynamic_collisions_count;
+  count_t dyn_count = 0;
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
       body_shape shape_a = dynamics->shapes[i];
@@ -268,31 +496,40 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_BOX:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              *dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics);
               break;
 
             case SHAPE_SPHERE:
-              *dyn_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
               break;
 
             default:
               break;
           }
+          break;
 
         case SHAPE_SPHERE:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              *dyn_count += box_sphere_collision(collisions, j, i, dynamics, dynamics);
+              dyn_count += box_sphere_collision(collisions, j, i, dynamics, dynamics);
               break;
 
             case SHAPE_SPHERE:
-              *dyn_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
+              break;
+
+            default:
               break;
           }
+          break;
+
+        default:
           break;
       }
     }
   }
+
+  collisions->dynamic_collisions_count = dyn_count;
 
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < statics->count; ++j) {

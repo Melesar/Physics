@@ -54,9 +54,10 @@ void reset() {
   *box_1.velocity = (v3) { 5, 0, 0 };
   *box_1.angular_momentum = (v3) { 1, 1, 1 };
 
-  body sphere = physics_add_sphere(world, BODY_DYNAMIC, 3, 1);
-  *sphere.position = (v3) { 3, 5, 0 };
-  *sphere.velocity = (v3) { -5, 0, 0 };
+  body box_2 = physics_add_box(world, BODY_DYNAMIC, 3, (v3) { 1, 1, 1 });
+  *box_2.position = (v3) { 3, 5, 0 };
+  *box_2.velocity = (v3) { -5, 0, 0 };
+  *box_2.angular_momentum = (v3) { -1, 0, 3 };
 }
 
 void on_input(Camera *camera) {}
