@@ -113,9 +113,9 @@ static void fill_point_face_box_box(
 static float transform_to_axis(const collision_box *box, v3 axis) {
   v3 half_size = scale(box->size, 0.5);
   return
-    half_size.x + fabsf(dot(axis, box->axis[0])) +
-    half_size.y + fabsf(dot(axis, box->axis[1])) +
-    half_size.z + fabsf(dot(axis, box->axis[2]));
+    half_size.x * fabsf(dot(axis, box->axis[0])) +
+    half_size.y * fabsf(dot(axis, box->axis[1])) +
+    half_size.z * fabsf(dot(axis, box->axis[2]));
 }
 
 static bool try_axis(const collision_box *box_a, const collision_box *box_b, v3 axis, count_t index, v3 offset, float *min_penetration, count_t *min_index) {
@@ -148,7 +148,7 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
   collision_box box_a = collision_box_make(data_a, index_a);
   collision_box box_b = collision_box_make(data_b, index_b);
 
-  v3 offset = sub(box_a.center, box_b.center);
+  v3 offset = sub(box_b.center, box_a.center);
 
   float penetration = INFINITY;
   count_t best_axis = -1;
