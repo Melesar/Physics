@@ -36,22 +36,27 @@ collision_box collision_box_make(const common_data *data, count_t index) {
 }
 
 m4 collision_box_transform(const collision_box *box) {
-  m4 rotation = { 0 };
-  rotation.m0 = box->axis[0].x;
-  rotation.m1 = box->axis[0].y;
-  rotation.m2 = box->axis[0].z;
+  m4 transform = { 0 };
 
-  rotation.m4 = box->axis[1].x;
-  rotation.m5 = box->axis[1].y;
-  rotation.m6 = box->axis[1].z;
+  transform.m0 = box->axis[0].x;
+  transform.m1 = box->axis[0].y;
+  transform.m2 = box->axis[0].z;
 
-  rotation.m8 = box->axis[2].x;
-  rotation.m9 = box->axis[2].y;
-  rotation.m10 = box->axis[2].z;
+  transform.m4 = box->axis[1].x;
+  transform.m5 = box->axis[1].y;
+  transform.m6 = box->axis[1].z;
 
-  m4 translation = MatrixTranslate(box->center.x, box->center.y, box->center.z);
+  transform.m8 = box->axis[2].x;
+  transform.m9 = box->axis[2].y;
+  transform.m10 = box->axis[2].z;
 
-  return mul(rotation, translation);
+  transform.m12 = box->center.x;
+  transform.m13 = box->center.y;
+  transform.m14 = box->center.z;
+
+  transform.m15 = 1;
+
+  return transform;
 }
 
 static v3 contact_point(
