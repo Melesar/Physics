@@ -29,6 +29,14 @@ m3 matrix_from_basis(v3 x, v3 y, v3 z) {
   };
 }
 
+m3 matrix_skew_symmetric(v3 v) {
+  return (m3) {
+    { 0, -v.z, v.y },
+    { v.z, 0, -v.x },
+    { -v.y, v.x, 0 }
+  };
+}
+
 m4 inertia_tensor_matrix(v3 inertia) {
   m4 tensor = { 0 };
   tensor.m0 = inertia.x;
