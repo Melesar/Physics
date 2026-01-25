@@ -15,10 +15,10 @@ typedef struct {
   float *inv_masses;
   v3 *velocities;
   v3 *angular_momenta;
-  m4 *inv_inertia_tensors;
+  m3 *inv_inertia_tensors;
 
   // Derived values.
-  m4 *inv_intertias;
+  m3 *inv_intertias;
 } dynamic_bodies;
 
 typedef common_data static_bodies;
@@ -136,14 +136,14 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = zero();
 
-    m4 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
+    m3 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
       case SHAPE_BOX:
-        *inv_inertia_tensor = inertia_tensor_matrix(invert(box_inertia(shape.box.size, mass)));
+        *inv_inertia_tensor = matrix_initial_inertia(invert(box_inertia(shape.box.size, mass)));
         break;
 
       default:
-        *inv_inertia_tensor = m4identity();
+        *inv_inertia_tensor = matrix_identity();
         break;
     }
 
@@ -201,9 +201,8 @@ void physics_step(physics_world* world, float dt) {
     dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
 
     quat rotation = dynamics->rotations[i];
-    m4 orientation = as_matrix(rotation);
-    m4 inertia = mul(mul(orientation, dynamics->inv_inertia_tensors[i]), transpose(orientation));
-    v3 omega = transform(dynamics->angular_momenta[i], inertia);
+    m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
+    v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
 
     quat q_omega = { omega.x, omega.y, omega.z, 0 };
     quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
@@ -275,9 +274,8 @@ static void prepare_contacts(physics_world *world, float dt) {
     v3 angular_velocity[2];
 
     for (count_t k = 0; k < body_count; ++k) {
-      m4 rotation_matrix = as_matrix(world->dynamics.rotations[body_ids[k]]);
-      m4 inv_inertia = mul(mul(rotation_matrix, world->dynamics.inv_inertia_tensors[body_ids[k]]), transpose(rotation_matrix));
-      angular_velocity[k] = transform(world->dynamics.angular_momenta[body_ids[k]], inv_inertia);
+      m3 inv_inertia = matrix_inertia(world->dynamics.inv_inertia_tensors[body_ids[k]], world->dynamics.rotations[body_ids[k]]);
+      angular_velocity[k] = matrix_rotate(world->dynamics.angular_momenta[body_ids[k]], inv_inertia);
 
       world->dynamics.inv_intertias[body_ids[k]] = inv_inertia;
     }
@@ -312,7 +310,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
   float angular_inertia_contact[2];
   v3 torque_per_impulse[2];
   v3 position[2];
-  m4 inv_inertia_tensor[2];
+  m3 inv_inertia_tensor[2];
   quat rotation[2];
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
@@ -325,7 +323,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
     torque_per_impulse[k] = cross(contact->relative_position[k], contact->normal);
 
     v3 angular_inertia_world = torque_per_impulse[k];
-    angular_inertia_world = transform(angular_inertia_world, inv_inertia_tensor[k]);
+    angular_inertia_world = matrix_rotate(angular_inertia_world, inv_inertia_tensor[k]);
     angular_inertia_world = cross(angular_inertia_world, contact->relative_position[k]);
 
     angular_inertia_contact[k] = dot(angular_inertia_world, contact->normal);
@@ -349,7 +347,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
       continue;
     }
 
-    v3 impulse_per_move = transform(torque_per_impulse[k], inv_inertia_tensor[k]);
+    v3 impulse_per_move = matrix_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
     v3 rotation_per_move = scale(impulse_per_move, 1.0 / angular_inertia_contact[k]);
     v3 rotation_delta = scale(rotation_per_move, angular_move);
 
@@ -445,7 +443,7 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
     v3 delta_velocity_world = cross(contact->relative_position[k], contact->normal);
-    delta_velocity_world = transform(delta_velocity_world, world->dynamics.inv_intertias[body_index]);
+    delta_velocity_world = matrix_rotate(delta_velocity_world, world->dynamics.inv_intertias[body_index]);
     delta_velocity_world = cross(delta_velocity_world, contact->relative_position[k]);
 
     float inv_mass = world->dynamics.inv_masses[body_index];
@@ -499,7 +497,7 @@ static void update_velocity_deltas(physics_world *world, count_t worst_contact_i
           count_t worst_body_index = worst_body_ids[m];
 
           if (body_index == worst_body_index) {
-            v3 angular_velocity_delta = transform(deltas[2 * m + 1], world->dynamics.inv_intertias[worst_body_index]);
+            v3 angular_velocity_delta = matrix_rotate(deltas[2 * m + 1], world->dynamics.inv_intertias[worst_body_index]);
             v3 delta_velocity = add(deltas[2 * m], cross(angular_velocity_delta, contact->relative_position[k]));
             delta_velocity = matrix_rotate_inverse(delta_velocity, contact->basis);
 

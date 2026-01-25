@@ -49,9 +49,12 @@ typedef struct {
   float m2[3];  // Row 2
 } m3;
 
+m3 matrix_identity();
 m3 matrix_transpose(m3 m);
+m3 matrix_multiply(m3 a, m3 b);
 v3 matrix_rotate(v3 v, m3 m);
 v3 matrix_rotate_inverse(v3 v, m3 m);
 m3 matrix_from_basis(v3 x, v3 y, v3 z);
 m3 matrix_skew_symmetric(v3 v);
-m4 inertia_tensor_matrix(v3 inertia);
+m3 matrix_initial_inertia(v3 inertia);
+m3 matrix_inertia(m3 initial_inertia, quat rotation);
