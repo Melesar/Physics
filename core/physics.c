@@ -308,7 +308,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
   float total_inertia = 0;
   float linear_inertia[2];
   float angular_inertia_contact[2];
-  v3 torque_per_impulse[2];
+  m3 torque_per_impulse[2];
   v3 position[2];
   m3 inv_inertia_tensor[2];
   quat rotation[2];
@@ -319,12 +319,16 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
     inv_inertia_tensor[k] = world->dynamics.inv_intertias[body_index];
     rotation[k] = world->dynamics.rotations[body_index];
     float inv_mass = world->dynamics.inv_masses[body_index];
+    m3 skew_symmetrix = matrix_skew_symmetric(contact->relative_position[k]);
 
-    torque_per_impulse[k] = cross(contact->relative_position[k], contact->normal);
+    torque_per_impulse[k] = matrix_multiply(skew_symmetrix, contact->basis);
 
-    v3 angular_inertia_world = torque_per_impulse[k];
-    angular_inertia_world = matrix_rotate(angular_inertia_world, inv_inertia_tensor[k]);
-    angular_inertia_world = cross(angular_inertia_world, contact->relative_position[k]);
+    m3 angular_inertia_world = torque_per_impulse[k];
+    angular_inertia_world = matrix_multiply(inv_inertia_tensor[k], angular_inertia_world);
+    angular_inertia_world = matrix_multiply(angular_inertia_world, skew_symmetrix);
+    angular_inertia_world = matrix_negate(angular_inertia_world);
+
+    m3 angular_inertia_contact_m = matrix_multiply(matrix_transpose(contact->basis), angular_inertia_world);
 
     angular_inertia_contact[k] = dot(angular_inertia_world, contact->normal);
     linear_inertia[k] = inv_mass;

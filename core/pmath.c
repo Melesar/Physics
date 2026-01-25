@@ -55,6 +55,14 @@ m3 matrix_from_basis(v3 x, v3 y, v3 z) {
   };
 }
 
+m3 matrix_negate(m3 m) {
+  return (m3) {
+    {-m.m0[0], -m.m0[1], -m.m0[2]},
+    {-m.m1[0], -m.m1[1], -m.m1[2]},
+    {-m.m2[0], -m.m2[1], -m.m2[2]}
+  };
+}
+
 m3 matrix_skew_symmetric(v3 v) {
   return (m3) {
     { 0, -v.z, v.y },
