@@ -8,6 +8,7 @@
 #include "gizmos.h"
 #include <math.h>
 #include <stdlib.h>
+#include "assert.h"
 
 typedef struct {
   COMMON_FIELDS
@@ -77,6 +78,7 @@ physics_config physics_default_config() {
     .linear_damping = 0.997,
     .angular_damping = 0.997,
     .restitution = 0.3,
+    .friction = 0.3,
     .max_resolution_iterations = 10,
     .restitution_damping_limit = 0.2,
   };
@@ -203,6 +205,22 @@ void physics_step(physics_world* world, float dt) {
     quat rotation = dynamics->rotations[i];
     m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
     v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
+
+    m3 inv = matrix_inverse(inertia);
+    m3 s = matrix_multiply(inv, inertia);
+
+    assert(fabsf(s.m0[0] - 1.0f) < 0.0001);
+    assert(fabsf(s.m1[1] - 1.0f) < 0.0001);
+    assert(fabsf(s.m2[2] - 1.0f) < 0.0001);
+
+    assert(fabsf(s.m0[1]) < 0.0001);
+    assert(fabsf(s.m0[2]) < 0.0001);
+
+    assert(fabs(s.m1[0]) < 0.0001);
+    assert(fabs(s.m1[2]) < 0.0001);
+
+    assert(fabsf(s.m2[0]) < 0.0001);
+    assert(fabsf(s.m2[1]) < 0.0001);
 
     quat q_omega = { omega.x, omega.y, omega.z, 0 };
     quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
@@ -439,19 +457,48 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   count_t body_count = worst_collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
   count_t body_ids[] = { world->collisions->collisions[worst_collision_index].index_a, world->collisions->collisions[worst_collision_index].index_b };
 
-  float delta_velocity = 0;
+  m3 contact_to_world = contact->basis;
+  m3 world_to_contact = matrix_transpose(contact_to_world);
+
+  m3 delta_velocity = { 0 };
+  float inv_mass = 0;
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    v3 delta_velocity_world = cross(contact->relative_position[k], contact->normal);
-    delta_velocity_world = matrix_rotate(delta_velocity_world, world->dynamics.inv_intertias[body_index]);
-    delta_velocity_world = cross(delta_velocity_world, contact->relative_position[k]);
+    m3 impulse_to_torque = matrix_skew_symmetric(contact->relative_position[k]);
 
-    float inv_mass = world->dynamics.inv_masses[body_index];
-    delta_velocity += dot(delta_velocity_world, contact->normal) + inv_mass;
+    m3 delta_velocity_world = matrix_multiply(impulse_to_torque, world->dynamics.inv_intertias[body_index]);
+    delta_velocity_world = matrix_multiply(delta_velocity_world, impulse_to_torque);
+    delta_velocity_world = matrix_negate(delta_velocity_world);
+
+    inv_mass += world->dynamics.inv_masses[body_index];
+    delta_velocity = matrix_add(delta_velocity, delta_velocity_world);
   }
 
-  float desired_delta_velocity = contact->desired_delta_velocity;
-  v3 contact_space_impulse = { 0, desired_delta_velocity / delta_velocity, 0 };
+  delta_velocity = matrix_multiply(world_to_contact, delta_velocity);
+  delta_velocity = matrix_multiply(delta_velocity, contact_to_world);
+  delta_velocity.m0[0] += inv_mass;
+  delta_velocity.m1[1] += inv_mass;
+  delta_velocity.m2[2] += inv_mass;
+
+  m3 impulse_matrix = matrix_inverse(delta_velocity);
+  v3 velocity_to_kill = { -contact->local_velocity.x, contact->desired_delta_velocity, -contact->local_velocity.z };
+  v3 contact_space_impulse = matrix_rotate(velocity_to_kill, impulse_matrix);
+  float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
+
+  if (planar_impulse > contact_space_impulse.y * world->config.friction) {
+    contact_space_impulse.x /= planar_impulse;
+    contact_space_impulse.z /= planar_impulse;
+
+    float desired_delta_velocity = contact->desired_delta_velocity;
+    contact_space_impulse.y =
+      delta_velocity.m0[0] * world->config.friction * contact_space_impulse.x +
+      delta_velocity.m0[1] +
+      delta_velocity.m0[2] * world->config.friction * contact_space_impulse.z;
+    contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
+    contact_space_impulse.x *= world->config.friction * contact_space_impulse.y;
+    contact_space_impulse.z *= world->config.friction * contact_space_impulse.y;
+  }
+
   v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
 
   for (count_t k = 0; k < body_count; ++k) {
