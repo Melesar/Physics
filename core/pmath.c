@@ -63,11 +63,51 @@ m3 matrix_negate(m3 m) {
   };
 }
 
+m3 matrix_inverse(m3 m) {
+  float t4 = m.m0[0] * m.m1[1];
+  float t6 = m.m0[0] * m.m1[2];
+  float t8 = m.m0[1] * m.m1[0];
+  float t10 = m.m0[2] * m.m1[0];
+  float t12 = m.m0[1] * m.m2[0];
+  float t14 = m.m0[2] * m.m2[0];
+
+  // Calculate the determinant
+  float t16 = (t4 * m.m2[2] - t6 * m.m2[1] - t8 * m.m2[2]+
+    t10 * m.m2[1] + t12 * m.m1[2] - t14 * m.m1[1]);
+
+  // Make sure the determinant is non-zero.
+  if (t16 == (float)0.0f)
+    return m;
+
+  float t17 = 1/t16;
+
+  m3 result;
+  result.m0[0] = (m.m1[1] * m.m2[2] - m.m1[2] * m.m2[1]) * t17;
+  result.m0[1] = -(m.m0[1] * m.m2[2] - m.m0[2] * m.m2[1]) * t17;
+  result.m0[2] = (m.m0[1] * m.m1[2] - m.m0[2] * m.m1[1]) * t17;
+  result.m1[0] = -(m.m1[0] * m.m2[2] - m.m1[2] * m.m2[0]) * t17;
+  result.m1[1] = (m.m0[0] * m.m2[2] - t14) * t17;
+  result.m1[2] = -(t6-t10) * t17;
+  result.m2[0] = (m.m1[0] * m.m2[1] - m.m1[1] * m.m2[0]) * t17;
+  result.m2[1] = -(m.m0[0] * m.m2[1] - t12) * t17;
+  result.m2[2] = (t4-t8) * t17;
+
+  return result;
+}
+
 m3 matrix_skew_symmetric(v3 v) {
   return (m3) {
     { 0, -v.z, v.y },
     { v.z, 0, -v.x },
     { -v.y, v.x, 0 }
+  };
+}
+
+m3 matrix_add(m3 a, m3 b) {
+  return (m3) {
+    { a.m0[0] + b.m0[0], a.m0[1] + b.m0[1], a.m0[2] + b.m0[2] },
+    { a.m1[0] + b.m1[0], a.m1[1] + b.m1[1], a.m1[2] + b.m1[2] },
+    { a.m2[0] + b.m2[0], a.m2[1] + b.m2[1], a.m2[2] + b.m2[2] }
   };
 }
 
