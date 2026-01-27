@@ -56,7 +56,6 @@ m3 matrix_add(m3 a, m3 b);
 m3 matrix_multiply(m3 a, m3 b);
 v3 matrix_rotate(v3 v, m3 m);
 v3 matrix_rotate_inverse(v3 v, m3 m);
-m3 matrix_negate(m3 m);
 m3 matrix_from_basis(v3 x, v3 y, v3 z);
 m3 matrix_skew_symmetric(v3 v);
 m3 matrix_initial_inertia(v3 inertia);
