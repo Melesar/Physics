@@ -55,6 +55,7 @@ typedef struct {
   float linear_damping;
   float angular_damping;
   float restitution;
+  float friction;
 
   count_t max_resolution_iterations;
 
