@@ -10,6 +10,9 @@
 #define GRAVITY 9.81f
 #define GRAVITY_V (v3) { 0, -9.81f, 0 }
 
+#define SLEEP_THRESHOLD 0.1f
+#define RWA_BASE_BIAS 0.5f;
+
 // ====== PHYSICS WORLD =======
 
 typedef enum {
