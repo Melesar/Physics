@@ -272,6 +272,8 @@ static void update_desired_velocity_delta(physics_world *world, contact *contact
 }
 
 static void prepare_contacts(physics_world *world, float dt) {
+  dynamic_bodies *dynamics = &world->dynamics;
+
   for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
     collision collision = world->collisions->collisions[i];
     count_t body_ids[] = { collision.index_a, collision.index_b };
@@ -279,24 +281,31 @@ static void prepare_contacts(physics_world *world, float dt) {
     v3 angular_velocity[2];
 
     for (count_t k = 0; k < body_count; ++k) {
-      m3 inv_inertia = matrix_inertia(world->dynamics.inv_inertia_tensors[body_ids[k]], world->dynamics.rotations[body_ids[k]]);
-      angular_velocity[k] = matrix_rotate(world->dynamics.angular_momenta[body_ids[k]], inv_inertia);
+      m3 inv_inertia = matrix_inertia(dynamics->inv_inertia_tensors[body_ids[k]], dynamics->rotations[body_ids[k]]);
+      angular_velocity[k] = matrix_rotate(dynamics->angular_momenta[body_ids[k]], inv_inertia);
 
-      world->dynamics.inv_intertias[body_ids[k]] = inv_inertia;
+      dynamics->inv_intertias[body_ids[k]] = inv_inertia;
     }
 
     for (count_t j = collision.contacts_offset; j < collision.contacts_offset + collision.contacts_count; ++j) {
       contact *contact = &world->collisions->contacts[j];
 
       contact->basis = contact_space_transform(contact);
+      m3 world_to_contact = matrix_transpose(contact->basis);
+
       for (count_t k = 0; k < body_count; ++k) {
-        contact->relative_position[k] = sub(contact->point, world->dynamics.positions[body_ids[k]]);
+        contact->relative_position[k] = sub(contact->point, dynamics->positions[body_ids[k]]);
       }
+
+      v3 acceleration_velocity = scale(GRAVITY_V, dt);
+      acceleration_velocity = matrix_rotate(acceleration_velocity, world_to_contact);
+      acceleration_velocity.y = 0;
 
       v3 local_velocity[2] = { 0 };
       for (count_t k = 0; k < body_count; ++k) {
-        v3 vel = add(world->dynamics.velocities[body_ids[k]], cross(angular_velocity[k], contact->relative_position[k]));
-        local_velocity[k] = matrix_rotate_inverse(vel, contact->basis);
+        v3 vel = add(dynamics->velocities[body_ids[k]], cross(angular_velocity[k], contact->relative_position[k]));
+        vel = matrix_rotate(vel, world_to_contact);
+        local_velocity[k] = add(vel, acceleration_velocity);
       }
 
       contact->local_velocity = sub(local_velocity[0], local_velocity[1]);
