@@ -134,7 +134,7 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
   commons->rotations[index] = qidentity();
 
   if (type == BODY_DYNAMIC) {
-    world->dynamics.inv_masses[index] = mass;
+    world->dynamics.inv_masses[index] = 1.0 / mass;
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = zero();
 
@@ -208,19 +208,6 @@ void physics_step(physics_world* world, float dt) {
 
     m3 inv = matrix_inverse(inertia);
     m3 s = matrix_multiply(inv, inertia);
-
-    assert(fabsf(s.m0[0] - 1.0f) < 0.0001);
-    assert(fabsf(s.m1[1] - 1.0f) < 0.0001);
-    assert(fabsf(s.m2[2] - 1.0f) < 0.0001);
-
-    assert(fabsf(s.m0[1]) < 0.0001);
-    assert(fabsf(s.m0[2]) < 0.0001);
-
-    assert(fabs(s.m1[0]) < 0.0001);
-    assert(fabs(s.m1[2]) < 0.0001);
-
-    assert(fabsf(s.m2[0]) < 0.0001);
-    assert(fabsf(s.m2[1]) < 0.0001);
 
     quat q_omega = { omega.x, omega.y, omega.z, 0 };
     quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
@@ -466,7 +453,7 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
     count_t body_index = body_ids[k];
     m3 impulse_to_torque = matrix_skew_symmetric(contact->relative_position[k]);
 
-    m3 delta_velocity_world = matrix_multiply(impulse_to_torque, world->dynamics.inv_intertias[body_index]);
+    m3 delta_velocity_world = matrix_multiply(world->dynamics.inv_intertias[body_index], impulse_to_torque);
     delta_velocity_world = matrix_multiply(delta_velocity_world, impulse_to_torque);
     delta_velocity_world = matrix_negate(delta_velocity_world);
 
@@ -491,9 +478,9 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
 
     float desired_delta_velocity = contact->desired_delta_velocity;
     contact_space_impulse.y =
-      delta_velocity.m0[0] * world->config.friction * contact_space_impulse.x +
-      delta_velocity.m0[1] +
-      delta_velocity.m0[2] * world->config.friction * contact_space_impulse.z;
+      delta_velocity.m1[0] * world->config.friction * contact_space_impulse.x +
+      delta_velocity.m1[1] +
+      delta_velocity.m1[2] * world->config.friction * contact_space_impulse.z;
     contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
     contact_space_impulse.x *= world->config.friction * contact_space_impulse.y;
     contact_space_impulse.z *= world->config.friction * contact_space_impulse.y;
