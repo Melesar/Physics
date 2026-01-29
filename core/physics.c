@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include "assert.h"
 
+const float sleep_threshold = 0.1f;
+const float rwa_base_bias = 0.3f;
+
 typedef struct {
   COMMON_FIELDS
 
@@ -20,6 +23,10 @@ typedef struct {
 
   // Derived values.
   m3 *inv_intertias;
+
+  // Sleeping
+  count_t awake_count;
+  float *motion_avgs;
 } dynamic_bodies;
 
 typedef common_data static_bodies;
@@ -67,8 +74,12 @@ static const common_data* as_common_const(const physics_world *world, body_type 
   return as_common((physics_world*) world, type);
 }
 
+static void move_body(physics_world *world, count_t src_index, count_t dst_index);
+static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
+
 static void resolve_collisions(physics_world *world, float dt);
 static void prepare_contacts(physics_world *world, float dt);
+static void update_awake_statuses(physics_world *world, float dt);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -102,8 +113,10 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.inv_masses = malloc(sizeof(float) * config->dynamics_capacity);
   world->dynamics.velocities = malloc(sizeof(v3) * config->dynamics_capacity);
   world->dynamics.angular_momenta = malloc(sizeof(v3) * config->dynamics_capacity);
-  world->dynamics.inv_inertia_tensors = malloc(sizeof(m4) * config->dynamics_capacity);
-  world->dynamics.inv_intertias = malloc(sizeof(m4) * config->dynamics_capacity);
+  world->dynamics.inv_inertia_tensors = malloc(sizeof(m3) * config->dynamics_capacity);
+  world->dynamics.inv_intertias = malloc(sizeof(m3) * config->dynamics_capacity);
+  world->dynamics.motion_avgs = malloc(sizeof(float) * config->dynamics_capacity);
+  world->dynamics.awake_count = 0;
 
   world->config = *config;
   world->collisions = collisions_init(config);
@@ -123,20 +136,29 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
       world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
       world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * commons->capacity);
       world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * commons->capacity);
-      world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m4) * commons->capacity);
-      world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m4) * commons->capacity);
+      world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m3) * commons->capacity);
+      world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m3) * commons->capacity);
+      world->dynamics.motion_avgs = realloc(world->dynamics.motion_avgs, sizeof(float) * commons->capacity);
     }
   }
 
-  count_t index = commons->count++;
+  count_t index = commons->count;
+  if (type == BODY_DYNAMIC && world->dynamics.awake_count < world->dynamics.count) {
+    index = world->dynamics.awake_count;
+    move_body(world, index, world->dynamics.count);
+  }
+
   commons->shapes[index] = shape;
   commons->positions[index] = zero();
   commons->rotations[index] = qidentity();
+  commons->count += 1;
 
   if (type == BODY_DYNAMIC) {
     world->dynamics.inv_masses[index] = 1.0 / mass;
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = zero();
+    world->dynamics.motion_avgs[index] = 2.0 * sleep_threshold;
+    world->dynamics.awake_count += 1;
 
     m3 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
@@ -192,12 +214,13 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 }
 
 void physics_step(physics_world* world, float dt) {
+  TraceLog(LOG_DEBUG, "Base bias %f, dt %f, bias %f", rwa_base_bias, dt, powf(rwa_base_bias, dt));
   v3 gravity_acc = scale(GRAVITY_V, dt);
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
-  for (count_t i = 0; i < dynamics->count; ++i) {
+  for (count_t i = 0; i < dynamics->awake_count; ++i) {
     dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
     dynamics->velocities[i] = scale(dynamics->velocities[i], linear_damping);
     dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
@@ -219,6 +242,7 @@ void physics_step(physics_world* world, float dt) {
 
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
   resolve_collisions(world, dt);
+  update_awake_statuses(world, dt);
  }
 
 void physics_draw_collisions(const physics_world *world) {
@@ -258,6 +282,7 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.angular_momenta);
   free(world->dynamics.inv_inertia_tensors);
   free(world->dynamics.inv_intertias);
+  free(world->dynamics.motion_avgs);
 
   collisions_teardown(world->collisions);
 
@@ -599,4 +624,94 @@ static void resolve_collisions(physics_world *world, float dt) {
   prepare_contacts(world, dt);
   resolve_interpenetrations(world);
   resolve_velocities(world, dt);
+}
+
+static void update_awake_statuses(physics_world *world, float dt) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (dynamics->count == 0)
+    return;
+
+  count_t awake_count = dynamics->awake_count;
+  for (count_t i = 0; i < awake_count; ++i) {
+    v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
+
+    float current_motion = dynamics->motion_avgs[i];
+    float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
+    float bias = rwa_base_bias;
+
+    dynamics->motion_avgs[i] = current_motion * bias + new_motion * (1 - bias);
+  }
+
+  count_t left = 0;
+  count_t right = dynamics->count - 1;
+  while(left < awake_count && right >= awake_count) {
+    while(dynamics->motion_avgs[left] > sleep_threshold) {
+      left += 1;
+    }
+
+    while (dynamics->motion_avgs[right] <= sleep_threshold && right >= awake_count) {
+      right -= 1;
+    }
+
+    if (left >= awake_count || right <= awake_count - 1)
+      break;
+
+    swap_bodies(world, left, right);
+  }
+
+  for (count_t i = awake_count - 1; i >= left && i != -1; --i) {
+    if (dynamics->motion_avgs[i] >= sleep_threshold)
+      continue;
+
+    count_t target_index = awake_count - 1;
+    if (i != target_index)
+      swap_bodies(world, i, target_index);
+
+    dynamics->velocities[target_index] = dynamics->angular_momenta[target_index] = zero();
+    awake_count -= 1;
+  }
+
+  for (count_t i = awake_count; i <= right; ++i) {
+    if (dynamics->motion_avgs[i] < sleep_threshold)
+      continue;
+
+    count_t target_index = awake_count;
+    if (i != target_index)
+      swap_bodies(world, i, target_index);
+
+    awake_count += 1;
+  }
+
+  dynamics->awake_count = awake_count;
+}
+
+static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
+  world->dynamics.positions[dst_index] = world->dynamics.positions[src_index];
+  world->dynamics.rotations[dst_index] = world->dynamics.rotations[src_index];
+  world->dynamics.shapes[dst_index] = world->dynamics.shapes[src_index];
+  world->dynamics.inv_masses[dst_index] = world->dynamics.inv_masses[src_index];
+  world->dynamics.velocities[dst_index] = world->dynamics.velocities[src_index];
+  world->dynamics.angular_momenta[dst_index] = world->dynamics.angular_momenta[src_index];
+  world->dynamics.inv_inertia_tensors[dst_index] = world->dynamics.inv_inertia_tensors[src_index];
+  world->dynamics.inv_intertias[dst_index] = world->dynamics.inv_intertias[src_index];
+  world->dynamics.motion_avgs[dst_index] = world->dynamics.motion_avgs[src_index];
+}
+
+static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) {
+  #define SWAP(type, arr) \
+    type tmp_##arr = world->dynamics.arr[index_a]; \
+    world->dynamics.arr[index_a] = world->dynamics.arr[index_b]; \
+    world->dynamics.arr[index_b] = tmp_##arr;
+
+  SWAP(v3, positions)
+  SWAP(quat, rotations)
+  SWAP(body_shape, shapes)
+  SWAP(float, inv_masses)
+  SWAP(v3, velocities)
+  SWAP(v3, angular_momenta)
+  SWAP(m3, inv_inertia_tensors)
+  SWAP(m3, inv_intertias)
+  SWAP(float, motion_avgs)
+
+  #undef SWAP
 }
