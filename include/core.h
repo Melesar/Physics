@@ -30,13 +30,6 @@ struct object {
   Material material;
 };
 
-void initialize_program(program_config* config);
-void setup_scene(Shader shader);
-void on_input(Camera *camera);
-void reset();
-void simulate(float dt);
-void draw(float interpolation);
-void draw_ui(struct nk_context* ctx);
 
 void toggle_pause(bool is_pause);
 

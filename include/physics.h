@@ -16,6 +16,8 @@ typedef enum {
   SHAPE_BOX,
   SHAPE_SPHERE,
   SHAPE_PLANE,
+
+  SHAPES_COUNT
 } shape_type;
 
 typedef struct {

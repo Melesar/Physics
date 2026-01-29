@@ -8,6 +8,7 @@
 #include "shaders/rlights.h"
 #include "rcamera.h"
 #include "raylib-nuklear.h"
+#include "physics.h"
 
 const int ui_font_size = 14;
 const int screen_width = 1920;
@@ -28,34 +29,50 @@ void manipulate_gizmos(Camera *camera);
 void draw_gizmos();
 
 static void draw_custom_grid(int slices, float spacing);
-static void setup_ground_plane(Shader shader);
+static void setup_scene_internal(Shader shader);
+static void init_physics();
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader);
+static void draw_physics_bodies();
 static void process_inputs(Camera* camera);
+static void reset();
+
+void initialize_program(program_config* config, physics_config *physics_config);
+void setup_scene(physics_world *world);
+void on_input(Camera *camera);
+void simulate(float dt);
+void draw(float interpolation);
+void draw_ui(struct nk_context* ctx);
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,
   .rotation_sensitivity = 0.1f,
 };
 
+Color colors[] = { BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE,  BROWN, YELLOW, GREEN, MAROON, MAGENTA, RAYWHITE, DARKPURPLE, LIME, PINK, ORANGE  };
+Material materials[20];
+Mesh meshes[20];
+
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
 
 static Model groundModel;
-static bool groundInitialized = false;
+static physics_world *world;
+static physics_config config;
 
 void toggle_pause(bool is_pause) { simulation_running = !is_pause; }
 
 int main(int argc, char** argv) {
 
-  program_config config = {0};
+  program_config program_config = {0};
+  config = physics_default_config();
 
-  initialize_program(&config);
+  initialize_program(&program_config, &config);
 
-  InitWindow(screen_width, screen_height, config.window_title);
+  InitWindow(screen_width, screen_height, program_config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetExitKey(KEY_F10);
   SetTargetFPS(frame_rate);
@@ -63,13 +80,14 @@ int main(int argc, char** argv) {
 
   struct nk_context *ctx = InitNuklear(ui_font_size);
 
-  Camera camera = setup_camera(config);
+  Camera camera = setup_camera(program_config);
   Shader shader = setup_lighting();
 
   init_debugging();
   init_gizmos();
-  setup_ground_plane(shader);
-  setup_scene(shader);
+  init_physics();
+  setup_scene_internal(shader);
+  setup_scene(world);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
     simulation_running = false;
@@ -91,7 +109,7 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        simulate(simulation_step);
+        physics_step(world, simulation_step);
 
         step_forward = false;
       }
@@ -138,6 +156,35 @@ static void process_inputs(Camera* camera) {
     on_input(camera);
 }
 
+static void draw_physics_bodies() {
+  size_t dynamic_count = physics_body_count(world, BODY_DYNAMIC);
+
+  for (size_t i = 0; i < dynamic_count; ++i) {
+    body_snapshot snapshot;
+    if (!physics_body(world, BODY_DYNAMIC, i, &snapshot))
+      continue;
+
+    m4 scale;
+    m4 transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));
+    Material material = materials[i % 20];
+
+    switch (snapshot.shape.type) {
+      case SHAPE_BOX:
+        scale = MatrixScale(snapshot.shape.box.size.x, snapshot.shape.box.size.y, snapshot.shape.box.size.z);
+        DrawMesh(meshes[SHAPE_BOX], material, mul(scale, transform));
+        break;
+
+      case SHAPE_SPHERE:
+        scale = MatrixScale(snapshot.shape.sphere.radius, snapshot.shape.sphere.radius, snapshot.shape.sphere.radius);
+        DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, transform));
+        break;
+
+      default:
+        break;
+    }
+  }
+}
+
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
 
@@ -147,13 +194,13 @@ static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shade
 
         BeginShaderMode(shader);
 
+          draw_physics_bodies();
+
           float t = Clamp(accum / simulation_step, 0, 1);
           draw(t);
 
           // Draw ground plane
-          if (groundInitialized) {
-            DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
-          }
+          DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
           draw_custom_grid(32, 1.0f);
 
           if (edit_mode)
@@ -226,14 +273,37 @@ static void draw_custom_grid(int slices, float spacing) {
   }
 }
 
-static void setup_ground_plane(Shader shader) {
-  Mesh mesh = GenMeshPlane(200.0f, 200.0f, 1, 1);
-  groundModel = LoadModelFromMesh(mesh);
+static void setup_scene_internal(Shader shader) {
+  meshes[SHAPE_BOX] = GenMeshCube(1, 1, 1);
+  meshes[SHAPE_SPHERE] = GenMeshSphere(1, 16, 16);
+  meshes[SHAPE_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
+
+  for (size_t i = 0; i < 20; ++i) {
+    Material m = LoadMaterialDefault();
+    m.shader = shader;
+    m.maps[MATERIAL_MAP_ALBEDO].color = colors[i];
+
+    materials[i] = m;
+  }
+
+  groundModel = LoadModelFromMesh(meshes[SHAPE_PLANE]);
 
   groundModel.materials[0].shader = shader;
   groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = COLOR_GROUND;
+}
 
-  groundInitialized = true;
+static void reset() {
+  init_physics();
+  setup_scene(world);
+}
+
+static void init_physics() {
+  if (world)
+    physics_teardown(world);
+
+  world = physics_init(&config);
+
+  physics_add_plane(world, zero(), up());
 }
 
 static Shader setup_lighting() {
