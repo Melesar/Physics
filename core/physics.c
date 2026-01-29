@@ -80,6 +80,7 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
 static void resolve_collisions(physics_world *world, float dt);
 static void prepare_contacts(physics_world *world, float dt);
 static void update_awake_statuses(physics_world *world, float dt);
+static void update_awake_status_for_collision(physics_world *world, count_t collision_index);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -142,23 +143,16 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     }
   }
 
-  count_t index = commons->count;
-  if (type == BODY_DYNAMIC && world->dynamics.awake_count < world->dynamics.count) {
-    index = world->dynamics.awake_count;
-    move_body(world, index, world->dynamics.count);
-  }
-
+  count_t index = commons->count++;
   commons->shapes[index] = shape;
   commons->positions[index] = zero();
   commons->rotations[index] = qidentity();
-  commons->count += 1;
 
   if (type == BODY_DYNAMIC) {
     world->dynamics.inv_masses[index] = 1.0 / mass;
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = zero();
-    world->dynamics.motion_avgs[index] = 2.0 * sleep_threshold;
-    world->dynamics.awake_count += 1;
+    world->dynamics.motion_avgs[index] = 0;
 
     m3 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
@@ -214,7 +208,6 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 }
 
 void physics_step(physics_world* world, float dt) {
-  TraceLog(LOG_DEBUG, "Base bias %f, dt %f, bias %f", rwa_base_bias, dt, powf(rwa_base_bias, dt));
   v3 gravity_acc = scale(GRAVITY_V, dt);
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);
@@ -244,6 +237,14 @@ void physics_step(physics_world* world, float dt) {
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
  }
+
+void physics_awaken_body(physics_world* world, count_t index) {
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (index < dynamics->awake_count || index >= dynamics->count)
+    return;
+
+  dynamics->motion_avgs[index] = 2.0 * sleep_threshold;
+}
 
 void physics_draw_collisions(const physics_world *world) {
   count_t count = collisions_count(world->collisions);
@@ -439,22 +440,22 @@ static void resolve_interpenetrations(physics_world *world) {
 
   const float penetration_epsilon = 0.0001f; // TODO move to config
   count_t iterations = 0;
-  collision collision;
-  contact contact;
+  collision *collision;
+  contact *contact;
   while (iterations < world->config.max_resolution_iterations) {
     float max_penetration = penetration_epsilon;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
 
     for (count_t i = 0; i < count; ++i) {
-      collision_get(world->collisions, i, &collision);
+      collision = &world->collisions->collisions[i];
 
-      for (count_t j = 0; j < collision.contacts_count; ++j) {
-        contact_get(world->collisions, collision.contacts_offset + j, &contact);
+      for (count_t j = 0; j < collision->contacts_count; ++j) {
+        contact = &world->collisions->contacts[j];
 
-        if (contact.depth > max_penetration) {
-          max_penetration = contact.depth;
-          max_penetration_index = collision.contacts_offset + j;
+        if (contact->depth > max_penetration) {
+          max_penetration = contact->depth;
+          max_penetration_index = collision->contacts_offset + j;
           collision_index = i;
         }
       }
@@ -463,11 +464,12 @@ static void resolve_interpenetrations(physics_world *world) {
     if (collision_index == -1)
       break;
 
-    collision_get(world->collisions, collision_index, &collision);
-    contact_get(world->collisions, max_penetration_index, &contact);
+    contact = &world->collisions->contacts[max_penetration_index];
+
+    update_awake_status_for_collision(world, collision_index);
 
     v3 deltas[4];
-    resolve_interpenetration_contact(world, collision_index, &contact, deltas);
+    resolve_interpenetration_contact(world, collision_index, contact, deltas);
     update_penetration_depths(world, collision_index, max_penetration_index, deltas);
 
     iterations += 1;
@@ -612,6 +614,8 @@ static void resolve_velocities(physics_world *world, float dt) {
 
     contact = &world->collisions->contacts[worst_contact_index];
 
+    update_awake_status_for_collision(world, worst_collision_index);
+
     v3 deltas[4];
     resolve_velocity_contact(world, worst_collision_index, contact, deltas, dt);
     update_velocity_deltas(world, worst_collision_index, worst_collision_index, deltas, dt);
@@ -683,6 +687,24 @@ static void update_awake_statuses(physics_world *world, float dt) {
   }
 
   dynamics->awake_count = awake_count;
+}
+
+static void update_awake_status_for_collision(physics_world *world, count_t collision_index) {
+  if (collision_index >= world->collisions->dynamic_collisions_count)
+    return;
+
+  collision *collision = &world->collisions->collisions[collision_index];
+
+  bool body_a_awake = collision->index_a < world->dynamics.awake_count;
+  bool body_b_awake = collision->index_b < world->dynamics.awake_count;
+  if (body_a_awake == body_b_awake)
+    return;
+
+  if (!body_a_awake)
+    world->dynamics.motion_avgs[collision->index_a] = 2.0 * sleep_threshold;
+
+  if (!body_b_awake)
+    world->dynamics.motion_avgs[collision->index_b] = 2.0 * sleep_threshold;
 }
 
 static void move_body(physics_world *world, count_t src_index, count_t dst_index) {

@@ -90,6 +90,7 @@ size_t physics_body_count(const physics_world* world, body_type type);
 bool physics_body(const physics_world* world, body_type type, size_t index, body_snapshot* body);
 
 void physics_step(physics_world* world, float dt);
+void physics_awaken_body(physics_world* world, count_t index);
 
 void physics_draw_collisions(const physics_world *world);
 bool physics_has_collisions(const physics_world *world);

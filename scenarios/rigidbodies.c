@@ -58,6 +58,9 @@ void reset() {
   *box_2.position = (v3) { 3, 5, 0 };
   *box_2.velocity = (v3) { -5, 0, 0 };
   *box_2.angular_momentum = (v3) { -1, 0, 3 };
+
+  physics_awaken_body(world, 0);
+  physics_awaken_body(world, 1);
 }
 
 void on_input(Camera *camera) {}
