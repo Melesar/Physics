@@ -273,7 +273,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
 
   const count_t max_contacts = 4;
 
-  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->contacts_count + max_contacts, collisions->contacts_capacity, contact)
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + max_contacts, collisions->contacts_capacity, contact)
 
   count_t contact_count = 0;
   contact *contacts = collisions->contacts + collisions->contacts_count;
