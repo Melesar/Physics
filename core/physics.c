@@ -267,43 +267,91 @@ bool physics_has_collisions(const physics_world *world) {
   return collisions_count(world->collisions);
 }
 
+static bool begin_widget_window(
+  struct nk_context* ctx,
+  const char* window_name,
+  const char* title,
+  float x,
+  float y,
+  float width,
+  float row_height,
+  int row_count
+) {
+  const nk_flags window_flags = NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE |
+    NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE;
+
+  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+  float padding_y = ctx->style.window.padding.y;
+  float spacing_y = ctx->style.window.spacing.y;
+  float content_height = (row_height * row_count) + (spacing_y * (row_count - 1));
+  float window_height = header_height + (padding_y * 2.0f) + content_height;
+
+  if (nk_begin_titled(ctx, window_name, title, nk_rect(x, y, width, window_height), window_flags)) {
+    if (!nk_window_is_collapsed(ctx, window_name)) {
+      nk_window_set_size(ctx, window_name, nk_vec2(width, window_height));
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void physics_draw_stats(const physics_world *world, struct nk_context* ctx) {
   static const char* window_name = "physics_world_stats";
   const float row_height = 18.0f;
   const float window_width = 240.0f;
   const int row_count = 4;
 
-  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
-  float padding_y = ctx->style.window.padding.y;
-  float spacing_y = ctx->style.window.spacing.y;
-  float content_height = (row_height * row_count) + (spacing_y * (row_count - 1));
-  float window_height = header_height + (padding_y * 2.0f) + content_height + 25.0;
+  bool draw_content = begin_widget_window(ctx, window_name, "Physics world stats", 20.0f, 200.0f, window_width, row_height, row_count);
 
-  if (nk_begin_titled(ctx, window_name, "Physics world stats", nk_rect(20, 200, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
-    if (!nk_window_is_collapsed(ctx, window_name)) {
-      count_t dynamic_count = (count_t) physics_body_count(world, BODY_DYNAMIC);
-      count_t static_count = (count_t) physics_body_count(world, BODY_STATIC);
-      count_t collisions_total = (count_t) collisions_count(world->collisions);
-      count_t awake_total = (count_t) world->dynamics.awake_count;
+  if (draw_content) {
+    count_t dynamic_count = (count_t) physics_body_count(world, BODY_DYNAMIC);
+    count_t static_count = (count_t) physics_body_count(world, BODY_STATIC);
+    count_t collisions_total = (count_t) collisions_count(world->collisions);
+    count_t awake_total = (count_t) world->dynamics.awake_count;
 
-      nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_label(ctx, "Body count:", NK_TEXT_ALIGN_LEFT);
 
-      nk_layout_row_dynamic(ctx, row_height, 1);
-      nk_label(ctx, "Body count:", NK_TEXT_ALIGN_LEFT);
+    nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+    nk_layout_row_push(ctx, 0.5f);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Dynamic %u", dynamic_count);
+    nk_layout_row_push(ctx, 0.5f);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Static %u", static_count);
+    nk_layout_row_end(ctx);
 
-      nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
-      nk_layout_row_push(ctx, 0.5f);
-      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Dynamic %u", dynamic_count);
-      nk_layout_row_push(ctx, 0.5f);
-      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Static %u", static_count);
-      nk_layout_row_end(ctx);
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collisions count: %u", collisions_total);
 
-      nk_layout_row_dynamic(ctx, row_height, 1);
-      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collisions count: %u", collisions_total);
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Awake bodies: %u", awake_total);
+  }
 
-      nk_layout_row_dynamic(ctx, row_height, 1);
-      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Awake bodies: %u", awake_total);
-    }
+  nk_end(ctx);
+}
+
+void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
+  static const char* window_name = "physics_config_widget";
+  const float row_height = 15.0f;
+  const float window_width = 260.0f;
+  const int row_count = 6;
+
+  bool draw_content = begin_widget_window(ctx, window_name, "Physics config", 20.0f, 360.0f, window_width, row_height, row_count);
+
+  if (draw_content) {
+    int max_iterations = (int) world->config.max_resolution_iterations;
+
+    draw_edit_float(ctx, "Linear damping", &world->config.linear_damping);
+    draw_edit_float(ctx, "Angular damping", &world->config.angular_damping);
+    draw_edit_float(ctx, "Restitution", &world->config.restitution);
+    draw_edit_float(ctx, "Friction", &world->config.friction);
+    draw_edit_int(ctx, "Resolution iterations", &max_iterations);
+    draw_edit_float(ctx, "Restitution damp limit", &world->config.restitution_damping_limit);
+
+    if (max_iterations < 0)
+      max_iterations = 0;
+
+    world->config.max_resolution_iterations = (count_t) max_iterations;
   }
 
   nk_end(ctx);

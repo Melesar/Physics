@@ -60,6 +60,7 @@ bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
 bool show_physics_world_stats = false;
+bool show_physics_config_widget = false;
 
 static Model groundModel;
 static physics_world *world;
@@ -120,9 +121,9 @@ int main(int argc, char** argv) {
     }
 
     draw_ui_widget_controls(ctx);
+
     draw_ui(ctx);
-    if (show_physics_world_stats)
-      physics_draw_stats(world, ctx);
+
     draw_scene(camera, accum, ctx, shader);
 
     accum -= sim_count * simulation_step;
@@ -166,12 +167,12 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 1;
+  const int checkbox_count = 2;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
   float spacing_y = ctx->style.window.spacing.y;
-  float window_height = header_height + (padding_y * 2.0f) + (row_height * checkbox_count) + (spacing_y * (checkbox_count - 1)) + 50.0;
+  float window_height = header_height + (padding_y * 2.0f) + (row_height * checkbox_count) + (spacing_y * (checkbox_count - 1)) + 25.0;
 
   if (nk_begin_titled(ctx, window_name, "", nk_rect(20, 20, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
     if (!nk_window_is_collapsed(ctx, window_name)) {
@@ -181,10 +182,19 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool physics_world_stats = show_physics_world_stats ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Physics world stats", &physics_world_stats);
       show_physics_world_stats = physics_world_stats != 0;
+
+      nk_bool physics_config = show_physics_config_widget ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Physics config", &physics_config);
+      show_physics_config_widget = physics_config != 0;
     }
   }
 
   nk_end(ctx);
+
+  if (show_physics_world_stats)
+    physics_draw_stats(world, ctx);
+  if (show_physics_config_widget)
+    physics_draw_config_widget(world, ctx);
 }
 
 static void draw_physics_bodies() {

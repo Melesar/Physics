@@ -97,6 +97,7 @@ void physics_awaken_body(physics_world* world, count_t index);
 void physics_draw_collisions(const physics_world *world);
 bool physics_has_collisions(const physics_world *world);
 void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
+void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
 
 void physics_teardown(physics_world* world);
 
