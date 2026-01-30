@@ -36,14 +36,14 @@ static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
-static void process_inputs(Camera* camera);
+static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
 
 void initialize_program(program_config* config, physics_config *physics_config);
 void setup_scene(physics_world *world);
-void on_input(Camera *camera);
-void simulate(float dt);
+void on_input(physics_world *world, Camera *camera);
+void simulate(physics_world *world, float dt);
 void draw(float interpolation);
 void draw_ui(struct nk_context* ctx);
 
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     update_camera(&camera, GetFrameTime());
     UpdateNuklear(ctx);
 
-    process_inputs(&camera);
+    process_inputs(world, &camera);
 
     int sim_count = 0;
     if (!edit_mode) {
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        simulate(simulation_step);
+        simulate(world, simulation_step);
         physics_step(world, simulation_step);
 
         step_forward = false;
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-static void process_inputs(Camera* camera) {
+static void process_inputs(physics_world *world, Camera* camera) {
   if (IsKeyPressed(KEY_SPACE)) {
     simulation_running = !simulation_running;
   }
@@ -159,7 +159,7 @@ static void process_inputs(Camera* camera) {
   }
 
   if (!edit_mode)
-    on_input(camera);
+    on_input(world, camera);
 }
 
 static void draw_ui_widget_controls(struct nk_context* ctx) {

@@ -13,21 +13,40 @@ void initialize_program(program_config* config, physics_config *physics_config) 
 }
 
 void setup_scene(physics_world *world) {
-  body box_1 = physics_add_box(world, BODY_DYNAMIC, 3, (v3) { 1, 1, 1 });
-  *box_1.position = (v3) { -3, 5, 0 };
-  *box_1.velocity = (v3) { 5, 0, 0 };
-  *box_1.angular_momentum = (v3) { 1, 1, 1 };
+  #define NEW_BOX physics_add_box(world, BODY_DYNAMIC, 3, (v3) { 1, 1, 1 })
 
-  body box_2 = physics_add_box(world, BODY_DYNAMIC, 3, (v3) { 1, 1, 1 });
-  *box_2.position = (v3) { 3, 5, 0 };
-  *box_2.velocity = (v3) { -5, 0, 0 };
-  *box_2.angular_momentum = (v3) { -1, 0, 3 };
+  for (int i = -1; i <= 1; ++i) {
+    for (int j = -1; j <= 1; ++j) {
+      *NEW_BOX.position = (v3) { i, 0.5f, j };
+    }
+  }
 
-  physics_awaken_body(world, 0);
-  physics_awaken_body(world, 1);
+  for (int i = -1; i <= 1; ++i) {
+    *NEW_BOX.position = (v3) { i, 1.5f, -1 };
+  }
+
+  *NEW_BOX.position = (v3) { -1, 1.5f, 0 };
+  *NEW_BOX.position = (v3) { 1, 1.5f, 0 };
+
+  *NEW_BOX.position = (v3) { 0, 2.5f, -1 };
+
+  #undef NEW_BOX
 }
 
-void on_input(Camera *camera) {}
+void simulate(physics_world *world, float dt) {
+
+}
+
+void on_input(physics_world *world, Camera *camera) {
+  if (IsKeyPressed(KEY_X)) {
+    body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) {1.3, 1.3, 1.3});
+    *big_box.position = (v3) { 0, 7, 0 };
+    *big_box.angular_momentum = (v3) { 1, 1, 1 };
+
+    physics_awaken_body(world, physics_body_count(world, BODY_DYNAMIC) - 1);
+  }
+
+}
 
 void draw(float interpolation) {}
 
