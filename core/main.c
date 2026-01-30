@@ -38,6 +38,7 @@ static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shade
 static void draw_physics_bodies();
 static void process_inputs(Camera* camera);
 static void reset();
+static void draw_ui_widget_controls(struct nk_context* ctx);
 
 void initialize_program(program_config* config, physics_config *physics_config);
 void setup_scene(physics_world *world);
@@ -58,6 +59,7 @@ Mesh meshes[20];
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
+bool show_physics_world_stats = false;
 
 static Model groundModel;
 static physics_world *world;
@@ -117,6 +119,7 @@ int main(int argc, char** argv) {
       manipulate_gizmos(&camera);
     }
 
+    draw_ui_widget_controls(ctx);
     draw_ui(ctx);
     draw_scene(camera, accum, ctx, shader);
 
@@ -154,6 +157,32 @@ static void process_inputs(Camera* camera) {
 
   if (!edit_mode)
     on_input(camera);
+}
+
+static void draw_ui_widget_controls(struct nk_context* ctx) {
+  static const char* window_name = "ui_widget_controls";
+
+  const float row_height = 18.0f;
+  const float window_width = 220.0f;
+  const int checkbox_count = 1;
+
+  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+  float padding_y = ctx->style.window.padding.y;
+  float spacing_y = ctx->style.window.spacing.y;
+  float window_height = header_height + (padding_y * 2.0f) + (row_height * checkbox_count) + (spacing_y * (checkbox_count - 1)) + 50.0;
+
+  if (nk_begin_titled(ctx, window_name, "", nk_rect(20, 20, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
+    if (!nk_window_is_collapsed(ctx, window_name)) {
+      nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
+      nk_layout_row_dynamic(ctx, row_height, 1);
+
+      nk_bool physics_world_stats = show_physics_world_stats ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Physics world stats", &physics_world_stats);
+      show_physics_world_stats = physics_world_stats != 0;
+    }
+  }
+
+  nk_end(ctx);
 }
 
 static void draw_physics_bodies() {

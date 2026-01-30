@@ -2,10 +2,19 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
+#include <float.h>
+#include <limits.h>
 
 Mesh arrow_base;
 Mesh arrow_head;
 Material mat;
+
+static void begin_debug_row(struct nk_context* ctx) {
+  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
+  nk_layout_row_push(ctx, 0.1f);
+  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
+  nk_layout_row_push(ctx, 0.9f);
+}
 
 static void set_arrow_color(Color c) {
   mat.maps[MATERIAL_MAP_DIFFUSE].color = c;
@@ -38,28 +47,25 @@ void draw_arrow(Vector3 start, Vector3 direction, Color color) {
 }
 
 void draw_stat_float(struct nk_context* ctx, char* title, float value) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
+  begin_debug_row(ctx);
   nk_value_float(ctx, title, value);
   nk_layout_row_end(ctx);
 }
 
+void draw_stat_int(struct nk_context* ctx, char* title, int value) {
+  begin_debug_row(ctx);
+  nk_value_int(ctx, title, value);
+  nk_layout_row_end(ctx);
+}
+
 void draw_stat_float3(struct nk_context* ctx, char* title, Vector3 value) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
+  begin_debug_row(ctx);
   nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "%s: (%.3f, %.3f, %.3f)", title, value.x, value.y, value.z);
   nk_layout_row_end(ctx);
 }
 
 void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
+  begin_debug_row(ctx);
   nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "%s:", title);
   nk_layout_row_end(ctx);
 
@@ -72,21 +78,44 @@ void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value) {
   }
 }
 
+void draw_edit_float(struct nk_context* ctx, char* title, float* value) {
+  draw_property_float(ctx, title, value, -FLT_MAX, FLT_MAX, 0.1f, 0.01f);
+}
+
+void draw_edit_int(struct nk_context* ctx, char* title, int* value) {
+  draw_property_int(ctx, title, value, INT_MIN, INT_MAX, 1, 1.0f);
+}
+
+bool draw_button(struct nk_context* ctx, char* title) {
+  bool pressed = false;
+
+  begin_debug_row(ctx);
+  pressed = nk_button_label(ctx, title) != 0;
+  nk_layout_row_end(ctx);
+
+  return pressed;
+}
+
+bool draw_selectable(struct nk_context* ctx, char* title, bool* selected) {
+  nk_bool value = *selected ? nk_true : nk_false;
+  nk_bool changed;
+
+  begin_debug_row(ctx);
+  changed = nk_selectable_label(ctx, title, NK_TEXT_ALIGN_LEFT, &value);
+  nk_layout_row_end(ctx);
+
+  *selected = value != 0;
+  return changed != 0;
+}
 
 void draw_property_float(struct nk_context* ctx, char* title, float* value, float min, float max, float step_arrow, float step_drag) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
+  begin_debug_row(ctx);
   nk_property_float(ctx, title, min, value, max, step_arrow, step_drag);
   nk_layout_row_end(ctx);
 }
 
 void draw_property_int(struct nk_context* ctx, char* title, int* value, int min, int max, int step, float step_drag) {
-  nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
-  nk_layout_row_push(ctx, 0.1);
-  nk_label(ctx, " ", NK_TEXT_ALIGN_LEFT);
-  nk_layout_row_push(ctx, 0.9);
+  begin_debug_row(ctx);
   nk_property_int(ctx, title, min, value, max, step, step_drag);
   nk_layout_row_end(ctx);
 }
