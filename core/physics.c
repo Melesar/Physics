@@ -267,6 +267,48 @@ bool physics_has_collisions(const physics_world *world) {
   return collisions_count(world->collisions);
 }
 
+void physics_draw_stats(const physics_world *world, struct nk_context* ctx) {
+  static const char* window_name = "physics_world_stats";
+  const float row_height = 18.0f;
+  const float window_width = 240.0f;
+  const int row_count = 4;
+
+  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+  float padding_y = ctx->style.window.padding.y;
+  float spacing_y = ctx->style.window.spacing.y;
+  float content_height = (row_height * row_count) + (spacing_y * (row_count - 1));
+  float window_height = header_height + (padding_y * 2.0f) + content_height + 25.0;
+
+  if (nk_begin_titled(ctx, window_name, "Physics world stats", nk_rect(20, 200, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
+    if (!nk_window_is_collapsed(ctx, window_name)) {
+      count_t dynamic_count = (count_t) physics_body_count(world, BODY_DYNAMIC);
+      count_t static_count = (count_t) physics_body_count(world, BODY_STATIC);
+      count_t collisions_total = (count_t) collisions_count(world->collisions);
+      count_t awake_total = (count_t) world->dynamics.awake_count;
+
+      nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
+
+      nk_layout_row_dynamic(ctx, row_height, 1);
+      nk_label(ctx, "Body count:", NK_TEXT_ALIGN_LEFT);
+
+      nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+      nk_layout_row_push(ctx, 0.5f);
+      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Dynamic %u", dynamic_count);
+      nk_layout_row_push(ctx, 0.5f);
+      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Static %u", static_count);
+      nk_layout_row_end(ctx);
+
+      nk_layout_row_dynamic(ctx, row_height, 1);
+      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collisions count: %u", collisions_total);
+
+      nk_layout_row_dynamic(ctx, row_height, 1);
+      nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Awake bodies: %u", awake_total);
+    }
+  }
+
+  nk_end(ctx);
+}
+
 void physics_teardown(physics_world* world) {
   #define TEARDOWN_COMMONS(type) \
     free(world->type.positions); \

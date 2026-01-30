@@ -121,6 +121,8 @@ int main(int argc, char** argv) {
 
     draw_ui_widget_controls(ctx);
     draw_ui(ctx);
+    if (show_physics_world_stats)
+      physics_draw_stats(world, ctx);
     draw_scene(camera, accum, ctx, shader);
 
     accum -= sim_count * simulation_step;
