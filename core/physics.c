@@ -37,7 +37,7 @@ struct physics_world {
 
   collisions *collisions;
 
-  physics_config config;
+  physics_config *config;
 };
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
@@ -96,7 +96,7 @@ physics_config physics_default_config() {
   };
 }
 
-physics_world* physics_init(const physics_config *config) {
+physics_world* physics_init(physics_config *config) {
   physics_world* world = malloc(sizeof(physics_world));
 
   #define INIT_COMMONS(type, cap) \
@@ -119,7 +119,7 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.motion_avgs = malloc(sizeof(float) * config->dynamics_capacity);
   world->dynamics.awake_count = 0;
 
-  world->config = *config;
+  world->config = config;
   world->collisions = collisions_init(config);
 
   return world;
@@ -209,8 +209,8 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 
 void physics_step(physics_world* world, float dt) {
   v3 gravity_acc = scale(GRAVITY_V, dt);
-  float linear_damping = powf(world->config.linear_damping, dt);
-  float angular_damping = powf(world->config.angular_damping, dt);
+  float linear_damping = powf(world->config->linear_damping, dt);
+  float angular_damping = powf(world->config->angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
@@ -284,7 +284,7 @@ static bool begin_widget_window(
   float padding_y = ctx->style.window.padding.y;
   float spacing_y = ctx->style.window.spacing.y;
   float content_height = (row_height * row_count) + (spacing_y * (row_count - 1));
-  float window_height = header_height + (padding_y * 2.0f) + content_height;
+  float window_height = header_height + (padding_y * 2.0f) + content_height + 25.0;
 
   if (nk_begin_titled(ctx, window_name, title, nk_rect(x, y, width, window_height), window_flags)) {
     if (!nk_window_is_collapsed(ctx, window_name)) {
@@ -339,19 +339,19 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
   bool draw_content = begin_widget_window(ctx, window_name, "Physics config", 20.0f, 360.0f, window_width, row_height, row_count);
 
   if (draw_content) {
-    int max_iterations = (int) world->config.max_resolution_iterations;
+    int max_iterations = (int) world->config->max_resolution_iterations;
 
-    draw_edit_float(ctx, "Linear damping", &world->config.linear_damping);
-    draw_edit_float(ctx, "Angular damping", &world->config.angular_damping);
-    draw_edit_float(ctx, "Restitution", &world->config.restitution);
-    draw_edit_float(ctx, "Friction", &world->config.friction);
+    draw_edit_float(ctx, "Linear damping", &world->config->linear_damping);
+    draw_edit_float(ctx, "Angular damping", &world->config->angular_damping);
+    draw_edit_float(ctx, "Restitution", &world->config->restitution);
+    draw_edit_float(ctx, "Friction", &world->config->friction);
     draw_edit_int(ctx, "Resolution iterations", &max_iterations);
-    draw_edit_float(ctx, "Restitution damp limit", &world->config.restitution_damping_limit);
+    draw_edit_float(ctx, "Restitution damp limit", &world->config->restitution_damping_limit);
 
     if (max_iterations < 0)
       max_iterations = 0;
 
-    world->config.max_resolution_iterations = (count_t) max_iterations;
+    world->config->max_resolution_iterations = (count_t) max_iterations;
   }
 
   nk_end(ctx);
@@ -383,7 +383,7 @@ void physics_teardown(physics_world* world) {
 static void update_desired_velocity_delta(physics_world *world, contact *contact, float dt) {
   float acceleration_velocity = dot(GRAVITY_V, contact->normal) * dt;
 
-  float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? world->config.restitution : 0.0f;
+  float restitution = fabsf(contact->local_velocity.y) >= world->config->restitution_damping_limit ? world->config->restitution : 0.0f;
   contact->desired_delta_velocity = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 }
 
@@ -532,7 +532,7 @@ static void resolve_interpenetrations(physics_world *world) {
   count_t iterations = 0;
   collision *collision;
   contact *contact;
-  while (iterations < world->config.max_resolution_iterations) {
+  while (iterations < world->config->max_resolution_iterations) {
     float max_penetration = penetration_epsilon;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
@@ -598,18 +598,18 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   v3 contact_space_impulse = matrix_rotate(velocity_to_kill, impulse_matrix);
   float planar_impulse = sqrtf(contact_space_impulse.x * contact_space_impulse.x + contact_space_impulse.z * contact_space_impulse.z);
 
-  if (planar_impulse > contact_space_impulse.y * world->config.friction) {
+  if (planar_impulse > contact_space_impulse.y * world->config->friction) {
     contact_space_impulse.x /= planar_impulse;
     contact_space_impulse.z /= planar_impulse;
 
     float desired_delta_velocity = contact->desired_delta_velocity;
     contact_space_impulse.y =
-      delta_velocity.m1[0] * world->config.friction * contact_space_impulse.x +
+      delta_velocity.m1[0] * world->config->friction * contact_space_impulse.x +
       delta_velocity.m1[1] +
-      delta_velocity.m1[2] * world->config.friction * contact_space_impulse.z;
+      delta_velocity.m1[2] * world->config->friction * contact_space_impulse.z;
     contact_space_impulse.y = desired_delta_velocity / contact_space_impulse.y;
-    contact_space_impulse.x *= world->config.friction * contact_space_impulse.y;
-    contact_space_impulse.z *= world->config.friction * contact_space_impulse.y;
+    contact_space_impulse.x *= world->config->friction * contact_space_impulse.y;
+    contact_space_impulse.z *= world->config->friction * contact_space_impulse.y;
   }
 
   v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
@@ -680,7 +680,7 @@ static void resolve_velocities(physics_world *world, float dt) {
   count_t iterations = 0;
   collision *collision;
   contact *contact;
-  while (iterations < world->config.max_resolution_iterations) {
+  while (iterations < world->config->max_resolution_iterations) {
     float max_velocity = velocity_epsilon;
     count_t worst_contact_index = -1;
     count_t worst_collision_index = -1;

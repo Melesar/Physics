@@ -81,7 +81,7 @@ typedef struct physics_world physics_world;
 
 physics_config physics_default_config();
 
-physics_world* physics_init(const physics_config *config);
+physics_world* physics_init(physics_config *config);
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 
