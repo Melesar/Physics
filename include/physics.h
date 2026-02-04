@@ -81,7 +81,7 @@ typedef struct physics_world physics_world;
 
 physics_config physics_default_config();
 
-physics_world* physics_init(physics_config *config);
+physics_world* physics_init(const physics_config *config);
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
@@ -93,6 +93,7 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
 
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);
+void physics_reset(physics_world *world);
 
 void physics_draw_collisions(const physics_world *world);
 void physics_draw_stats(const physics_world *world, struct nk_context* ctx);

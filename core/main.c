@@ -29,7 +29,7 @@ void manipulate_gizmos(Camera *camera);
 void draw_gizmos();
 
 static void draw_custom_grid(int slices, float spacing);
-static void setup_scene_internal(Shader shader);
+static void setup_scene(Shader shader);
 static void init_physics();
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
@@ -40,12 +40,12 @@ static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
 
-void initialize_program(program_config* config, physics_config *physics_config);
-void setup_scene(physics_world *world);
-void on_input(physics_world *world, Camera *camera);
-void simulate(physics_world *world, float dt);
-void draw(float interpolation);
-void draw_ui(struct nk_context* ctx);
+void scenario_initialize(program_config* config, physics_config *physics_config);
+void scenario_setup_scene(physics_world *world);
+void scenario_handle_input(physics_world *world, Camera *camera);
+void scenario_simulate(physics_world *world, float dt);
+void scenario_draw_scene();
+void scenario_draw_ui(struct nk_context* ctx);
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
   program_config program_config = {0};
   config = physics_default_config();
 
-  initialize_program(&program_config, &config);
+  scenario_initialize(&program_config, &config);
 
   InitWindow(screen_width, screen_height, program_config.window_title);
   SetWindowState(FLAG_WINDOW_RESIZABLE);
@@ -89,8 +89,8 @@ int main(int argc, char** argv) {
   init_debugging();
   init_gizmos();
   init_physics();
-  setup_scene_internal(shader);
-  setup_scene(world);
+  setup_scene(shader);
+  scenario_setup_scene(world);
 
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
     simulation_running = false;
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        simulate(world, simulation_step);
+        scenario_simulate(world, simulation_step);
         physics_step(world, simulation_step);
 
         step_forward = false;
@@ -122,13 +122,15 @@ int main(int argc, char** argv) {
     }
 
     draw_ui_widget_controls(ctx);
-    draw_ui(ctx);
+    scenario_draw_ui(ctx);
 
     draw_scene(camera, accum, ctx, shader);
 
     accum -= sim_count * simulation_step;
     deltaTime = GetFrameTime();
   }
+
+  physics_teardown(world);
 
   UnloadNuklear(ctx);
   UnloadShader(shader);
@@ -159,7 +161,7 @@ static void process_inputs(physics_world *world, Camera* camera) {
   }
 
   if (!edit_mode)
-    on_input(world, camera);
+    scenario_handle_input(world, camera);
 }
 
 static void draw_ui_widget_controls(struct nk_context* ctx) {
@@ -236,9 +238,7 @@ static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shade
         BeginShaderMode(shader);
 
           draw_physics_bodies();
-
-          float t = Clamp(accum / simulation_step, 0, 1);
-          draw(t);
+          scenario_draw_scene();
 
           // Draw ground plane
           DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
@@ -314,7 +314,7 @@ static void draw_custom_grid(int slices, float spacing) {
   }
 }
 
-static void setup_scene_internal(Shader shader) {
+static void setup_scene(Shader shader) {
   meshes[SHAPE_BOX] = GenMeshCube(1, 1, 1);
   meshes[SHAPE_SPHERE] = GenMeshSphere(1, 16, 16);
   meshes[SHAPE_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
@@ -334,16 +334,13 @@ static void setup_scene_internal(Shader shader) {
 }
 
 static void reset() {
-  init_physics();
-  setup_scene(world);
+  physics_reset(world);
+  physics_add_plane(world, zero(), up());
+  scenario_setup_scene(world);
 }
 
 static void init_physics() {
-  if (world)
-    physics_teardown(world);
-
   world = physics_init(&config);
-
   physics_add_plane(world, zero(), up());
 }
 
