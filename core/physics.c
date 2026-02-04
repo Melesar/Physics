@@ -255,16 +255,13 @@ void physics_reset(physics_world *world) {
 }
 
 void physics_draw_collisions(const physics_world *world) {
-  count_t count = collisions_count(world->collisions);
+  count_t count = world->collisions->collisions_count;
 
   for (count_t i = 0; i < count; ++i) {
-    collision c;
-    collision_get(world->collisions, i, &c);
+    collision c = world->collisions->collisions[i];
 
     for (count_t j = 0; j < c.contacts_count; ++j) {
-      contact contact;
-      contact_get(world->collisions, c.contacts_offset + j, &contact);
-
+      contact contact = world->collisions->contacts[c.contacts_offset + j];
 
       draw_arrow(contact.point, contact.normal, RED);
     }

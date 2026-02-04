@@ -59,8 +59,10 @@ Mesh meshes[20];
 bool edit_mode = false;
 bool simulation_running = true;
 bool step_forward = false;
+
 bool show_physics_world_stats = false;
 bool show_physics_config_widget = false;
+bool draw_collisions = false;
 
 static Model groundModel;
 static physics_world *world;
@@ -169,7 +171,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 2;
+  const int checkbox_count = 3;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
@@ -188,6 +190,10 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool physics_config = show_physics_config_widget ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Physics config", &physics_config);
       show_physics_config_widget = physics_config != 0;
+
+      nk_bool collisions = draw_collisions ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Draw collisions", &collisions);
+      draw_collisions = collisions != 0;
     }
   }
 
@@ -236,6 +242,9 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
       BeginMode3D(camera);
 
         BeginShaderMode(shader);
+
+          if (draw_collisions)
+            physics_draw_collisions(world);
 
           draw_physics_bodies();
           scenario_draw_scene();
