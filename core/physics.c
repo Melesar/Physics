@@ -40,15 +40,15 @@ struct physics_world {
   physics_config config;
 };
 
-static v3 cylinder_inertia(float radius, float height, float mass) {
-  float principal =  mass * (3 * radius * radius + height * height) / 12.0;
-  return (v3){ principal, mass * radius * radius / 2.0, principal };
-}
+// static v3 cylinder_inertia(float radius, float height, float mass) {
+//   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
+//   return (v3){ principal, mass * radius * radius / 2.0, principal };
+// }
 
-static v3 sphere_inertia(float radius, float mass) {
-  float scale = 2.0 * mass * radius * radius / 5.0;
-  return scale(one(), scale);
-}
+// static v3 sphere_inertia(float radius, float mass) {
+//   float scale = 2.0 * mass * radius * radius / 5.0;
+//   return scale(one(), scale);
+// }
 
 static v3 box_inertia(v3 size, float mass) {
   float m = mass / 12;
@@ -74,7 +74,7 @@ static const common_data* as_common_const(const physics_world *world, body_type 
   return as_common((physics_world*) world, type);
 }
 
-static void move_body(physics_world *world, count_t src_index, count_t dst_index);
+// static void move_body(physics_world *world, count_t src_index, count_t dst_index);
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
 
 static void resolve_collisions(physics_world *world, float dt);
@@ -221,9 +221,6 @@ void physics_step(physics_world* world, float dt) {
     quat rotation = dynamics->rotations[i];
     m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
     v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
-
-    m3 inv = matrix_inverse(inertia);
-    m3 s = matrix_multiply(inv, inertia);
 
     quat q_omega = { omega.x, omega.y, omega.z, 0 };
     quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
@@ -500,8 +497,7 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
   }
 }
 
-static void update_penetration_depths(physics_world *world, count_t collision_index, count_t worst_contact_index, const v3 *deltas) {
-  contact *worst_contact = &world->collisions->contacts[worst_contact_index];
+static void update_penetration_depths(physics_world *world, count_t collision_index, const v3 *deltas) {
   collision *worst_collision = &world->collisions->collisions[collision_index];
 
   count_t worst_body_ids[] = { worst_collision->index_a, worst_collision->index_b };
@@ -562,7 +558,7 @@ static void resolve_interpenetrations(physics_world *world) {
       }
     }
 
-    if (collision_index == -1)
+    if (collision_index == (count_t)-1)
       break;
 
     contact = &world->collisions->contacts[max_penetration_index];
@@ -571,13 +567,13 @@ static void resolve_interpenetrations(physics_world *world) {
 
     v3 deltas[4];
     resolve_interpenetration_contact(world, collision_index, contact, deltas);
-    update_penetration_depths(world, collision_index, max_penetration_index, deltas);
+    update_penetration_depths(world, collision_index, deltas);
 
     iterations += 1;
   }
 }
 
-static void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas, float dt) {
+static void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas) {
   count_t body_count = worst_collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
   count_t body_ids[] = { world->collisions->collisions[worst_collision_index].index_a, world->collisions->collisions[worst_collision_index].index_b };
 
@@ -645,9 +641,8 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   }
 }
 
-static void update_velocity_deltas(physics_world *world, count_t worst_contact_index, count_t worst_collision_index, const v3 *deltas, float dt) {
+static void update_velocity_deltas(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt) {
   collision *worst_collision = &world->collisions->collisions[worst_collision_index];
-  contact *worst_contact = &world->collisions->contacts[worst_contact_index];
   count_t worst_body_ids[] = { worst_collision->index_a, worst_collision->index_b };
   count_t worst_body_count = worst_collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
 
@@ -709,7 +704,7 @@ static void resolve_velocities(physics_world *world, float dt) {
       }
     }
 
-    if (worst_contact_index == -1) {
+    if (worst_contact_index == (count_t)-1) {
       break;
     }
 
@@ -718,8 +713,8 @@ static void resolve_velocities(physics_world *world, float dt) {
     update_awake_status_for_collision(world, worst_collision_index);
 
     v3 deltas[4];
-    resolve_velocity_contact(world, worst_collision_index, contact, deltas, dt);
-    update_velocity_deltas(world, worst_collision_index, worst_collision_index, deltas, dt);
+    resolve_velocity_contact(world, worst_collision_index, contact, deltas);
+    update_velocity_deltas(world, worst_collision_index, deltas, dt);
 
     iterations += 1;
   }
@@ -764,7 +759,7 @@ static void update_awake_statuses(physics_world *world, float dt) {
     swap_bodies(world, left, right);
   }
 
-  for (count_t i = awake_count - 1; i >= left && i != -1; --i) {
+  for (count_t i = awake_count - 1; i >= left && i != (count_t)-1; --i) {
     if (dynamics->motion_avgs[i] >= sleep_threshold)
       continue;
 
@@ -808,17 +803,17 @@ static void update_awake_status_for_collision(physics_world *world, count_t coll
     world->dynamics.motion_avgs[collision->index_b] = 2.0 * sleep_threshold;
 }
 
-static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
-  world->dynamics.positions[dst_index] = world->dynamics.positions[src_index];
-  world->dynamics.rotations[dst_index] = world->dynamics.rotations[src_index];
-  world->dynamics.shapes[dst_index] = world->dynamics.shapes[src_index];
-  world->dynamics.inv_masses[dst_index] = world->dynamics.inv_masses[src_index];
-  world->dynamics.velocities[dst_index] = world->dynamics.velocities[src_index];
-  world->dynamics.angular_momenta[dst_index] = world->dynamics.angular_momenta[src_index];
-  world->dynamics.inv_inertia_tensors[dst_index] = world->dynamics.inv_inertia_tensors[src_index];
-  world->dynamics.inv_intertias[dst_index] = world->dynamics.inv_intertias[src_index];
-  world->dynamics.motion_avgs[dst_index] = world->dynamics.motion_avgs[src_index];
-}
+// static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
+//   world->dynamics.positions[dst_index] = world->dynamics.positions[src_index];
+//   world->dynamics.rotations[dst_index] = world->dynamics.rotations[src_index];
+//   world->dynamics.shapes[dst_index] = world->dynamics.shapes[src_index];
+//   world->dynamics.inv_masses[dst_index] = world->dynamics.inv_masses[src_index];
+//   world->dynamics.velocities[dst_index] = world->dynamics.velocities[src_index];
+//   world->dynamics.angular_momenta[dst_index] = world->dynamics.angular_momenta[src_index];
+//   world->dynamics.inv_inertia_tensors[dst_index] = world->dynamics.inv_inertia_tensors[src_index];
+//   world->dynamics.inv_intertias[dst_index] = world->dynamics.inv_intertias[src_index];
+//   world->dynamics.motion_avgs[dst_index] = world->dynamics.motion_avgs[src_index];
+// }
 
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) {
   #define SWAP(type, arr) \

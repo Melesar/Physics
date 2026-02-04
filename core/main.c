@@ -34,7 +34,7 @@ static void init_physics();
 static Shader setup_lighting();
 static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
-static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader);
+static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     draw_ui_widget_controls(ctx);
     scenario_draw_ui(ctx);
 
-    draw_scene(camera, accum, ctx, shader);
+    draw_scene(camera, ctx, shader);
 
     accum -= sim_count * simulation_step;
     deltaTime = GetFrameTime();
@@ -228,7 +228,7 @@ static void draw_physics_bodies() {
   }
 }
 
-static void draw_scene(Camera camera, float accum, struct nk_context* ctx, Shader shader) {
+static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
   BeginDrawing();
 
     ClearBackground(COLOR_BACKGROUND);

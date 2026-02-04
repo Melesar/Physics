@@ -46,7 +46,7 @@ int count = 0;
 int capacity = initial_buffer_capacity;
 int current_id = 0;
 
-static void draw_rotation_gizmo(Vector3 center, Vector3 axis, Color color, float thickness) {
+static void draw_rotation_gizmo(Vector3 center, Vector3 axis, Color color) {
   const int segments = 64;
   Vector3 perpendicular;
 
@@ -339,9 +339,9 @@ void draw_gizmos() {
     Color ry_color = (g.hovered_gizmo == GIZMO_ROTATE_Y || g.selected_gizmo == GIZMO_ROTATE_Y) ? ORANGE : GREEN;
     Color rz_color = (g.hovered_gizmo == GIZMO_ROTATE_Z || g.selected_gizmo == GIZMO_ROTATE_Z) ? ORANGE : BLUE;
 
-    draw_rotation_gizmo(*g.pos, (Vector3){1, 0, 0}, rx_color, 2.0f);
-    draw_rotation_gizmo(*g.pos, (Vector3){0, 1, 0}, ry_color, 2.0f);
-    draw_rotation_gizmo(*g.pos, (Vector3){0, 0, 1}, rz_color, 2.0f);
+    draw_rotation_gizmo(*g.pos, (Vector3){1, 0, 0}, rx_color);
+    draw_rotation_gizmo(*g.pos, (Vector3){0, 1, 0}, ry_color);
+    draw_rotation_gizmo(*g.pos, (Vector3){0, 0, 1}, rz_color);
   }
 }
 

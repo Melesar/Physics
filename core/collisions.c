@@ -178,7 +178,7 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
   CHECK_OVERLAP(cross(box_a.axis[2], box_b.axis[1]), 13)
   CHECK_OVERLAP(cross(box_a.axis[2], box_b.axis[2]), 14)
 
-  if (best_axis == -1) {
+  if (best_axis == (count_t)-1) {
     return 0;
   }
 

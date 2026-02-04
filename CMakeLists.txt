@@ -7,7 +7,8 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set compiler flags for Debug build
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -O0")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -O0 -fsanitize=address")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -16,11 +17,11 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Platform-specific settings
 if(WIN32)
-    add_compile_definitions(PLATFORM_DESKTOP)
+  add_compile_definitions(PLATFORM_DESKTOP)
 elseif(APPLE)
-    add_compile_definitions(PLATFORM_DESKTOP)
+  add_compile_definitions(PLATFORM_DESKTOP)
 elseif(UNIX)
-    add_compile_definitions(PLATFORM_DESKTOP)
+  add_compile_definitions(PLATFORM_DESKTOP)
 endif()
 
 # Build raylib from source (stretch goal)
@@ -36,35 +37,37 @@ file(GLOB SCENARIO_SOURCES "scenarios/*.c")
 
 # Create an executable for each scenario
 foreach(SCENARIO_FILE ${SCENARIO_SOURCES})
-    # Extract filename without extension
-    get_filename_component(SCENARIO_NAME ${SCENARIO_FILE} NAME_WE)
-    
-    # Create executable
-    add_executable(${SCENARIO_NAME} ${SCENARIO_FILE} ${CORE_SOURCES})
-    
-    # Link raylib
-    target_link_libraries(${SCENARIO_NAME} PRIVATE raylib)
-    
-    # Include directories
-    target_include_directories(${SCENARIO_NAME} PRIVATE 
+  # Extract filename without extension
+  get_filename_component(SCENARIO_NAME ${SCENARIO_FILE} NAME_WE)
+
+  # Create executable
+  add_executable(${SCENARIO_NAME} ${SCENARIO_FILE} ${CORE_SOURCES})
+
+  # Link raylib
+  target_link_libraries(${SCENARIO_NAME} PRIVATE raylib)
+
+  target_compile_options(${SCENARIO_NAME} PRIVATE -Wall -Wextra -Werror)
+
+  # Include directories
+  target_include_directories(${SCENARIO_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/raylib/src
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/raylib/examples
     )
-    
-    # Platform-specific linking
-    if(WIN32)
-        target_link_libraries(${SCENARIO_NAME} PRIVATE winmm)
-    elseif(APPLE)
-        target_link_libraries(${SCENARIO_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
-    elseif(UNIX)
-        target_link_libraries(${SCENARIO_NAME} PRIVATE m pthread dl rt)
-        find_package(X11 REQUIRED)
-        target_link_libraries(${SCENARIO_NAME} PRIVATE ${X11_LIBRARIES})
-    endif()
-    
-    # Set output directory
-    set_target_properties(${SCENARIO_NAME} PROPERTIES
+
+  # Platform-specific linking
+  if(WIN32)
+    target_link_libraries(${SCENARIO_NAME} PRIVATE winmm)
+  elseif(APPLE)
+    target_link_libraries(${SCENARIO_NAME} PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
+  elseif(UNIX)
+    target_link_libraries(${SCENARIO_NAME} PRIVATE m pthread dl rt)
+    find_package(X11 REQUIRED)
+    target_link_libraries(${SCENARIO_NAME} PRIVATE ${X11_LIBRARIES})
+  endif()
+
+  # Set output directory
+  set_target_properties(${SCENARIO_NAME} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 endforeach()
@@ -77,6 +80,6 @@ list(LENGTH SCENARIO_SOURCES SCENARIO_COUNT)
 message(STATUS "Core files: ${CORE_COUNT}")
 message(STATUS "Scenario files: ${SCENARIO_COUNT}")
 foreach(SCENARIO_FILE ${SCENARIO_SOURCES})
-    get_filename_component(SCENARIO_NAME ${SCENARIO_FILE} NAME_WE)
-    message(STATUS "  - ${SCENARIO_NAME}")
+  get_filename_component(SCENARIO_NAME ${SCENARIO_FILE} NAME_WE)
+  message(STATUS "  - ${SCENARIO_NAME}")
 endforeach()
