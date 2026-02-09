@@ -6,7 +6,9 @@
 #include <string.h>
 #include <unistd.h>
 
-void scenario_initialize(program_config* config, physics_config *_) {
+void scenario_initialize(program_config* config, physics_config *physics) {
+  (void) physics;
+
   config->window_title = "Rigidbodies";
   config->camera_position = (v3) { 22.542, 11.645, 20.752 };
   config->camera_target = (v3) { 0, 0, 0 };
@@ -40,7 +42,9 @@ void scenario_simulate(physics_world *world, float dt) {
   (void) dt;
 }
 
-void scenario_handle_input(physics_world *world, Camera *_) {
+void scenario_handle_input(physics_world *world, Camera *cam) {
+  (void) cam;
+
   if (IsKeyPressed(KEY_X)) {
     body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) {1.3, 1.3, 1.3});
     *big_box.position = (v3) { 0, 7, 0 };
@@ -53,6 +57,6 @@ void scenario_handle_input(physics_world *world, Camera *_) {
 
 void scenario_draw_scene() {}
 
-void scenario_draw_ui(struct nk_context* _) {
-
+void scenario_draw_ui(struct nk_context* cx) {
+  (void) cx;
 }

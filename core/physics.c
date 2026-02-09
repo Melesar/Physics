@@ -65,8 +65,11 @@ static common_data* as_common(physics_world *world, body_type type) {
     case BODY_DYNAMIC:
       return (common_data*) &world->dynamics;
 
-      case BODY_STATIC:
+    case BODY_STATIC:
       return (common_data*) &world->statics;
+
+    default:
+      return NULL;
   }
 }
 
