@@ -134,6 +134,9 @@ typedef struct {
   count_t iteration;
   bool is_dynamic;
 
+  // Current resolved contact index
+  count_t current_contact_index;
+
   // Deltas from resolve steps (body1 linear, body1 angular, body2 linear, body2 angular)
   v3 deltas[4];
 
