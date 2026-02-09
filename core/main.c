@@ -160,7 +160,7 @@ static void process_inputs(physics_world *world, Camera* camera) {
     simulation_running = !simulation_running;
   }
 
-  if (IsKeyDown(KEY_PERIOD)) {
+  if (IsKeyPressed(KEY_PERIOD)) {
     step_forward = true;
   }
 
@@ -172,7 +172,7 @@ static void process_inputs(physics_world *world, Camera* camera) {
     edit_mode = true;
   }
 
-  if (edit_mode && IsKeyDown(KEY_P)) {
+  if (edit_mode && IsKeyPressed(KEY_P)) {
     edit_mode = false;
   }
 
