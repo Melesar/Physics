@@ -101,4 +101,59 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
 
 void physics_teardown(physics_world* world);
 
+// ====== COLLISION DEBUGGING =======
+
+#define CDBG_MAX_CONTACTS 64
+
+typedef enum {
+  CDBG_IDLE,
+  CDBG_PENETRATION_RESOLVE,
+  CDBG_DEPTH_UPDATE,
+  CDBG_VELOCITY_RESOLVE,
+  CDBG_VELOCITY_UPDATE,
+  CDBG_DONE,
+} collision_debug_phase;
+
+typedef struct {
+  count_t index;
+  float before;
+  float after;
+} depth_update_record;
+
+typedef struct {
+  count_t index;
+  v3 local_vel_before;
+  v3 local_vel_after;
+  float ddv_before;
+  float ddv_after;
+} velocity_update_record;
+
+typedef struct {
+  bool active;
+  collision_debug_phase phase;
+  count_t iteration;
+  bool is_dynamic;
+
+  // Deltas from resolve steps (body1 linear, body1 angular, body2 linear, body2 angular)
+  v3 deltas[4];
+
+  // Depth update records
+  count_t depth_update_count;
+  depth_update_record depth_updates[CDBG_MAX_CONTACTS];
+
+  // Velocity update records
+  count_t velocity_update_count;
+  velocity_update_record velocity_updates[CDBG_MAX_CONTACTS];
+
+  // Internal state carried between steps
+  float dt;
+  bool penetration_done;
+  bool velocity_done;
+  bool needs_integration; // true when a new frame needs physics integration
+} collision_debug_state;
+
+void physics_debug_state_init(collision_debug_state *state);
+void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
+void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx);
+
 #endif

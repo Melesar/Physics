@@ -63,6 +63,9 @@ bool step_forward = false;
 bool show_physics_world_stats = false;
 bool show_physics_config_widget = false;
 bool draw_collisions = false;
+bool collision_debug_mode = false;
+
+static collision_debug_state debug_state;
 
 static Model groundModel;
 static physics_world *world;
@@ -114,8 +117,19 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        scenario_simulate(world, simulation_step);
-        physics_step(world, simulation_step);
+        if (collision_debug_mode) {
+          if (debug_state.active) {
+            // Active debug session: each step advances one sub-step
+            physics_step_debug(world, simulation_step, &debug_state);
+          } else {
+            // No active session: run scenario + debug entry point
+            scenario_simulate(world, simulation_step);
+            physics_step_debug(world, simulation_step, &debug_state);
+          }
+        } else {
+          scenario_simulate(world, simulation_step);
+          physics_step(world, simulation_step);
+        }
 
         step_forward = false;
       }
@@ -171,7 +185,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 3;
+  const int checkbox_count = 4;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
@@ -194,6 +208,12 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool collisions = draw_collisions ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Draw collisions", &collisions);
       draw_collisions = collisions != 0;
+
+      nk_bool cdbg = collision_debug_mode ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Collision debugging", &cdbg);
+      if (cdbg && !collision_debug_mode)
+        physics_debug_state_init(&debug_state);
+      collision_debug_mode = cdbg != 0;
     }
   }
 
@@ -203,6 +223,8 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
     physics_draw_stats(world, ctx);
   if (show_physics_config_widget)
     physics_draw_config_widget(world, ctx);
+  if (collision_debug_mode)
+    physics_draw_debug_widget(world, &debug_state, ctx);
 }
 
 static void draw_physics_bodies() {

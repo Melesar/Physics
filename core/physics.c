@@ -494,11 +494,13 @@ static void resolve_interpenetration_contact(physics_world *world, count_t colli
   }
 }
 
-static void update_penetration_depths(physics_world *world, count_t collision_index, const v3 *deltas) {
+static void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count) {
   collision *worst_collision = &world->collisions->collisions[collision_index];
 
   count_t worst_body_ids[] = { worst_collision->index_a, worst_collision->index_b };
   count_t worst_body_count = collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
+
+  if (record_count) *record_count = 0;
 
   count_t count = world->collisions->collisions_count;
   for (count_t i = 0; i < count; ++i) {
@@ -509,6 +511,7 @@ static void update_penetration_depths(physics_world *world, count_t collision_in
     for (count_t j = 0; j < collision->contacts_count; ++j) {
       count_t index = collision->contacts_offset + j;
       contact *contact = &world->collisions->contacts[index];
+      float depth_before = contact->depth;
 
       for (count_t k = 0; k < body_count; ++k) {
         count_t body_index = body_ids[k];
@@ -522,8 +525,17 @@ static void update_penetration_depths(physics_world *world, count_t collision_in
           }
         }
       }
+
+      if (records && record_count && contact->depth != depth_before && *record_count < CDBG_MAX_CONTACTS) {
+        records[*record_count] = (depth_update_record){ .index = index, .before = depth_before, .after = contact->depth };
+        (*record_count)++;
+      }
     }
   }
+}
+
+static void update_penetration_depths(physics_world *world, count_t collision_index, const v3 *deltas) {
+  update_penetration_depths_ex(world, collision_index, deltas, NULL, NULL);
 }
 
 static void resolve_interpenetrations(physics_world *world) {
@@ -638,10 +650,12 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   }
 }
 
-static void update_velocity_deltas(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt) {
+static void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count) {
   collision *worst_collision = &world->collisions->collisions[worst_collision_index];
   count_t worst_body_ids[] = { worst_collision->index_a, worst_collision->index_b };
   count_t worst_body_count = worst_collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
+
+  if (record_count) *record_count = 0;
 
   count_t count = world->collisions->collisions_count;
   for (count_t i = 0; i < count; ++i) {
@@ -652,6 +666,9 @@ static void update_velocity_deltas(physics_world *world, count_t worst_collision
     for (count_t j = 0; j < collision->contacts_count; ++j) {
       count_t index = collision->contacts_offset + j;
       contact *contact = &world->collisions->contacts[index];
+      v3 local_vel_before = contact->local_velocity;
+      float ddv_before = contact->desired_delta_velocity;
+      bool changed = false;
 
       for (count_t k = 0; k < body_count; ++k) {
         count_t body_index = body_ids[k];
@@ -667,11 +684,27 @@ static void update_velocity_deltas(physics_world *world, count_t worst_collision
             contact->local_velocity = add(contact->local_velocity, scale(delta_velocity, (k ? -1 : 1)));
 
             update_desired_velocity_delta(world, contact, dt);
+            changed = true;
           }
         }
       }
+
+      if (records && record_count && changed && *record_count < CDBG_MAX_CONTACTS) {
+        records[*record_count] = (velocity_update_record){
+          .index = index,
+          .local_vel_before = local_vel_before,
+          .local_vel_after = contact->local_velocity,
+          .ddv_before = ddv_before,
+          .ddv_after = contact->desired_delta_velocity,
+        };
+        (*record_count)++;
+      }
     }
   }
+}
+
+static void update_velocity_deltas(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt) {
+  update_velocity_deltas_ex(world, worst_collision_index, deltas, dt, NULL, NULL);
 }
 
 static void resolve_velocities(physics_world *world, float dt) {
@@ -720,6 +753,19 @@ static void resolve_velocities(physics_world *world, float dt) {
 static void resolve_collisions(physics_world *world, float dt) {
   prepare_contacts(world, dt);
   resolve_interpenetrations(world);
+
+  if (world->collisions->dynamic_collisions_count > 0) {
+    float largest_penetration = 0;
+    for (count_t i = 0; i < world->collisions->contacts_count; ++i) {
+      float penetration = fabsf(world->collisions->contacts[i].depth);
+
+      if (penetration > largest_penetration)
+        largest_penetration = penetration;
+    }
+
+    TraceLog(LOG_DEBUG, "Largest penetration: %f", largest_penetration);
+  }
+
   resolve_velocities(world, dt);
 }
 
@@ -829,4 +875,406 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
   SWAP(float, motion_avgs)
 
   #undef SWAP
+}
+
+// ====== COLLISION DEBUGGING =======
+
+void physics_debug_state_init(collision_debug_state *state) {
+  state->active = false;
+  state->phase = CDBG_IDLE;
+  state->iteration = 0;
+  state->is_dynamic = false;
+  state->dt = 0;
+  state->penetration_done = false;
+  state->velocity_done = false;
+  state->needs_integration = true;
+  state->depth_update_count = 0;
+  state->velocity_update_count = 0;
+  for (int i = 0; i < 4; ++i) state->deltas[i] = zero();
+}
+
+// Find the worst penetration contact. Returns false if none above threshold.
+static bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
+  const float penetration_epsilon = 0.0001f;
+  float max_penetration = penetration_epsilon;
+  count_t best_contact = (count_t)-1;
+  count_t best_collision = (count_t)-1;
+  count_t count = collisions_count(world->collisions);
+
+  for (count_t i = 0; i < count; ++i) {
+    collision *c = &world->collisions->collisions[i];
+    for (count_t j = 0; j < c->contacts_count; ++j) {
+      contact *ct = &world->collisions->contacts[c->contacts_offset + j];
+      if (ct->depth > max_penetration) {
+        max_penetration = ct->depth;
+        best_contact = c->contacts_offset + j;
+        best_collision = i;
+      }
+    }
+  }
+
+  if (best_collision == (count_t)-1)
+    return false;
+
+  *out_collision_index = best_collision;
+  *out_contact_index = best_contact;
+  return true;
+}
+
+// Find the worst velocity contact. Returns false if none above threshold.
+static bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
+  const float velocity_epsilon = 0.00001f;
+  float max_velocity = velocity_epsilon;
+  count_t best_contact = (count_t)-1;
+  count_t best_collision = (count_t)-1;
+  count_t count = world->collisions->collisions_count;
+
+  for (count_t i = 0; i < count; ++i) {
+    collision *c = &world->collisions->collisions[i];
+    for (count_t j = 0; j < c->contacts_count; ++j) {
+      contact *ct = &world->collisions->contacts[c->contacts_offset + j];
+      if (fabsf(ct->desired_delta_velocity) > max_velocity) {
+        max_velocity = ct->desired_delta_velocity;
+        best_contact = c->contacts_offset + j;
+        best_collision = i;
+      }
+    }
+  }
+
+  if (best_collision == (count_t)-1)
+    return false;
+
+  *out_collision_index = best_collision;
+  *out_contact_index = best_contact;
+  return true;
+}
+
+void physics_step_debug(physics_world *world, float dt, collision_debug_state *state) {
+  // Phase: integration + collision detection (runs once per frame)
+  if (state->needs_integration) {
+    v3 gravity_acc = scale(GRAVITY_V, dt);
+    float linear_damping = powf(world->config.linear_damping, dt);
+    float angular_damping = powf(world->config.angular_damping, dt);
+
+    dynamic_bodies *dynamics = &world->dynamics;
+    for (count_t i = 0; i < dynamics->awake_count; ++i) {
+      dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
+      dynamics->velocities[i] = scale(dynamics->velocities[i], linear_damping);
+      dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
+
+      quat rotation = dynamics->rotations[i];
+      m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
+      v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
+
+      quat q_omega = { omega.x, omega.y, omega.z, 0 };
+      quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
+      quat q_orientation = qadd(rotation, dq);
+
+      dynamics->rotations[i] = qnormalize(q_orientation);
+      dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
+    }
+
+    collisions_detect(world->collisions, (common_data*)&world->dynamics, (common_data*)&world->statics);
+
+    // No dynamic collisions — run normal resolution and finish
+    if (world->collisions->dynamic_collisions_count == 0) {
+      resolve_collisions(world, dt);
+      update_awake_statuses(world, dt);
+      state->active = false;
+      state->phase = CDBG_IDLE;
+      return;
+    }
+
+    // Dynamic collision detected — enter debug mode
+    prepare_contacts(world, dt);
+    state->active = true;
+    state->dt = dt;
+    state->iteration = 0;
+    state->penetration_done = false;
+    state->velocity_done = false;
+    state->needs_integration = false;
+
+    // Try to find first penetration contact
+    count_t ci, cti;
+    if (find_worst_penetration(world, &ci, &cti)) {
+      state->iteration = 1;
+      state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+
+      update_awake_status_for_collision(world, ci);
+
+      contact *ct = &world->collisions->contacts[cti];
+      resolve_interpenetration_contact(world, ci, ct, state->deltas);
+      state->phase = CDBG_PENETRATION_RESOLVE;
+    } else {
+      state->penetration_done = true;
+      // Skip to velocity
+      if (find_worst_velocity(world, &ci, &cti)) {
+        state->iteration = 1;
+        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+
+        update_awake_status_for_collision(world, ci);
+
+        contact *ct = &world->collisions->contacts[cti];
+        resolve_velocity_contact(world, ci, ct, state->deltas);
+        state->phase = CDBG_VELOCITY_RESOLVE;
+      } else {
+        state->phase = CDBG_DONE;
+      }
+    }
+
+    toggle_pause(true);
+    return;
+  }
+
+  // State machine: advance one sub-step per call
+  count_t ci, cti;
+
+  switch (state->phase) {
+    case CDBG_PENETRATION_RESOLVE: {
+      // The resolve just happened, now do the depth update
+      // We need to find which collision was just resolved — reconstruct from the last search
+      // Re-search to find the collision that was resolved (it was the worst before resolve)
+      // Actually, the deltas are already applied. We need the collision index.
+      // Let's store it. But we don't have it in state... Let me re-find the worst
+      // post-resolution to do the update. Actually, the update needs the collision index
+      // of what was JUST resolved, which we can find by re-running the search on the
+      // pre-update state. Since resolve already moved bodies, we need to track the index.
+      //
+      // Workaround: we need to store the collision index. Let me add an approach where
+      // we do the depth update immediately after resolve in the same step, then show
+      // both results. Actually the spec says they're separate steps. Let me rethink.
+      //
+      // The depth update function needs the collision_index and deltas from the resolve.
+      // We have deltas in state. We need collision_index. Let me search again for the
+      // contact that was just resolved — but depths have not been updated yet, and the
+      // body positions have moved. The depth values in contacts are stale.
+      //
+      // Actually looking more carefully: resolve_interpenetration_contact only modifies
+      // positions/rotations. It does NOT update contact->depth. So the worst penetration
+      // contact is still the same one. We can re-find it.
+
+      // Re-find worst penetration (depths not yet updated, so same contact is still worst)
+      if (find_worst_penetration(world, &ci, &cti)) {
+        update_penetration_depths_ex(world, ci, state->deltas, state->depth_updates, &state->depth_update_count);
+        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+        state->phase = CDBG_DEPTH_UPDATE;
+      } else {
+        // Shouldn't happen since we just resolved something, but handle gracefully
+        state->penetration_done = true;
+        state->phase = CDBG_DEPTH_UPDATE;
+        state->depth_update_count = 0;
+      }
+      break;
+    }
+
+    case CDBG_DEPTH_UPDATE: {
+      // Depth update shown. Try next penetration iteration.
+      if (state->iteration < world->config.max_resolution_iterations && find_worst_penetration(world, &ci, &cti)) {
+        state->iteration++;
+        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+
+        update_awake_status_for_collision(world, ci);
+
+        contact *ct = &world->collisions->contacts[cti];
+        resolve_interpenetration_contact(world, ci, ct, state->deltas);
+        state->phase = CDBG_PENETRATION_RESOLVE;
+      } else {
+        // Penetration done, switch to velocity resolution
+        state->penetration_done = true;
+        state->iteration = 0;
+
+        if (find_worst_velocity(world, &ci, &cti)) {
+          state->iteration = 1;
+          state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+
+          update_awake_status_for_collision(world, ci);
+
+          contact *ct = &world->collisions->contacts[cti];
+          resolve_velocity_contact(world, ci, ct, state->deltas);
+          state->phase = CDBG_VELOCITY_RESOLVE;
+        } else {
+          state->phase = CDBG_DONE;
+        }
+      }
+      break;
+    }
+
+    case CDBG_VELOCITY_RESOLVE: {
+      // Velocity resolve just happened. Now do the velocity update.
+      // Similar to penetration: resolve_velocity_contact modifies velocities/angular_momenta
+      // but does NOT update desired_delta_velocity on other contacts. So worst is still findable.
+      if (find_worst_velocity(world, &ci, &cti)) {
+        update_velocity_deltas_ex(world, ci, state->deltas, state->dt, state->velocity_updates, &state->velocity_update_count);
+        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+        state->phase = CDBG_VELOCITY_UPDATE;
+      } else {
+        state->velocity_done = true;
+        state->phase = CDBG_VELOCITY_UPDATE;
+        state->velocity_update_count = 0;
+      }
+      break;
+    }
+
+    case CDBG_VELOCITY_UPDATE: {
+      // Velocity update shown. Try next velocity iteration.
+      if (state->iteration < world->config.max_resolution_iterations && find_worst_velocity(world, &ci, &cti)) {
+        state->iteration++;
+        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
+
+        update_awake_status_for_collision(world, ci);
+
+        contact *ct = &world->collisions->contacts[cti];
+        resolve_velocity_contact(world, ci, ct, state->deltas);
+        state->phase = CDBG_VELOCITY_RESOLVE;
+      } else {
+        state->phase = CDBG_DONE;
+      }
+      break;
+    }
+
+    case CDBG_DONE: {
+      // All done — finish the frame
+      update_awake_statuses(world, state->dt);
+      state->active = false;
+      state->phase = CDBG_IDLE;
+      state->needs_integration = true;
+      break;
+    }
+
+    case CDBG_IDLE:
+      break;
+  }
+}
+
+static const char* debug_phase_label(collision_debug_phase phase) {
+  switch (phase) {
+    case CDBG_PENETRATION_RESOLVE: return "Penetration resolve";
+    case CDBG_DEPTH_UPDATE:        return "Depth update";
+    case CDBG_VELOCITY_RESOLVE:    return "Velocity resolve";
+    case CDBG_VELOCITY_UPDATE:     return "Velocity update";
+    case CDBG_DONE:                return "Done";
+    case CDBG_IDLE:                return "Idle";
+  }
+  return "Unknown";
+}
+
+void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx) {
+  (void)world;
+  if (!state->active)
+    return;
+
+  static const char *window_name = "collision_debug_widget";
+  const float row_height = 18.0f;
+  const float window_width = 420.0f;
+
+  // Estimate row count based on phase
+  int row_count = 3; // header rows: iteration, phase, collision type
+  switch (state->phase) {
+    case CDBG_PENETRATION_RESOLVE:
+    case CDBG_VELOCITY_RESOLVE:
+      // "Deltas:" label + body headers + linear/angular rows
+      row_count += 1 + 1 + 2;
+      break;
+    case CDBG_DEPTH_UPDATE:
+      row_count += 1 + (int)state->depth_update_count;
+      break;
+    case CDBG_VELOCITY_UPDATE:
+      row_count += 1 + (int)state->velocity_update_count * 3;
+      break;
+    default:
+      break;
+  }
+
+  bool draw_content = begin_widget_window(ctx, window_name, "Collision debug", 20.0f, 500.0f, window_width, row_height, row_count);
+
+  if (draw_content) {
+    // Header
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Iteration: %u", state->iteration);
+
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Phase: %s", debug_phase_label(state->phase));
+
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collision type: %s", state->is_dynamic ? "dynamic" : "static");
+
+    // Body
+    switch (state->phase) {
+      case CDBG_PENETRATION_RESOLVE:
+      case CDBG_VELOCITY_RESOLVE: {
+        nk_layout_row_dynamic(ctx, row_height, 1);
+        nk_label(ctx, "Deltas:", NK_TEXT_ALIGN_LEFT);
+
+        if (state->is_dynamic) {
+          nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_label(ctx, "Body 1", NK_TEXT_ALIGN_LEFT);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_label(ctx, "Body 2", NK_TEXT_ALIGN_LEFT);
+          nk_layout_row_end(ctx);
+
+          nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Lin: (%.2f, %.2f, %.2f)", state->deltas[0].x, state->deltas[0].y, state->deltas[0].z);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Lin: (%.2f, %.2f, %.2f)", state->deltas[2].x, state->deltas[2].y, state->deltas[2].z);
+          nk_layout_row_end(ctx);
+
+          nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Ang: (%.2f, %.2f, %.2f)", state->deltas[1].x, state->deltas[1].y, state->deltas[1].z);
+          nk_layout_row_push(ctx, 0.5f);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Ang: (%.2f, %.2f, %.2f)", state->deltas[3].x, state->deltas[3].y, state->deltas[3].z);
+          nk_layout_row_end(ctx);
+        } else {
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_label(ctx, "Body 1", NK_TEXT_ALIGN_LEFT);
+
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Linear:  (%.2f, %.2f, %.2f)", state->deltas[0].x, state->deltas[0].y, state->deltas[0].z);
+
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Angular: (%.2f, %.2f, %.2f)", state->deltas[1].x, state->deltas[1].y, state->deltas[1].z);
+        }
+        break;
+      }
+
+      case CDBG_DEPTH_UPDATE: {
+        nk_layout_row_dynamic(ctx, row_height, 1);
+        nk_label(ctx, "Depth updates:", NK_TEXT_ALIGN_LEFT);
+
+        for (count_t i = 0; i < state->depth_update_count; ++i) {
+          const depth_update_record *r = &state->depth_updates[i];
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Contact #%u: %.3f -> %.3f", r->index, r->before, r->after);
+        }
+        break;
+      }
+
+      case CDBG_VELOCITY_UPDATE: {
+        nk_layout_row_dynamic(ctx, row_height, 1);
+        nk_label(ctx, "Velocity updates:", NK_TEXT_ALIGN_LEFT);
+
+        for (count_t i = 0; i < state->velocity_update_count; ++i) {
+          const velocity_update_record *r = &state->velocity_updates[i];
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Contact #%u:", r->index);
+
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "  Local vel: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f)",
+            r->local_vel_before.x, r->local_vel_before.y, r->local_vel_before.z,
+            r->local_vel_after.x, r->local_vel_after.y, r->local_vel_after.z);
+
+          nk_layout_row_dynamic(ctx, row_height, 1);
+          nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "  Desired delta: %.3f -> %.3f", r->ddv_before, r->ddv_after);
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  nk_end(ctx);
 }
