@@ -8,6 +8,7 @@
 #include "gizmos.h"
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include "assert.h"
 
 const float sleep_threshold = 0.1f;
@@ -84,6 +85,8 @@ static void resolve_collisions(physics_world *world, float dt);
 static void prepare_contacts(physics_world *world, float dt);
 static void update_awake_statuses(physics_world *world, float dt);
 static void update_awake_status_for_collision(physics_world *world, count_t collision_index);
+static bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
+static bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -210,7 +213,7 @@ bool physics_body(const physics_world* world, body_type type, size_t index, body
   return true;
 }
 
-void physics_step(physics_world* world, float dt) {
+static void integrate_bodies(physics_world *world, float dt) {
   v3 gravity_acc = scale(GRAVITY_V, dt);
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);
@@ -232,7 +235,10 @@ void physics_step(physics_world* world, float dt) {
     dynamics->rotations[i] = qnormalize(q_orientation);
     dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
   }
+}
 
+void physics_step(physics_world* world, float dt) {
+  integrate_bodies(world, dt);
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
@@ -547,30 +553,13 @@ static void resolve_interpenetrations(physics_world *world) {
   if (count == 0)
     return;
 
-  const float penetration_epsilon = 0.0001f; // TODO move to config
   count_t iterations = 0;
-  collision *collision;
   contact *contact;
   while (iterations < world->config.max_resolution_iterations) {
-    float max_penetration = penetration_epsilon;
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
 
-    for (count_t i = 0; i < count; ++i) {
-      collision = &world->collisions->collisions[i];
-
-      for (count_t j = 0; j < collision->contacts_count; ++j) {
-        contact = &world->collisions->contacts[j];
-
-        if (contact->depth > max_penetration) {
-          max_penetration = contact->depth;
-          max_penetration_index = collision->contacts_offset + j;
-          collision_index = i;
-        }
-      }
-    }
-
-    if (collision_index == (count_t)-1)
+    if (!find_worst_penetration(world, &collision_index, &max_penetration_index))
       break;
 
     contact = &world->collisions->contacts[max_penetration_index];
@@ -711,35 +700,17 @@ static void update_velocity_deltas(physics_world *world, count_t worst_collision
 }
 
 static void resolve_velocities(physics_world *world, float dt) {
-  const float velocity_epsilon = 0.00001f;
   const count_t count = world->collisions->collisions_count;
   if (count == 0)
     return;
 
   count_t iterations = 0;
-  collision *collision;
   contact *contact;
   while (iterations < world->config.max_resolution_iterations) {
-    float max_velocity = velocity_epsilon;
     count_t worst_contact_index = -1;
     count_t worst_collision_index = -1;
-    for (count_t i = 0; i < count; ++i) {
-      collision = &world->collisions->collisions[i];
-
-      for (count_t j = 0; j < collision->contacts_count; ++j) {
-        contact = &world->collisions->contacts[collision->contacts_offset + j];
-
-        if (fabsf(contact->desired_delta_velocity) > max_velocity) {
-          max_velocity = contact->desired_delta_velocity;
-          worst_contact_index = collision->contacts_offset + j;
-          worst_collision_index = i;
-        }
-      }
-    }
-
-    if (worst_contact_index == (count_t)-1) {
+    if (!find_worst_velocity(world, &worst_collision_index, &worst_contact_index))
       break;
-    }
 
     contact = &world->collisions->contacts[worst_contact_index];
 
@@ -756,19 +727,6 @@ static void resolve_velocities(physics_world *world, float dt) {
 static void resolve_collisions(physics_world *world, float dt) {
   prepare_contacts(world, dt);
   resolve_interpenetrations(world);
-
-  if (world->collisions->dynamic_collisions_count > 0) {
-    float largest_penetration = 0;
-    for (count_t i = 0; i < world->collisions->contacts_count; ++i) {
-      float penetration = fabsf(world->collisions->contacts[i].depth);
-
-      if (penetration > largest_penetration)
-        largest_penetration = penetration;
-    }
-
-    TraceLog(LOG_DEBUG, "Largest penetration: %f", largest_penetration);
-  }
-
   resolve_velocities(world, dt);
 }
 
@@ -894,21 +852,24 @@ void physics_debug_state_init(collision_debug_state *state) {
   state->needs_integration = true;
   state->depth_update_count = 0;
   state->velocity_update_count = 0;
-  for (int i = 0; i < 4; ++i) state->deltas[i] = zero();
+
+  memset(state->deltas, 0, sizeof(v3) * 4);
 }
 
 // Find the worst penetration contact. Returns false if none above threshold.
 static bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
-  const float penetration_epsilon = 0.0001f;
+  const float penetration_epsilon = 0.005f;
+
   float max_penetration = penetration_epsilon;
   count_t best_contact = (count_t)-1;
   count_t best_collision = (count_t)-1;
-  count_t count = collisions_count(world->collisions);
 
-  for (count_t i = 0; i < count; ++i) {
+  for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
     collision *c = &world->collisions->collisions[i];
+
     for (count_t j = 0; j < c->contacts_count; ++j) {
       contact *ct = &world->collisions->contacts[c->contacts_offset + j];
+
       if (ct->depth > max_penetration) {
         max_penetration = ct->depth;
         best_contact = c->contacts_offset + j;
@@ -928,15 +889,17 @@ static bool find_worst_penetration(physics_world *world, count_t *out_collision_
 // Find the worst velocity contact. Returns false if none above threshold.
 static bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
   const float velocity_epsilon = 0.00001f;
+
   float max_velocity = velocity_epsilon;
   count_t best_contact = (count_t)-1;
   count_t best_collision = (count_t)-1;
-  count_t count = world->collisions->collisions_count;
 
-  for (count_t i = 0; i < count; ++i) {
+  for (count_t i = 0; i < world->collisions->collisions_count; ++i) {
     collision *c = &world->collisions->collisions[i];
+
     for (count_t j = 0; j < c->contacts_count; ++j) {
       contact *ct = &world->collisions->contacts[c->contacts_offset + j];
+
       if (fabsf(ct->desired_delta_velocity) > max_velocity) {
         max_velocity = ct->desired_delta_velocity;
         best_contact = c->contacts_offset + j;
@@ -956,28 +919,7 @@ static bool find_worst_velocity(physics_world *world, count_t *out_collision_ind
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state) {
   // Phase: integration + collision detection (runs once per frame)
   if (state->needs_integration) {
-    v3 gravity_acc = scale(GRAVITY_V, dt);
-    float linear_damping = powf(world->config.linear_damping, dt);
-    float angular_damping = powf(world->config.angular_damping, dt);
-
-    dynamic_bodies *dynamics = &world->dynamics;
-    for (count_t i = 0; i < dynamics->awake_count; ++i) {
-      dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
-      dynamics->velocities[i] = scale(dynamics->velocities[i], linear_damping);
-      dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
-
-      quat rotation = dynamics->rotations[i];
-      m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
-      v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
-
-      quat q_omega = { omega.x, omega.y, omega.z, 0 };
-      quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-      quat q_orientation = qadd(rotation, dq);
-
-      dynamics->rotations[i] = qnormalize(q_orientation);
-      dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
-    }
-
+    integrate_bodies(world, dt);
     collisions_detect(world->collisions, (common_data*)&world->dynamics, (common_data*)&world->statics);
 
     // No dynamic collisions — run normal resolution and finish
@@ -999,29 +941,31 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
     state->needs_integration = false;
 
     // Try to find first penetration contact
-    count_t ci, cti;
-    if (find_worst_penetration(world, &ci, &cti)) {
+    count_t collision_index, contact_index;
+    if (find_worst_penetration(world, &collision_index, &contact_index)) {
       state->iteration = 1;
-      state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-      state->current_contact_index = cti;
+      state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
+      state->current_contact_index = contact_index;
+      state->current_collision_index = collision_index;
 
-      update_awake_status_for_collision(world, ci);
+      update_awake_status_for_collision(world, collision_index);
 
-      contact *ct = &world->collisions->contacts[cti];
-      resolve_interpenetration_contact(world, ci, ct, state->deltas);
+      contact *ct = &world->collisions->contacts[contact_index];
+      resolve_interpenetration_contact(world, collision_index, ct, state->deltas);
       state->phase = CDBG_PENETRATION_RESOLVE;
     } else {
       state->penetration_done = true;
       // Skip to velocity
-      if (find_worst_velocity(world, &ci, &cti)) {
+      if (find_worst_velocity(world, &collision_index, &contact_index)) {
         state->iteration = 1;
-        state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-        state->current_contact_index = cti;
+        state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
+        state->current_collision_index = collision_index;
+        state->current_contact_index = contact_index;
 
-        update_awake_status_for_collision(world, ci);
+        update_awake_status_for_collision(world, collision_index);
 
-        contact *ct = &world->collisions->contacts[cti];
-        resolve_velocity_contact(world, ci, ct, state->deltas);
+        contact *ct = &world->collisions->contacts[contact_index];
+        resolve_velocity_contact(world, collision_index, ct, state->deltas);
         state->phase = CDBG_VELOCITY_RESOLVE;
       } else {
         state->phase = CDBG_DONE;
@@ -1033,73 +977,43 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
   }
 
   // State machine: advance one sub-step per call
-  count_t ci, cti;
+  count_t collision_index, contact_index;
 
   switch (state->phase) {
     case CDBG_PENETRATION_RESOLVE: {
-      // The resolve just happened, now do the depth update
-      // We need to find which collision was just resolved — reconstruct from the last search
-      // Re-search to find the collision that was resolved (it was the worst before resolve)
-      // Actually, the deltas are already applied. We need the collision index.
-      // Let's store it. But we don't have it in state... Let me re-find the worst
-      // post-resolution to do the update. Actually, the update needs the collision index
-      // of what was JUST resolved, which we can find by re-running the search on the
-      // pre-update state. Since resolve already moved bodies, we need to track the index.
-      //
-      // Workaround: we need to store the collision index. Let me add an approach where
-      // we do the depth update immediately after resolve in the same step, then show
-      // both results. Actually the spec says they're separate steps. Let me rethink.
-      //
-      // The depth update function needs the collision_index and deltas from the resolve.
-      // We have deltas in state. We need collision_index. Let me search again for the
-      // contact that was just resolved — but depths have not been updated yet, and the
-      // body positions have moved. The depth values in contacts are stale.
-      //
-      // Actually looking more carefully: resolve_interpenetration_contact only modifies
-      // positions/rotations. It does NOT update contact->depth. So the worst penetration
-      // contact is still the same one. We can re-find it.
-
-       // Re-find worst penetration (depths not yet updated, so same contact is still worst)
-       if (find_worst_penetration(world, &ci, &cti)) {
-         update_penetration_depths_ex(world, ci, state->deltas, state->depth_updates, &state->depth_update_count);
-         state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-         state->current_contact_index = cti;
-         state->phase = CDBG_DEPTH_UPDATE;
-       } else {
-         // Shouldn't happen since we just resolved something, but handle gracefully
-         state->penetration_done = true;
-         state->phase = CDBG_DEPTH_UPDATE;
-         state->depth_update_count = 0;
-       }
+       update_penetration_depths_ex(world, state->current_collision_index, state->deltas, state->depth_updates, &state->depth_update_count);
+       state->phase = CDBG_DEPTH_UPDATE;
       break;
     }
 
      case CDBG_DEPTH_UPDATE: {
        // Depth update shown. Try next penetration iteration.
-       if (state->iteration < world->config.max_resolution_iterations && find_worst_penetration(world, &ci, &cti)) {
+       if (state->iteration < world->config.max_resolution_iterations && find_worst_penetration(world, &collision_index, &contact_index)) {
          state->iteration++;
-         state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-         state->current_contact_index = cti;
+         state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
+         state->current_contact_index = contact_index;
+         state->current_collision_index = collision_index;
 
-         update_awake_status_for_collision(world, ci);
+         update_awake_status_for_collision(world, collision_index);
 
-         contact *ct = &world->collisions->contacts[cti];
-         resolve_interpenetration_contact(world, ci, ct, state->deltas);
+         contact *ct = &world->collisions->contacts[contact_index];
+         resolve_interpenetration_contact(world, collision_index, ct, state->deltas);
          state->phase = CDBG_PENETRATION_RESOLVE;
        } else {
          // Penetration done, switch to velocity resolution
          state->penetration_done = true;
          state->iteration = 0;
 
-         if (find_worst_velocity(world, &ci, &cti)) {
+         if (find_worst_velocity(world, &collision_index, &contact_index)) {
            state->iteration = 1;
-           state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-           state->current_contact_index = cti;
+           state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
+           state->current_contact_index = contact_index;
+           state->current_collision_index = collision_index;
 
-           update_awake_status_for_collision(world, ci);
+           update_awake_status_for_collision(world, collision_index);
 
-           contact *ct = &world->collisions->contacts[cti];
-           resolve_velocity_contact(world, ci, ct, state->deltas);
+           contact *ct = &world->collisions->contacts[contact_index];
+           resolve_velocity_contact(world, collision_index, ct, state->deltas);
            state->phase = CDBG_VELOCITY_RESOLVE;
          } else {
            state->phase = CDBG_DONE;
@@ -1109,33 +1023,23 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
      }
 
      case CDBG_VELOCITY_RESOLVE: {
-       // Velocity resolve just happened. Now do the velocity update.
-       // Similar to penetration: resolve_velocity_contact modifies velocities/angular_momenta
-       // but does NOT update desired_delta_velocity on other contacts. So worst is still findable.
-       if (find_worst_velocity(world, &ci, &cti)) {
-         update_velocity_deltas_ex(world, ci, state->deltas, state->dt, state->velocity_updates, &state->velocity_update_count);
-         state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-         state->current_contact_index = cti;
-         state->phase = CDBG_VELOCITY_UPDATE;
-       } else {
-         state->velocity_done = true;
-         state->phase = CDBG_VELOCITY_UPDATE;
-         state->velocity_update_count = 0;
-       }
+       update_velocity_deltas_ex(world, state->current_collision_index, state->deltas, state->dt, state->velocity_updates, &state->velocity_update_count);
+       state->phase = CDBG_VELOCITY_UPDATE;
        break;
      }
 
      case CDBG_VELOCITY_UPDATE: {
        // Velocity update shown. Try next velocity iteration.
-       if (state->iteration < world->config.max_resolution_iterations && find_worst_velocity(world, &ci, &cti)) {
+       if (state->iteration < world->config.max_resolution_iterations && find_worst_velocity(world, &collision_index, &contact_index)) {
          state->iteration++;
-         state->is_dynamic = ci < world->collisions->dynamic_collisions_count;
-         state->current_contact_index = cti;
+         state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
+         state->current_contact_index = contact_index;
+         state->current_collision_index = collision_index;
 
-         update_awake_status_for_collision(world, ci);
+         update_awake_status_for_collision(world, collision_index);
 
-         contact *ct = &world->collisions->contacts[cti];
-         resolve_velocity_contact(world, ci, ct, state->deltas);
+         contact *ct = &world->collisions->contacts[contact_index];
+         resolve_velocity_contact(world, collision_index, ct, state->deltas);
          state->phase = CDBG_VELOCITY_RESOLVE;
        } else {
          state->phase = CDBG_DONE;
@@ -1159,12 +1063,23 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
 
 static const char* debug_phase_label(collision_debug_phase phase) {
   switch (phase) {
-    case CDBG_PENETRATION_RESOLVE: return "Penetration resolve";
-    case CDBG_DEPTH_UPDATE:        return "Depth update";
-    case CDBG_VELOCITY_RESOLVE:    return "Velocity resolve";
-    case CDBG_VELOCITY_UPDATE:     return "Velocity update";
-    case CDBG_DONE:                return "Done";
-    case CDBG_IDLE:                return "Idle";
+    case CDBG_PENETRATION_RESOLVE:
+      return "Penetration resolve";
+
+    case CDBG_DEPTH_UPDATE:
+      return "Depth update";
+
+    case CDBG_VELOCITY_RESOLVE:
+      return "Velocity resolve";
+
+    case CDBG_VELOCITY_UPDATE:
+      return "Velocity update";
+
+    case CDBG_DONE:
+      return "Done";
+
+    case CDBG_IDLE:
+      return "Idle";
   }
   return "Unknown";
 }
