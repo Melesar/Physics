@@ -97,7 +97,10 @@ physics_config physics_default_config() {
     .angular_damping = 0.997,
     .restitution = 0.3,
     .friction = 0.3,
-    .max_resolution_iterations = 10,
+    .max_penentration_iterations = 10,
+    .max_velocity_iterations = 20,
+    .penetration_epsilon = 0.005,
+    .velocity_epsilon = 0.1,
     .restitution_damping_limit = 0.2,
   };
 }
@@ -353,19 +356,26 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
   bool draw_content = begin_widget_window(ctx, window_name, "Physics config", 20.0f, 360.0f, window_width, row_height, row_count);
 
   if (draw_content) {
-    int max_iterations = (int) world->config.max_resolution_iterations;
+    int max_penetration_iterations = (int) world->config.max_penentration_iterations;
+    int max_velocity_iterations = (int) world->config.max_velocity_iterations;
 
     draw_edit_float(ctx, "Linear damping", &world->config.linear_damping);
     draw_edit_float(ctx, "Angular damping", &world->config.angular_damping);
     draw_edit_float(ctx, "Restitution", &world->config.restitution);
     draw_edit_float(ctx, "Friction", &world->config.friction);
-    draw_edit_int(ctx, "Resolution iterations", &max_iterations);
+    draw_edit_int(ctx, "Penetration iterations", &max_penetration_iterations);
+    draw_edit_int(ctx, "Velocity iterations", &max_velocity_iterations);
+    draw_edit_float(ctx, "Penetration epsilon", &world->config.penetration_epsilon);
+    draw_edit_float(ctx, "Velocity epsilon", &world->config.velocity_epsilon);
     draw_edit_float(ctx, "Restitution damp limit", &world->config.restitution_damping_limit);
 
-    if (max_iterations < 0)
-      max_iterations = 0;
+    if (max_penetration_iterations < 0)
+      max_penetration_iterations = 0;
+    if (max_velocity_iterations < 0)
+      max_velocity_iterations = 0;
 
-    world->config.max_resolution_iterations = (count_t) max_iterations;
+    world->config.max_penentration_iterations = (count_t) max_penetration_iterations;
+    world->config.max_velocity_iterations = (count_t) max_velocity_iterations;
   }
 
   nk_end(ctx);
@@ -394,11 +404,32 @@ void physics_teardown(physics_world* world) {
   free(world);
 }
 
-static void update_desired_velocity_delta(physics_world *world, contact *contact, float dt) {
-  float acceleration_velocity = dot(GRAVITY_V, contact->normal) * dt;
+static void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
+  collision collision = world->collisions->collisions[collision_index];
+  count_t awake_count = world->dynamics.awake_count;
 
+  // TODO: revisit this when there are other external forces than gravity.
+  float gravity_multiplier;
+  bool is_static_collision = collision_index >= world->collisions->dynamic_collisions_count;
+  bool awake_a = collision.index_a < awake_count;
+  bool awake_b = collision.index_b < awake_count;
+  if (is_static_collision) {
+    gravity_multiplier = 1.0;
+  } else if (awake_a && awake_b) {
+    gravity_multiplier = 0;
+  } else if (awake_a && !awake_b) {
+    gravity_multiplier = 1.0;
+  } else if (!awake_a && awake_b) {
+    gravity_multiplier = -1.0;
+  } else {
+    gravity_multiplier = 0;
+  }
+
+  float acceleration_velocity = gravity_multiplier * dot(GRAVITY_V, contact->normal) * dt;
   float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? world->config.restitution : 0.0f;
-  contact->desired_delta_velocity = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
+  float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
+
+  contact->desired_delta_velocity = fmaxf(desired_delta, 0.0);
 }
 
 static void prepare_contacts(physics_world *world, float dt) {
@@ -440,7 +471,7 @@ static void prepare_contacts(physics_world *world, float dt) {
 
       contact->local_velocity = sub(local_velocity[0], local_velocity[1]);
 
-      update_desired_velocity_delta(world, contact, dt);
+      update_desired_velocity_delta(world, i, contact, dt);
     }
   }
 }
@@ -555,7 +586,7 @@ static void resolve_interpenetrations(physics_world *world) {
 
   count_t iterations = 0;
   contact *contact;
-  while (iterations < world->config.max_resolution_iterations) {
+  while (iterations < world->config.max_penentration_iterations) {
     count_t max_penetration_index = -1;
     count_t collision_index = -1;
 
@@ -585,10 +616,10 @@ static void resolve_velocity_contact(physics_world *world, count_t worst_collisi
   float inv_mass = 0;
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    m3 impulse_to_torque = matrix_skew_symmetric(contact->relative_position[k]);
+    m3 r_cross = matrix_skew_symmetric(contact->relative_position[k]);
 
-    m3 delta_velocity_world = matrix_multiply(world->dynamics.inv_intertias[body_index], impulse_to_torque);
-    delta_velocity_world = matrix_multiply(delta_velocity_world, impulse_to_torque);
+    m3 delta_velocity_world = matrix_multiply(r_cross, world->dynamics.inv_intertias[body_index]);
+    delta_velocity_world = matrix_multiply(delta_velocity_world, r_cross);
     delta_velocity_world = matrix_negate(delta_velocity_world);
 
     inv_mass += world->dynamics.inv_masses[body_index];
@@ -675,12 +706,13 @@ static void update_velocity_deltas_ex(physics_world *world, count_t worst_collis
 
             contact->local_velocity = add(contact->local_velocity, scale(delta_velocity, (k ? -1 : 1)));
 
-            update_desired_velocity_delta(world, contact, dt);
+            update_desired_velocity_delta(world, i, contact, dt);
             changed = true;
           }
         }
       }
 
+      // TODO: refactor to move it out from the release loop.
       if (records && record_count && changed && *record_count < CDBG_MAX_CONTACTS) {
         records[*record_count] = (velocity_update_record){
           .index = index,
@@ -706,7 +738,7 @@ static void resolve_velocities(physics_world *world, float dt) {
 
   count_t iterations = 0;
   contact *contact;
-  while (iterations < world->config.max_resolution_iterations) {
+  while (iterations < world->config.max_velocity_iterations) {
     count_t worst_contact_index = -1;
     count_t worst_collision_index = -1;
     if (!find_worst_velocity(world, &worst_collision_index, &worst_contact_index))
@@ -858,9 +890,7 @@ void physics_debug_state_init(collision_debug_state *state) {
 
 // Find the worst penetration contact. Returns false if none above threshold.
 static bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
-  const float penetration_epsilon = 0.005f;
-
-  float max_penetration = penetration_epsilon;
+  float max_penetration = world->config.penetration_epsilon;
   count_t best_contact = (count_t)-1;
   count_t best_collision = (count_t)-1;
 
@@ -888,9 +918,7 @@ static bool find_worst_penetration(physics_world *world, count_t *out_collision_
 
 // Find the worst velocity contact. Returns false if none above threshold.
 static bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index) {
-  const float velocity_epsilon = 0.00001f;
-
-  float max_velocity = velocity_epsilon;
+  float max_velocity = world->config.velocity_epsilon;
   count_t best_contact = (count_t)-1;
   count_t best_collision = (count_t)-1;
 
@@ -900,7 +928,7 @@ static bool find_worst_velocity(physics_world *world, count_t *out_collision_ind
     for (count_t j = 0; j < c->contacts_count; ++j) {
       contact *ct = &world->collisions->contacts[c->contacts_offset + j];
 
-      if (fabsf(ct->desired_delta_velocity) > max_velocity) {
+      if (ct->desired_delta_velocity > max_velocity) {
         max_velocity = ct->desired_delta_velocity;
         best_contact = c->contacts_offset + j;
         best_collision = i;
@@ -988,7 +1016,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
 
      case CDBG_DEPTH_UPDATE: {
        // Depth update shown. Try next penetration iteration.
-       if (state->iteration < world->config.max_resolution_iterations && find_worst_penetration(world, &collision_index, &contact_index)) {
+       if (state->iteration < world->config.max_penentration_iterations && find_worst_penetration(world, &collision_index, &contact_index)) {
          state->iteration++;
          state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
          state->current_contact_index = contact_index;
@@ -1030,7 +1058,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
 
      case CDBG_VELOCITY_UPDATE: {
        // Velocity update shown. Try next velocity iteration.
-       if (state->iteration < world->config.max_resolution_iterations && find_worst_velocity(world, &collision_index, &contact_index)) {
+       if (state->iteration < world->config.max_penentration_iterations && find_worst_velocity(world, &collision_index, &contact_index)) {
          state->iteration++;
          state->is_dynamic = collision_index < world->collisions->dynamic_collisions_count;
          state->current_contact_index = contact_index;

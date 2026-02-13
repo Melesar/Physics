@@ -40,12 +40,12 @@ static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
 
-void scenario_initialize(program_config* config, physics_config *physics_config);
-void scenario_setup_scene(physics_world *world);
-void scenario_handle_input(physics_world *world, Camera *camera);
-void scenario_simulate(physics_world *world, float dt);
-void scenario_draw_scene();
-void scenario_draw_ui(struct nk_context* ctx);
+extern void scenario_initialize(program_config* config, physics_config *physics_config);
+extern void scenario_setup_scene(physics_world *world);
+extern void scenario_handle_input(physics_world *world, Camera *camera);
+extern void scenario_simulate(physics_world *world, float dt);
+extern void scenario_draw_scene();
+extern void scenario_draw_ui(struct nk_context* ctx);
 
 camera_settings cam_settings = {
   .movement_speed = 10.0f,

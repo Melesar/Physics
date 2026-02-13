@@ -54,12 +54,17 @@ typedef struct {
   count_t dynamics_capacity;
   count_t statics_capacity;
   count_t collisions_capacity;
+
   float linear_damping;
   float angular_damping;
   float restitution;
   float friction;
 
-  count_t max_resolution_iterations;
+  count_t max_penentration_iterations;
+  count_t max_velocity_iterations;
+
+  float penetration_epsilon;
+  float velocity_epsilon;
 
   float restitution_damping_limit;
 } physics_config;
