@@ -69,6 +69,36 @@ typedef struct {
   float restitution_damping_limit;
 } physics_config;
 
+typedef struct {
+  count_t index_a, index_b;
+  count_t contacts_offset, contacts_count;
+} collision;
+
+typedef struct {
+  v3 point;
+  v3 normal;
+  float depth;
+
+  m3 basis;
+  v3 relative_position[2];
+  v3 local_velocity;
+  float desired_delta_velocity;
+} contact;
+
+#define ARRAY(type) \
+  count_t type##s_capacity; \
+  count_t type##s_count; \
+  type* type##s;
+
+typedef struct {
+  ARRAY(collision)
+  ARRAY(contact)
+
+  count_t dynamic_collisions_count;
+} collisions;
+
+#undef ARRAY
+
 #define COMMON_FIELDS \
   count_t capacity; \
   count_t count; \
@@ -80,9 +110,32 @@ typedef struct {
   COMMON_FIELDS
 } common_data;
 
-struct physics_world;
+typedef struct {
+  COMMON_FIELDS
 
-typedef struct physics_world physics_world;
+  float *inv_masses;
+  v3 *velocities;
+  v3 *angular_momenta;
+  m3 *inv_inertia_tensors;
+
+  // Derived values.
+  m3 *inv_intertias;
+
+  // Sleeping
+  count_t awake_count;
+  float *motion_avgs;
+} dynamic_bodies;
+
+typedef common_data static_bodies;
+
+typedef struct {
+  dynamic_bodies dynamics;
+  static_bodies statics;
+
+  collisions *collisions;
+
+  physics_config config;
+} physics_world;
 
 physics_config physics_default_config();
 
@@ -91,10 +144,6 @@ physics_world* physics_init(const physics_config *config);
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
-
-bool physics_has_collisions(const physics_world *world);
-size_t physics_body_count(const physics_world* world, body_type type);
-bool physics_body(const physics_world* world, body_type type, size_t index, body_snapshot* body);
 
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);

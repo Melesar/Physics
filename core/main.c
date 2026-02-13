@@ -228,25 +228,25 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 }
 
 static void draw_physics_bodies() {
-  size_t dynamic_count = physics_body_count(world, BODY_DYNAMIC);
+  size_t dynamic_count = world->dynamics.count;
 
   for (size_t i = 0; i < dynamic_count; ++i) {
-    body_snapshot snapshot;
-    if (!physics_body(world, BODY_DYNAMIC, i, &snapshot))
-      continue;
-
     m4 scale;
-    m4 transform = MatrixMultiply(QuaternionToMatrix(snapshot.rotation), MatrixTranslate(snapshot.position.x, snapshot.position.y, snapshot.position.z));
+    v3 position = world->dynamics.positions[i];
+    quat rotation = world->dynamics.rotations[i];
+    body_shape shape = world->dynamics.shapes[i];
+
+    m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[i % 20];
 
-    switch (snapshot.shape.type) {
+    switch (shape.type) {
       case SHAPE_BOX:
-        scale = MatrixScale(snapshot.shape.box.size.x, snapshot.shape.box.size.y, snapshot.shape.box.size.z);
+        scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
         DrawMesh(meshes[SHAPE_BOX], material, mul(scale, transform));
         break;
 
       case SHAPE_SPHERE:
-        scale = MatrixScale(snapshot.shape.sphere.radius, snapshot.shape.sphere.radius, snapshot.shape.sphere.radius);
+        scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
         DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, transform));
         break;
 

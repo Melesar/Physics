@@ -1,4 +1,3 @@
-#include "collisions.h"
 #include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -418,37 +417,6 @@ static count_t sphere_plane_collision(collisions *collisions, count_t index_a, c
   return 1;
 }
 
-m3 contact_space_transform(const contact *contact) {
-  v3 y_axis = contact->normal;
-  v3 x_axis, z_axis;
-
-  if (fabsf(y_axis.y) > fabsf(y_axis.z)) {
-    // Take (1, 0, 0) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
-
-    z_axis.x = 0;
-    z_axis.y = s * y_axis.z;
-    z_axis.z = -s * y_axis.y;
-
-    x_axis.x = z_axis.y * y_axis.z - y_axis.y * z_axis.z;
-    x_axis.y = y_axis.x * z_axis.z;
-    x_axis.z = y_axis.x * z_axis.y;
-  } else {
-    // Take (0, 0, 1) as initial guess
-    const float s = 1.0 / sqrtf(y_axis.x * y_axis.x + y_axis.y * y_axis.y);
-
-    x_axis.x = -s * y_axis.y;
-    x_axis.y = s * y_axis.x;
-    x_axis.z = 0;
-
-    z_axis.x = -y_axis.z * x_axis.y;
-    z_axis.y = x_axis.x * y_axis.z;
-    z_axis.z = y_axis.x * x_axis.y - x_axis.x * y_axis.y;
-  }
-
-  return matrix_from_basis(x_axis, y_axis, z_axis);
-}
-
 collisions* collisions_init(const physics_config *config) {
   collisions* result =  malloc(sizeof(collisions));
 
@@ -456,35 +424,6 @@ collisions* collisions_init(const physics_config *config) {
   ARRAY_INIT(result, contact, config->collisions_capacity * 4);
 
   return result;
-}
-
-count_t collisions_count(collisions *collisions) {
-  return collisions->collisions_count;
-}
-
-bool collision_get(collisions *collisions, count_t index, collision *collision) {
-  if (index >= collisions->collisions_count)
-    return false;
-
-  *collision = collisions->collisions[index];
-
-  return true;
-}
-
-bool contact_get(collisions *collisions, count_t index, contact *contact) {
-  if (index >= collisions->contacts_count)
-    return false;
-
-  *contact = collisions->contacts[index];
-
-  return true;
-}
-
-void contact_update_penetration(collisions *collisions,count_t index, float penetration) {
-  if (index >= collisions->contacts_count)
-    return;
-
-  collisions->contacts[index].depth = penetration;
 }
 
 void collisions_detect(collisions *collisions, const common_data *dynamics, const common_data *statics) {

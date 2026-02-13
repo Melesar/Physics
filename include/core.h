@@ -33,6 +33,17 @@ struct object {
 
 void toggle_pause(bool is_pause);
 
+bool begin_widget_window(
+  struct nk_context* ctx,
+  const char* window_name,
+  const char* title,
+  float x,
+  float y,
+  float width,
+  float row_height,
+  int row_count
+);
+
 void draw_arrow(Vector3 start, Vector3 direction, Color color);
 void draw_stat_float(struct nk_context* ctx, char* title, float value);
 void draw_stat_int(struct nk_context* ctx, char* title, int value);

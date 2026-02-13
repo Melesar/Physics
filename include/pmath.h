@@ -1,3 +1,6 @@
+#ifndef PMATH_H
+#define PMATH_H
+
 #include "raylib.h"
 
 #define cross(x, y) Vector3CrossProduct(x, y)
@@ -61,3 +64,5 @@ m3 matrix_from_basis(v3 x, v3 y, v3 z);
 m3 matrix_skew_symmetric(v3 v);
 m3 matrix_initial_inertia(v3 inertia);
 m3 matrix_inertia(m3 initial_inertia, quat rotation);
+
+#endif

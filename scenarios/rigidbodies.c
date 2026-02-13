@@ -50,7 +50,7 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *big_box.position = (v3) { 0, 7, 0 };
     *big_box.angular_momentum = (v3) { 1, 1, 1 };
 
-    physics_awaken_body(world, physics_body_count(world, BODY_DYNAMIC) - 1);
+    physics_awaken_body(world, world->dynamics.count - 1);
   }
 
 }

@@ -78,6 +78,35 @@ void draw_stat_matrix(struct nk_context* ctx, char* title, Matrix value) {
   }
 }
 
+bool begin_widget_window(
+  struct nk_context* ctx,
+  const char* window_name,
+  const char* title,
+  float x,
+  float y,
+  float width,
+  float row_height,
+  int row_count
+) {
+  const nk_flags window_flags = NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE |
+    NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE;
+
+  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+  float padding_y = ctx->style.window.padding.y;
+  float spacing_y = ctx->style.window.spacing.y;
+  float content_height = (row_height * row_count) + (spacing_y * (row_count - 1));
+  float window_height = header_height + (padding_y * 2.0f) + content_height + 25.0;
+
+  if (nk_begin_titled(ctx, window_name, title, nk_rect(x, y, width, window_height), window_flags)) {
+    if (!nk_window_is_collapsed(ctx, window_name)) {
+      nk_window_set_size(ctx, window_name, nk_vec2(width, window_height));
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void draw_edit_float(struct nk_context* ctx, char* title, float* value) {
   draw_property_float(ctx, title, value, -FLT_MAX, FLT_MAX, 0.1f, 0.01f);
 }
