@@ -110,6 +110,11 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
             compile.linkSystemLibrary("Xrandr");
             compile.linkSystemLibrary("Xrender");
         },
+        .macos => {
+            compile.linkFramework("IOKit");
+            compile.linkFramework("Cocoa");
+            compile.linkFramework("OpenGL");
+        },
         else => return,
     }
 }
