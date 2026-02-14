@@ -7,31 +7,80 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
-    const root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+    const libRootModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
 
-    const flags = &.{ "-g", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O0", "-fsanitize=address" };
-    const library_sources = try collectSources(b, "core");
-    defer b.allocator.free(library_sources);
+    const flags = &.{ "-g", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O0" };
+    const librarySources = try collectSources(b, "lib");
+    defer b.allocator.free(librarySources);
 
-    root_module.addCSourceFiles(.{
-        .files = library_sources,
+    libRootModule.addCSourceFiles(.{
+        .files = librarySources,
         .flags = flags,
     });
 
     const lib = b.addLibrary(.{
         .name = "bandura",
         .linkage = .dynamic,
-        .root_module = root_module,
+        .root_module = libRootModule,
     });
 
     lib.addIncludePath(raylib.path("src"));
     lib.addIncludePath(raylib.path("examples"));
     lib.addIncludePath(b.path("include"));
-    linkLibraries(lib, target);
-
-    lib.linkLibrary(raylib.artifact("raylib"));
 
     b.installArtifact(lib);
+
+    const scenarioSources = try collectSources(b, "scenarios");
+    defer b.allocator.free(scenarioSources);
+
+    for (scenarioSources) |scenarioFile| {
+        const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+        scenarioModule.addCSourceFiles(.{
+            .files = &.{ "bin/main.c", scenarioFile },
+            .flags = flags,
+        });
+
+        const scenarioName = std.fs.path.stem(scenarioFile);
+        const scenario = b.addExecutable(.{
+            .name = scenarioName,
+            .root_module = scenarioModule,
+        });
+
+        scenario.addIncludePath(raylib.path("src"));
+        scenario.addIncludePath(raylib.path("examples"));
+        scenario.addIncludePath(b.path("include"));
+
+        linkLibraries(scenario, target);
+
+        scenario.linkLibrary(raylib.artifact("raylib"));
+        scenario.linkLibrary(lib);
+
+        b.installArtifact(scenario);
+
+        const runScenario = b.addRunArtifact(scenario);
+        runScenario.step.dependOn(b.getInstallStep());
+
+        const runStep = b.step(b.fmt("run-{s}", .{scenarioName}), b.fmt("Run {s} scenario", .{scenarioName}));
+        runStep.dependOn(&runScenario.step);
+    }
+
+    const testsModule = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("tests/tests.zig"),
+        .link_libc = true,
+    });
+
+    const tests = b.addTest(.{
+        .root_module = testsModule,
+    });
+
+    tests.linkLibrary(lib);
+    tests.addIncludePath(b.path("include"));
+
+    const runTests = b.addRunArtifact(tests);
+    const testStep = b.step("test", "Run tests");
+    testStep.dependOn(&runTests.step);
 }
 
 fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void {
