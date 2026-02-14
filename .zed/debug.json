@@ -6,11 +6,11 @@
   {
     "label": "Debug rigidbodies",
     "build": {
-      "command": "make",
-      "args": ["-j8", "-C", "build", "rigidbodies"],
+      "command": "zig",
+      "args": ["build"],
       "cwd": "$ZED_WORKTREE_ROOT",
     },
-    "program": "$ZED_WORKTREE_ROOT/rigidbodies",
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/rigidbodies",
     "request": "launch",
     "adapter": "CodeLLDB",
   },
