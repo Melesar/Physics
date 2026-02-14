@@ -1,12 +1,5 @@
-# build files
-build/
-
-# binaries
-spring
-pendulum
-rigidbodies
-rope
-
 .cache/
 .zig-cache/
 zig-out
+
+compile_commands.json

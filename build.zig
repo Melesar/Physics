@@ -1,4 +1,5 @@
 const std = @import("std");
+const zcc = @import("compile_commands");
 
 const ResolvedTarget = std.Build.ResolvedTarget;
 
@@ -33,6 +34,11 @@ pub fn build(b: *std.Build) !void {
     const scenarioSources = try collectSources(b, "scenarios");
     defer b.allocator.free(scenarioSources);
 
+    var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, scenarioSources.len + 2);
+    defer targets.deinit(b.allocator);
+
+    targets.appendAssumeCapacity(lib);
+
     for (scenarioSources) |scenarioFile| {
         const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
         scenarioModule.addCSourceFiles(.{
@@ -62,7 +68,11 @@ pub fn build(b: *std.Build) !void {
 
         const runStep = b.step(b.fmt("run-{s}", .{scenarioName}), b.fmt("Run {s} scenario", .{scenarioName}));
         runStep.dependOn(&runScenario.step);
+
+        targets.appendAssumeCapacity(scenario);
     }
+
+    _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
 
     const testsModule = b.createModule(.{
         .target = target,
