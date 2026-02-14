@@ -1,10 +1,5 @@
-#include "raylib.h"
 #include "physics.h"
-#include "raylib.h"
-#include "raymath.h"
 #include "stdlib.h"
-#include "core.h"
-#include "gizmos.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,8 +144,6 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
         *inv_inertia_tensor = matrix_identity();
         break;
     }
-
-    register_gizmo(&commons->positions[index], &commons->rotations[index]);
   }
 
   return (body) {
@@ -224,19 +217,19 @@ void physics_reset(physics_world *world) {
   world->collisions->contacts_count = 0;
 }
 
-void physics_draw_collisions(const physics_world *world) {
-  count_t count = world->collisions->collisions_count;
+// void physics_draw_collisions(const physics_world *world) {
+//   count_t count = world->collisions->collisions_count;
 
-  for (count_t i = 0; i < count; ++i) {
-    collision c = world->collisions->collisions[i];
+//   for (count_t i = 0; i < count; ++i) {
+//     collision c = world->collisions->collisions[i];
 
-    for (count_t j = 0; j < c.contacts_count; ++j) {
-      contact contact = world->collisions->contacts[c.contacts_offset + j];
+//     for (count_t j = 0; j < c.contacts_count; ++j) {
+//       contact contact = world->collisions->contacts[c.contacts_offset + j];
 
-      draw_arrow(contact.point, contact.normal, RED);
-    }
-  }
-}
+//       draw_arrow(contact.point, contact.normal, RED);
+//     }
+//   }
+// }
 
 void physics_teardown(physics_world* world) {
   #define TEARDOWN_COMMONS(type) \

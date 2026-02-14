@@ -1,6 +1,4 @@
 #include "physics.h"
-#include "raylib.h"
-#include "raymath.h"
 #include <math.h>
 #include <stdlib.h>
 

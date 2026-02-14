@@ -16,7 +16,6 @@
 
 #define COLOR_WIREFRAME      (Color){0x12, 0x12, 0x12, 25}
 
-typedef uint32_t count_t;
 
 typedef struct {
   char* window_title;

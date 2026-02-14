@@ -1,5 +1,5 @@
+#define RAYMATH_IMPLEMENTATION
 #include "pmath.h"
-#include "raymath.h"
 
 m3 matrix_identity() {
   return (m3) {

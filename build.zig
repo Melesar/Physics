@@ -25,8 +25,6 @@ pub fn build(b: *std.Build) !void {
         .root_module = libRootModule,
     });
 
-    lib.addIncludePath(raylib.path("src"));
-    lib.addIncludePath(raylib.path("examples"));
     lib.addIncludePath(b.path("include"));
 
     b.installArtifact(lib);
@@ -39,12 +37,16 @@ pub fn build(b: *std.Build) !void {
 
     targets.appendAssumeCapacity(lib);
 
+    const binarySources = try collectSources(b, "bin");
+    defer b.allocator.free(binarySources);
+
     for (scenarioSources) |scenarioFile| {
         const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
         scenarioModule.addCSourceFiles(.{
-            .files = &.{ "bin/main.c", scenarioFile },
+            .files = binarySources,
             .flags = flags,
         });
+        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = flags });
 
         const scenarioName = std.fs.path.stem(scenarioFile);
         const scenario = b.addExecutable(.{

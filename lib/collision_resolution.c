@@ -1,5 +1,4 @@
 #include "physics.h"
-#include "raymath.h"
 #include "math.h"
 
 extern float sleep_threshold;

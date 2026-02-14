@@ -38,7 +38,7 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
-static void draw_ui_widget_controls(struct nk_context* ctx);
+// static void draw_ui_widget_controls(struct nk_context* ctx);
 
 extern void scenario_initialize(program_config* config, physics_config *physics_config);
 extern void scenario_setup_scene(physics_world *world);
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
       manipulate_gizmos(&camera);
     }
 
-    draw_ui_widget_controls(ctx);
+    // draw_ui_widget_controls(ctx);
     scenario_draw_ui(ctx);
 
     draw_scene(camera, ctx, shader);
@@ -180,52 +180,52 @@ static void process_inputs(physics_world *world, Camera* camera) {
     scenario_handle_input(world, camera);
 }
 
-static void draw_ui_widget_controls(struct nk_context* ctx) {
-  static const char* window_name = "ui_widget_controls";
+// static void draw_ui_widget_controls(struct nk_context* ctx) {
+//   static const char* window_name = "ui_widget_controls";
 
-  const float row_height = 18.0f;
-  const float window_width = 220.0f;
-  const int checkbox_count = 4;
+//   const float row_height = 18.0f;
+//   const float window_width = 220.0f;
+//   const int checkbox_count = 4;
 
-  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
-  float padding_y = ctx->style.window.padding.y;
-  float spacing_y = ctx->style.window.spacing.y;
-  float window_height = header_height + (padding_y * 2.0f) + (row_height * checkbox_count) + (spacing_y * (checkbox_count - 1)) + 25.0;
+//   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+//   float padding_y = ctx->style.window.padding.y;
+//   float spacing_y = ctx->style.window.spacing.y;
+//   float window_height = header_height + (padding_y * 2.0f) + (row_height * checkbox_count) + (spacing_y * (checkbox_count - 1)) + 25.0;
 
-  if (nk_begin_titled(ctx, window_name, "", nk_rect(20, 20, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
-    if (!nk_window_is_collapsed(ctx, window_name)) {
-      nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
-      nk_layout_row_dynamic(ctx, row_height, 1);
+//   if (nk_begin_titled(ctx, window_name, "", nk_rect(20, 20, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
+//     if (!nk_window_is_collapsed(ctx, window_name)) {
+//       nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
+//       nk_layout_row_dynamic(ctx, row_height, 1);
 
-      nk_bool physics_world_stats = show_physics_world_stats ? nk_true : nk_false;
-      nk_checkbox_label(ctx, "Physics world stats", &physics_world_stats);
-      show_physics_world_stats = physics_world_stats != 0;
+//       nk_bool physics_world_stats = show_physics_world_stats ? nk_true : nk_false;
+//       nk_checkbox_label(ctx, "Physics world stats", &physics_world_stats);
+//       show_physics_world_stats = physics_world_stats != 0;
 
-      nk_bool physics_config = show_physics_config_widget ? nk_true : nk_false;
-      nk_checkbox_label(ctx, "Physics config", &physics_config);
-      show_physics_config_widget = physics_config != 0;
+//       nk_bool physics_config = show_physics_config_widget ? nk_true : nk_false;
+//       nk_checkbox_label(ctx, "Physics config", &physics_config);
+//       show_physics_config_widget = physics_config != 0;
 
-      nk_bool collisions = draw_collisions ? nk_true : nk_false;
-      nk_checkbox_label(ctx, "Draw collisions", &collisions);
-      draw_collisions = collisions != 0;
+//       nk_bool collisions = draw_collisions ? nk_true : nk_false;
+//       nk_checkbox_label(ctx, "Draw collisions", &collisions);
+//       draw_collisions = collisions != 0;
 
-      nk_bool cdbg = collision_debug_mode ? nk_true : nk_false;
-      nk_checkbox_label(ctx, "Collision debugging", &cdbg);
-      if (cdbg && !collision_debug_mode)
-        physics_debug_state_init(&debug_state);
-      collision_debug_mode = cdbg != 0;
-    }
-  }
+//       nk_bool cdbg = collision_debug_mode ? nk_true : nk_false;
+//       nk_checkbox_label(ctx, "Collision debugging", &cdbg);
+//       if (cdbg && !collision_debug_mode)
+//         physics_debug_state_init(&debug_state);
+//       collision_debug_mode = cdbg != 0;
+//     }
+//   }
 
-  nk_end(ctx);
+//   nk_end(ctx);
 
-  if (show_physics_world_stats)
-    physics_draw_stats(world, ctx);
-  if (show_physics_config_widget)
-    physics_draw_config_widget(world, ctx);
-  if (collision_debug_mode)
-    physics_draw_debug_widget(world, &debug_state, ctx);
-}
+//   if (show_physics_world_stats)
+//     physics_draw_stats(world, ctx);
+//   if (show_physics_config_widget)
+//     physics_draw_config_widget(world, ctx);
+//   if (collision_debug_mode)
+//     physics_draw_debug_widget(world, &debug_state, ctx);
+// }
 
 static void draw_physics_bodies() {
   size_t dynamic_count = world->dynamics.count;
@@ -265,8 +265,8 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
 
         BeginShaderMode(shader);
 
-          if (draw_collisions)
-            physics_draw_collisions(world);
+          // if (draw_collisions)
+          //   physics_draw_collisions(world);
 
           draw_physics_bodies();
           scenario_draw_scene();

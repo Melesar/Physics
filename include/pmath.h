@@ -1,7 +1,8 @@
 #ifndef PMATH_H
 #define PMATH_H
 
-#include "raylib.h"
+#define RAYMATH_DISABLE_CPP_OPERATORS
+#include "raymath.h"
 
 #define cross(x, y) Vector3CrossProduct(x, y)
 #define dot(x, y) Vector3DotProduct(x, y)
