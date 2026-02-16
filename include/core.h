@@ -3,6 +3,7 @@
 
 #define NK_INCLUDE_STANDARD_VARARGS
 #include "raylib-nuklear.h"
+#include "physics.h"
 
 #define COLOR_GREEN_ACTIVE   (Color){0x00, 0xff, 0x88, 0xFF}
 #define COLOR_RED_HIGHLIGHT  (Color){0xff, 0x33, 0x66, 0xFF}
@@ -16,21 +17,11 @@
 
 #define COLOR_WIREFRAME      (Color){0x12, 0x12, 0x12, 25}
 
-
 typedef struct {
   char* window_title;
   Vector3 camera_position;
   Vector3 camera_target;
 } program_config;
-
-struct object {
-  char* label;
-  Mesh mesh;
-  Material material;
-};
-
-
-void toggle_pause(bool is_pause);
 
 bool begin_widget_window(
   struct nk_context* ctx,
@@ -42,6 +33,9 @@ bool begin_widget_window(
   float row_height,
   int row_count
 );
+
+int register_gizmo(Vector3 *pos, Quaternion *rot);
+void unregister_gizmo(int id);
 
 void draw_arrow(Vector3 start, Vector3 direction, Color color);
 void draw_stat_float(struct nk_context* ctx, char* title, float value);
@@ -58,5 +52,10 @@ void draw_property_float(struct nk_context* ctx, char* title, float* value, floa
 void draw_property_int(struct nk_context* ctx, char* title, int* value, int min, int max, int step, float step_drag);
 
 void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color color);
+
+void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
+void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
+void physics_draw_collisions(const physics_world *world);
+void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx);
 
 #endif

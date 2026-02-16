@@ -150,10 +150,6 @@ void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);
 void physics_reset(physics_world *world);
 
-// void physics_draw_collisions(const physics_world *world);
-// void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
-// void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
-
 void physics_teardown(physics_world* world);
 
 // ====== COLLISION DEBUGGING =======
@@ -212,6 +208,5 @@ typedef struct {
 
 void physics_debug_state_init(collision_debug_state *state);
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
-// void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx);
 
 #endif

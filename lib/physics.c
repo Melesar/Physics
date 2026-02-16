@@ -217,19 +217,6 @@ void physics_reset(physics_world *world) {
   world->collisions->contacts_count = 0;
 }
 
-// void physics_draw_collisions(const physics_world *world) {
-//   count_t count = world->collisions->collisions_count;
-
-//   for (count_t i = 0; i < count; ++i) {
-//     collision c = world->collisions->collisions[i];
-
-//     for (count_t j = 0; j < c.contacts_count; ++j) {
-//       contact contact = world->collisions->contacts[c.contacts_offset + j];
-
-//       draw_arrow(contact.point, contact.normal, RED);
-//     }
-//   }
-// }
 
 void physics_teardown(physics_world* world) {
   #define TEARDOWN_COMMONS(type) \

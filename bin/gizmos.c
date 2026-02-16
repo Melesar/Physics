@@ -1,5 +1,4 @@
 #include "raylib.h"
-#include "gizmos.h"
 #include "core.h"
 
 #include "stdbool.h"
