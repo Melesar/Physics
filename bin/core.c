@@ -1,13 +1,17 @@
 #include "core.h"
+#include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
 #include <float.h>
 #include <limits.h>
+#include <stdio.h>
 
 Mesh arrow_base;
 Mesh arrow_head;
 Material mat;
+
+static void dump_collided_bodies(const physics_world *world, count_t collision_index, char *file_name);
 
 static void begin_debug_row(struct nk_context* ctx) {
   nk_layout_row_begin(ctx, NK_DYNAMIC, 15, 2);
@@ -398,5 +402,65 @@ void physics_draw_debug_widget(const physics_world *world, const collision_debug
     }
   }
 
+  if (nk_button_label(ctx, "Dump collided bodies"))
+    dump_collided_bodies(world, state->current_collision_index, "collision.txt");
+
   nk_end(ctx);
+}
+
+static void fclose_cleanup(FILE **f) {
+  if (f && *f) {
+    fclose(*f);
+    f = NULL;
+  }
+}
+
+static void dump_body(const physics_world *world, FILE *file, count_t body_index) {
+  float mass = 1.0f / world->dynamics.inv_masses[body_index];
+  v3 position = world->dynamics.positions[body_index];
+  v3 velocity = world->dynamics.velocities[body_index];
+  quat rotation = world->dynamics.rotations[body_index];
+  v3 angular_momentum = world->dynamics.angular_momenta[body_index];
+
+  fprintf(file, "  Mass: %.2f\n", mass);
+  fprintf(file, "  Position: (%.2f, %.2f, %.2f)\n", position.x, position.y, position.z);
+  fprintf(file, "  Rotation: (%.2f, %.2f, %.2f, %.2f)\n", rotation.x, rotation.y, rotation.z, rotation.w);
+  fprintf(file, "  Velocity: (%.2f, %.2f, %.2f)\n", velocity.x, velocity.y, velocity.z);
+  fprintf(file, "  Angular momentum: (%.2f, %.2f, %.2f)\n", angular_momentum.x, angular_momentum.y, angular_momentum.z);
+  fprintf(file, "  Shape:\n");
+
+  body_shape shape = world->dynamics.shapes[body_index];
+  switch(shape.type) {
+    case SHAPE_BOX:
+      fprintf(file, "    Box. Size: (%.2f, %.2f, %.2f)\n", shape.box.size.x, shape.box.size.y, shape.box.size.z);
+      break;
+
+    case SHAPE_SPHERE:
+      fprintf(file, "    Sphere. Radius: %.2f\n", shape.sphere.radius);
+      break;
+
+    default:
+      fprintf(file, "    Unknown shape type\n");
+      break;
+  }
+}
+
+static void dump_collided_bodies(const physics_world *world, count_t collision_index, char *file_name) {
+  __attribute__((cleanup(fclose_cleanup))) FILE *file = fopen(file_name, "w");
+  if (!file) {
+    TraceLog(LOG_WARNING, "Failed to open file to dump collided bodies: %s", file_name);
+    return;
+  }
+
+  collision c = world->collisions->collisions[collision_index];
+  fprintf(file, "Body 1:\n");
+
+  dump_body(world, file, c.index_a);
+
+  if (collision_index >= world->collisions->dynamic_collisions_count)
+    return;
+
+  fprintf(file, "\nBody 2:\n");
+
+  dump_body(world, file, c.index_b);
 }
