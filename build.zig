@@ -76,15 +76,13 @@ pub fn build(b: *std.Build) !void {
 
     _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
 
-    const testsModule = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("tests/tests.zig"),
-        .link_libc = true,
-    });
-
     const tests = b.addTest(.{
-        .root_module = testsModule,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .root_source_file = b.path("tests/tests.zig"),
+            .link_libc = true,
+        }),
     });
 
     tests.linkLibrary(lib);
