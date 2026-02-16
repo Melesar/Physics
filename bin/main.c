@@ -36,6 +36,7 @@ static Camera setup_camera(program_config config);
 static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
+static void draw_body_axes(v3 position, quat rotation);
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
@@ -64,6 +65,7 @@ bool show_physics_world_stats = false;
 bool show_physics_config_widget = false;
 bool draw_collisions = false;
 bool collision_debug_mode = false;
+bool draw_gismos = false;
 
 static collision_debug_state debug_state;
 
@@ -181,7 +183,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 4;
+  const int checkbox_count = 5;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
@@ -210,6 +212,10 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       if (cdbg && !collision_debug_mode)
         physics_debug_state_init(&debug_state);
       collision_debug_mode = cdbg != 0;
+
+      nk_bool gismos = draw_gismos ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Draw gismos", &gismos);
+      draw_gismos = gismos != 0;
     }
   }
 
@@ -249,6 +255,9 @@ static void draw_physics_bodies() {
       default:
         break;
     }
+
+    if (draw_gismos)
+      draw_body_axes(position, rotation);
   }
 
   if (!debug_state.active || debug_state.phase == CDBG_IDLE || debug_state.phase == CDBG_DONE)
@@ -256,6 +265,18 @@ static void draw_physics_bodies() {
 
   contact c = world->collisions->contacts[debug_state.current_contact_index];
   draw_arrow(c.point, c.normal, RED);
+}
+
+static void draw_body_axes(v3 position, quat rotation) {
+  const float axis_len = 1.5f;
+
+  v3 x = rotate(((v3){axis_len, 0, 0}), rotation);
+  v3 y = rotate(((v3){0, axis_len, 0}), rotation);
+  v3 z = rotate(((v3){0, 0, axis_len}), rotation);
+
+  draw_arrow(position, x, RED);
+  draw_arrow(position, y, GREEN);
+  draw_arrow(position, z, BLUE);
 }
 
 static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
