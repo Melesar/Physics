@@ -96,8 +96,7 @@ static void fill_point_face_box_box(
   float penetration,
   collisions *collisions) {
 
-  v3 normal = box_b->axis[best_axis];
-
+  v3 normal = box_a->axis[best_axis];
   if (dot(box_a->axis[best_axis], offset) > 0)
     normal = scale(normal, -1);
 

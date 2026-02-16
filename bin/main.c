@@ -37,6 +37,7 @@ static void update_camera(Camera* camera, float deltaTime);
 static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
 static void draw_body_axes(v3 position, quat rotation);
+static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
@@ -66,6 +67,7 @@ bool show_physics_config_widget = false;
 bool draw_collisions = false;
 bool collision_debug_mode = false;
 bool draw_gismos = false;
+bool draw_angular_momenta = false;
 
 static collision_debug_state debug_state;
 
@@ -183,7 +185,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 5;
+  const int checkbox_count = 6;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
@@ -216,6 +218,10 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool gismos = draw_gismos ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Draw gismos", &gismos);
       draw_gismos = gismos != 0;
+
+      nk_bool angular = draw_angular_momenta ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Draw angular momenta", &angular);
+      draw_angular_momenta = angular != 0;
     }
   }
 
@@ -236,6 +242,7 @@ static void draw_physics_bodies() {
     m4 scale;
     v3 position = world->dynamics.positions[i];
     quat rotation = world->dynamics.rotations[i];
+    v3 angular_momentum = world->dynamics.angular_momenta[i];
     body_shape shape = world->dynamics.shapes[i];
 
     m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
@@ -258,13 +265,16 @@ static void draw_physics_bodies() {
 
     if (draw_gismos)
       draw_body_axes(position, rotation);
+
+    if (draw_angular_momenta)
+      draw_body_angular_momentum(position, angular_momentum);
   }
 
   if (!debug_state.active || debug_state.phase == CDBG_IDLE || debug_state.phase == CDBG_DONE)
     return;
 
   contact c = world->collisions->contacts[debug_state.current_contact_index];
-  draw_arrow(c.point, c.normal, RED);
+  draw_arrow(c.point, c.normal,RED);
 }
 
 static void draw_body_axes(v3 position, quat rotation) {
@@ -277,6 +287,21 @@ static void draw_body_axes(v3 position, quat rotation) {
   draw_arrow(position, x, RED);
   draw_arrow(position, y, GREEN);
   draw_arrow(position, z, BLUE);
+}
+
+static void draw_body_angular_momentum(v3 position, v3 angular_momentum) {
+  const float scale_factor = 1.0f;
+  const float max_len = 2.0f;
+
+  v3 v = scale(angular_momentum, scale_factor);
+  float l = len(v);
+  if (l < 0.0001f)
+    return;
+
+  if (l > max_len)
+    v = scale(normalize(v), max_len);
+
+  draw_arrow(position, v, SKYBLUE);
 }
 
 static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
