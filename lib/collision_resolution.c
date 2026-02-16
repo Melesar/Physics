@@ -1,5 +1,6 @@
 #include "physics.h"
 #include "math.h"
+#include "pmath.h"
 
 extern float sleep_threshold;
 
@@ -359,10 +360,9 @@ void resolve_interpenetrations(physics_world *world) {
 
   count_t iterations = 0;
   contact *contact;
+  count_t max_penetration_index = -1;
+  count_t collision_index = -1;
   while (iterations < world->config.max_penentration_iterations) {
-    count_t max_penetration_index = -1;
-    count_t collision_index = -1;
-
     if (!find_worst_penetration(world, &collision_index, &max_penetration_index))
       break;
 
@@ -376,6 +376,15 @@ void resolve_interpenetrations(physics_world *world) {
 
     iterations += 1;
   }
+
+#ifdef DIAGNOSTICS
+  if (find_worst_penetration(world, &collision_index, &max_penetration_index)) {
+    percentiles_track(&world->diagnostics.penetration_depth, world->collisions->contacts[max_penetration_index].depth);
+    world->diagnostics.unresolved_penetrations += 1;
+  } else {
+    percentiles_track(&world->diagnostics.penetration_depth, 0.0);
+  }
+#endif
 }
 
 void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count) {
@@ -443,9 +452,9 @@ void resolve_velocities(physics_world *world, float dt) {
 
   count_t iterations = 0;
   contact *contact;
+  count_t worst_contact_index = -1;
+  count_t worst_collision_index = -1;
   while (iterations < world->config.max_velocity_iterations) {
-    count_t worst_contact_index = -1;
-    count_t worst_collision_index = -1;
     if (!find_worst_velocity(world, &worst_collision_index, &worst_contact_index))
       break;
 
@@ -459,6 +468,16 @@ void resolve_velocities(physics_world *world, float dt) {
 
     iterations += 1;
   }
+
+#ifdef DIAGNOSTICS
+  if (find_worst_velocity(world, &worst_collision_index, &worst_contact_index)) {
+    percentiles_track(&world->diagnostics.velocity_deltas, world->collisions->contacts[worst_contact_index].desired_delta_velocity);
+    world->diagnostics.unresolved_velocities += 1;
+  } else {
+    percentiles_track(&world->diagnostics.velocity_deltas, 0.0);
+  }
+
+#endif
 }
 
 void resolve_collisions(physics_world *world, float dt) {

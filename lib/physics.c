@@ -102,6 +102,15 @@ physics_world* physics_init(const physics_config *config) {
   world->config = *config;
   world->collisions = collisions_init(config);
 
+#ifdef DIAGNOSTICS
+  const count_t percentiles_buffer_size = 1000;
+  world->diagnostics.penetration_depth = percentiles_init(percentiles_buffer_size);
+  world->diagnostics.velocity_deltas = percentiles_init(percentiles_buffer_size);
+  world->diagnostics.unresolved_penetrations = 0;
+  world->diagnostics.unresolved_velocities = 0;
+  world->diagnostics.frames_simulated = 0;
+#endif
+
   return world;
 }
 
@@ -196,6 +205,11 @@ void physics_step(physics_world* world, float dt) {
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
+
+#ifdef DIAGNOSTICS
+  world->diagnostics.frames_simulated += 1;
+#endif
+
  }
 
 void physics_awaken_body(physics_world* world, count_t index) {
@@ -237,6 +251,11 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.motion_avgs);
 
   collisions_teardown(world->collisions);
+
+#ifdef DIAGNOSTICS
+  percentiles_free(world->diagnostics.penetration_depth);
+  percentiles_free(world->diagnostics.velocity_deltas);
+#endif
 
   free(world);
 }

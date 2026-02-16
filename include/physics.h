@@ -11,6 +11,17 @@
 
 typedef uint32_t count_t;
 
+// ======== DIAGNOSTICS ========
+
+typedef struct {
+  percentiles penetration_depth;
+  percentiles velocity_deltas;
+
+  count_t unresolved_penetrations;
+  count_t unresolved_velocities;
+  count_t frames_simulated;
+} diagnostics;
+
 // ====== PHYSICS WORLD =======
 
 typedef enum {
@@ -136,6 +147,10 @@ typedef struct {
   collisions *collisions;
 
   physics_config config;
+
+#ifdef DIAGNOSTICS
+  diagnostics diagnostics;
+#endif
 } physics_world;
 
 physics_config physics_default_config();
@@ -208,5 +223,9 @@ typedef struct {
 
 void physics_debug_state_init(collision_debug_state *state);
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
+
+
+
+
 
 #endif

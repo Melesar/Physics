@@ -1,6 +1,7 @@
 #ifndef PMATH_H
 #define PMATH_H
 
+#include <stdint.h>
 #define RAYMATH_DISABLE_CPP_OPERATORS
 #include "raymath.h"
 
@@ -65,5 +66,17 @@ m3 matrix_from_basis(v3 x, v3 y, v3 z);
 m3 matrix_skew_symmetric(v3 v);
 m3 matrix_initial_inertia(v3 inertia);
 m3 matrix_inertia(m3 initial_inertia, quat rotation);
+
+typedef struct {
+  float *values;
+  uint32_t count;
+  uint32_t size;
+  uint32_t seed[4];
+} percentiles;
+
+percentiles percentiles_init(uint32_t size);
+void percentiles_track(percentiles *p, float value);
+void percentiles_query(percentiles *p, float *p50, float *p75, float *p99);
+void percentiles_free(percentiles p);
 
 #endif

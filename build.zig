@@ -3,14 +3,29 @@ const zcc = @import("compile_commands");
 
 const ResolvedTarget = std.Build.ResolvedTarget;
 
+const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror" };
+
+const Options = struct {
+    diagnostic: bool,
+
+    fn getOptions(b: *std.Build) Options {
+        return .{
+            .diagnostic = b.option(bool, "diagnostic", "Enable diagnostics") orelse true,
+        };
+    }
+};
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const options = Options.getOptions(b);
 
     const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
     const libRootModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
 
-    const flags = &.{ "-g", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O0" };
+    const flags = try compilerFlags(b, options, optimize);
+    defer b.allocator.free(flags);
+
     const librarySources = try collectSources(b, "lib");
     defer b.allocator.free(librarySources);
 
@@ -115,6 +130,37 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
         },
         else => return,
     }
+}
+
+fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+    var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
+    errdefer flags.deinit(b.allocator);
+
+    try flags.appendSlice(b.allocator, COMMON_FLAGS);
+
+    if (options.diagnostic) {
+        try flags.append(b.allocator, "-DDIAGNOSTICS");
+    }
+
+    switch (optimize) {
+        .Debug => {
+            try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG" });
+        },
+
+        .ReleaseSafe => {
+            try flags.appendSlice(b.allocator, &.{"-O2"});
+        },
+
+        .ReleaseFast => {
+            try flags.appendSlice(b.allocator, &.{"-O3"});
+        },
+
+        .ReleaseSmall => {
+            try flags.appendSlice(b.allocator, &.{"-Os"});
+        },
+    }
+
+    return flags.toOwnedSlice(b.allocator);
 }
 
 fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 {
