@@ -2,8 +2,6 @@
 #include "physics.h"
 #include "raylib.h"
 
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 void scenario_initialize(program_config* config, physics_config *physics) {
@@ -15,7 +13,7 @@ void scenario_initialize(program_config* config, physics_config *physics) {
 }
 
 void scenario_setup_scene(physics_world *world) {
-  #define NEW_BOX physics_add_box(world, BODY_DYNAMIC, 3, (v3) { 1, 1, 1 })
+  #define NEW_BOX physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 })
 
   *NEW_BOX.position = (v3) { 0, 0.5, 0 };
 
