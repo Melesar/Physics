@@ -63,14 +63,14 @@ static v3 contact_point(
 ) {
   float len_a = lensq(axis_a);
   float len_b = lensq(axis_b);
-  float dp = dot(point_a, point_b);
+  float dp = dot(axis_a, axis_b);
 
   v3 offset = sub(point_a, point_b);
 
   float dp_a = dot(axis_a, offset);
   float dp_b = dot(axis_b, offset);
 
-  float denom = len_a * len_b - dp_a * dp_b;
+  float denom = len_a * len_b - dp * dp;
 
   if (fabsf(denom) < 0.0001f)
     return use_a ? point_a : point_b;
