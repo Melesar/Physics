@@ -168,6 +168,8 @@ void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
 
+bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape);
+
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);
 void physics_reset(physics_world *world);

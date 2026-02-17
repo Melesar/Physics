@@ -76,6 +76,13 @@ physics_config physics_default_config() {
   };
 }
 
+body_handle make_body_handle(body_type type, count_t index) {
+  return (body_handle) {
+    .type = type,
+    .index = index,
+  };
+}
+
 physics_world* physics_init(const physics_config *config) {
   physics_world* world = malloc(sizeof(physics_world));
 
@@ -178,6 +185,18 @@ body physics_add_box(physics_world *world, body_type type, float mass, v3 size) 
 
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius) {
   return physics_add_body(world, type, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+}
+
+bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape) {
+  body_type type = handle.type;
+  common_data *data = as_common(world, type);
+
+  if (handle.index >= data->count) {
+    return false;
+  }
+
+  *shape = data->shapes[handle.index];
+  return true;
 }
 
 void integrate_bodies(physics_world *world, float dt) {

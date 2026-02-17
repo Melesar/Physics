@@ -49,7 +49,7 @@ extern void scenario_initialize(program_config* config, physics_config *physics_
 extern void scenario_setup_scene(physics_world *world);
 extern void scenario_handle_input(physics_world *world, Camera *camera);
 extern void scenario_simulate(physics_world *world, float dt);
-extern void scenario_draw_scene();
+extern void scenario_draw_scene(physics_world *world);
 extern void scenario_draw_ui(struct nk_context* ctx);
 
 camera_settings cam_settings = {
@@ -345,7 +345,7 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
             physics_draw_collisions(world);
 
           draw_physics_bodies();
-          scenario_draw_scene();
+          scenario_draw_scene(world);
 
           // Draw ground plane
           DrawModel(groundModel, (Vector3){0.0f, 0.0f, 0.0f}, 1.0f, WHITE);
