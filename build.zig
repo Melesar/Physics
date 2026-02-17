@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = libRootModule,
     });
 
-    lib.addIncludePath(b.path("include"));
+    lib.addIncludePath(b.path("lib/include"));
 
     b.installArtifact(lib);
 
@@ -71,7 +71,8 @@ pub fn build(b: *std.Build) !void {
 
         scenario.addIncludePath(raylib.path("src"));
         scenario.addIncludePath(raylib.path("examples"));
-        scenario.addIncludePath(b.path("include"));
+        scenario.addIncludePath(b.path("bin/include"));
+        scenario.addIncludePath(b.path("lib/include"));
 
         linkLibraries(scenario, target);
 
