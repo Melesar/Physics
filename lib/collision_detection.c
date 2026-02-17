@@ -196,7 +196,7 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
     // We use the same algorithm as above, but swap around
     // one and two (and therefore also the vector between their
     // centres).
-    fill_point_face_box_box(&box_a, &box_b, scale(offset, -1), best_axis - 3, penetration, collisions);
+    fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, collisions);
     return 1;
   } else {
     // We've got an edge-edge contact. Find out which axes
