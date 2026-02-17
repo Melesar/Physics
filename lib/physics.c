@@ -29,7 +29,7 @@ static v3 box_inertia(v3 size, float mass) {
   return scale(i, m);
 }
 
-static common_data* as_common(physics_world *world, body_type type) {
+common_data* as_common(physics_world *world, body_type type) {
   switch (type) {
     case BODY_DYNAMIC:
       return (common_data*) &world->dynamics;

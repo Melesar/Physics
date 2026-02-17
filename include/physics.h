@@ -61,11 +61,11 @@ typedef struct {
 } body;
 
 typedef struct {
-  v3 position;
-  quat rotation;
-  body_shape shape;
-  float mass;
-} body_snapshot;
+  v3 point;
+  v3 normal;
+  float distance;
+  body_handle body;
+} raycast_hit;
 
 typedef struct {
   count_t dynamics_capacity;
@@ -171,6 +171,8 @@ body physics_add_sphere(physics_world *world, body_type type, float mass, float 
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);
 void physics_reset(physics_world *world);
+
+count_t physics_raycast(physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
 
 void physics_teardown(physics_world* world);
 
