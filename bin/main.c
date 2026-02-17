@@ -3,6 +3,7 @@
 #include "raymath.h"
 #include "string.h"
 #include "rlgl.h"
+#include "pmath.h"
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
@@ -41,6 +42,7 @@ static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
+static void print_diagnostics(physics_world *world);
 
 extern void scenario_initialize(program_config* config, physics_config *physics_config);
 extern void scenario_setup_scene(physics_world *world);
@@ -146,6 +148,8 @@ int main(int argc, char** argv) {
     deltaTime = GetFrameTime();
   }
 
+  print_diagnostics(world);
+
   physics_teardown(world);
 
   UnloadNuklear(ctx);
@@ -233,6 +237,28 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
     physics_draw_config_widget(world, ctx);
   if (collision_debug_mode)
     physics_draw_debug_widget(world, &debug_state, ctx);
+}
+
+static void print_diagnostics(physics_world *world) {
+#ifdef DIAGNOSTICS
+  diagnostics d = world->diagnostics;
+
+  TraceLog(LOG_INFO, "Physics world diagnostics:");
+
+  float p50, p75, p99;
+  percentiles_query(&d.penetration_depth, &p50, &p75, &p99);
+  TraceLog(LOG_INFO, "Penetration depth percentiles: p50=%f, p75=%f, p99=%f", p50, p75, p99);
+
+  percentiles_query(&d.velocity_deltas, &p50, &p75, &p99);
+  TraceLog(LOG_INFO, "Velocity percentiles: p50=%f, p75=%f, p99=%f", p50, p75, p99);
+
+  float penetrations_percentage = (float) d.unresolved_penetrations / d.frames_simulated * 100.0;
+  float velocities_percentage = (float) d.unresolved_velocities / d.frames_simulated * 100.0;
+  TraceLog(LOG_INFO, "Unresolved penetrations: %.1f %", penetrations_percentage);
+  TraceLog(LOG_INFO, "Unresolved velocities: %.1f %", velocities_percentage);
+#else
+  (void) world;
+#endif
 }
 
 static void draw_physics_bodies() {
