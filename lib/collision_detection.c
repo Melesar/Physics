@@ -190,14 +190,12 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
   if (best_axis < 3) {
     // We've got a vertex of box two on a face of box one.
     fill_point_face_box_box(&box_a, &box_b, offset, best_axis, penetration, collisions);
-    return 1;
   } else if (best_axis < 6) {
     // We've got a vertex of box one on a face of box two.
     // We use the same algorithm as above, but swap around
     // one and two (and therefore also the vector between their
     // centres).
     fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, collisions);
-    return 1;
   } else {
     // We've got an edge-edge contact. Find out which axes
     best_axis -= 6;
@@ -237,17 +235,13 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
       edge_point_b, axis_b, *((float*)&half_size_b + axis_b_index),
       best_single_axis > 2);
 
-
     contact *contact = &collisions->contacts[collisions->contacts_count++];
-
     contact->point = vertex;
     contact->normal = axis;
     contact->depth = penetration;
-
-    return 1;
   }
 
-  return 0;
+  return 1;
 }
 
 #undef CHECK_OVERLAP

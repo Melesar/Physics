@@ -85,6 +85,8 @@ physics_world* physics_init(const physics_config *config) {
     world->type.positions = malloc(sizeof(v3) * cap); \
     world->type.rotations = malloc(sizeof(quat) * cap); \
     world->type.shapes = malloc(sizeof(body_shape) * cap); \
+    world->type.outer_lookup = malloc(sizeof(count_t) * cap); \
+    world->type.inner_lookup = malloc(sizeof(count_t) * cap); \
 
   INIT_COMMONS(dynamics, config->dynamics_capacity);
   INIT_COMMONS(statics, config->statics_capacity);
@@ -103,7 +105,7 @@ physics_world* physics_init(const physics_config *config) {
   world->collisions = collisions_init(config);
 
 #ifdef DIAGNOSTICS
-  const count_t percentiles_buffer_size = 1000;
+  const count_t percentiles_buffer_size = 10000;
   world->diagnostics.penetration_depth = percentiles_init(percentiles_buffer_size);
   world->diagnostics.velocity_deltas = percentiles_init(percentiles_buffer_size);
   world->diagnostics.unresolved_penetrations = 0;
@@ -136,6 +138,8 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
   commons->shapes[index] = shape;
   commons->positions[index] = zero();
   commons->rotations[index] = qidentity();
+  commons->outer_lookup[index] = index;
+  commons->inner_lookup[index] = index;
 
   if (type == BODY_DYNAMIC) {
     world->dynamics.inv_masses[index] = 1.0 / mass;
@@ -236,7 +240,9 @@ void physics_teardown(physics_world* world) {
   #define TEARDOWN_COMMONS(type) \
     free(world->type.positions); \
     free(world->type.rotations); \
-    free(world->type.shapes);
+    free(world->type.shapes); \
+    free(world->type.outer_lookup); \
+    free(world->type.inner_lookup);
 
   TEARDOWN_COMMONS(dynamics);
   TEARDOWN_COMMONS(statics);
@@ -349,6 +355,11 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
   SWAP(m3, inv_inertia_tensors)
   SWAP(m3, inv_intertias)
   SWAP(float, motion_avgs)
+
+  SWAP(count_t, inner_lookup)
+
+  world->dynamics.outer_lookup[world->dynamics.inner_lookup[index_b]] = index_b;
+  world->dynamics.outer_lookup[world->dynamics.inner_lookup[index_a]] = index_a;
 
   #undef SWAP
 }

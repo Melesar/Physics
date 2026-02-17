@@ -4,6 +4,7 @@
 #include "string.h"
 #include "rlgl.h"
 #include "pmath.h"
+#include <stdlib.h>
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
@@ -266,10 +267,11 @@ static void draw_physics_bodies() {
 
   for (size_t i = 0; i < dynamic_count; ++i) {
     m4 scale;
-    v3 position = world->dynamics.positions[i];
-    quat rotation = world->dynamics.rotations[i];
-    v3 angular_momentum = world->dynamics.angular_momenta[i];
-    body_shape shape = world->dynamics.shapes[i];
+    count_t index = world->dynamics.outer_lookup[i];
+    v3 position = world->dynamics.positions[index];
+    quat rotation = world->dynamics.rotations[index];
+    v3 angular_momentum = world->dynamics.angular_momenta[index];
+    body_shape shape = world->dynamics.shapes[index];
 
     m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[i % 20];

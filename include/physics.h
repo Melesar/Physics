@@ -49,6 +49,11 @@ typedef enum {
 } body_type;
 
 typedef struct {
+  count_t type: 1;
+  count_t index: 31;
+} body_handle;
+
+typedef struct {
   v3* position;
   quat* rotation;
   v3* velocity;
@@ -116,7 +121,9 @@ typedef struct {
   count_t count; \
   v3* positions; \
   quat* rotations; \
-  body_shape* shapes;
+  body_shape* shapes; \
+  count_t *outer_lookup; \
+  count_t *inner_lookup;
 
 typedef struct {
   COMMON_FIELDS
@@ -223,9 +230,5 @@ typedef struct {
 
 void physics_debug_state_init(collision_debug_state *state);
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
-
-
-
-
 
 #endif
