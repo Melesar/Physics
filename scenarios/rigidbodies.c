@@ -43,16 +43,16 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     physics_awaken_body(world, world->dynamics.count - 1);
   }
 
-  if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-    v3 direction = normalize(sub(cam->target, cam->position));
+  // if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+  //   v3 direction = normalize(sub(cam->target, cam->position));
 
-    body ball = physics_add_sphere(world, BODY_DYNAMIC, 3, 0.7);
-    *ball.position = add(cam->position, direction);
+  //   body ball = physics_add_sphere(world, BODY_DYNAMIC, 3, 0.7);
+  //   *ball.position = add(cam->position, direction);
 
-    count_t index = world->dynamics.count - 1;
-    world->dynamics.impulses[index] = scale(direction, 70);
-    physics_awaken_body(world, index);
-  }
+  //   count_t index = world->dynamics.count - 1;
+  //   world->dynamics.impulses[index] = scale(direction, 70);
+  //   physics_awaken_body(world, index);
+  // }
 }
 
 void scenario_draw_scene(physics_world *world) {

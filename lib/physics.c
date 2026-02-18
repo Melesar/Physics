@@ -6,8 +6,10 @@
 #include <string.h>
 #include "assert.h"
 
+const float min_velocity_threshold = 0.07f;
+const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
 const float sleep_threshold = 0.1f;
-const float rwa_base_bias = 0.7f;
+const float rwa_base_bias = 0.3f;
 
 // static v3 cylinder_inertia(float radius, float height, float mass) {
 //   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -67,7 +69,7 @@ physics_config physics_default_config() {
     .statics_capacity = 8,
     .collisions_capacity = 64,
     .linear_damping = 0.997,
-    .angular_damping = 0.997,
+    .angular_damping = 0.99,
     .restitution = 0.3,
     .friction = 0.3,
     .max_penentration_iterations = 10,
@@ -325,8 +327,8 @@ bool physics_get_motion_avg(physics_world *world, body_handle handle, float *mot
 
 void integrate_bodies(physics_world *world, float dt) {
   v3 gravity_acc = scale(world->config.gravity, dt);
-  float linear_damping = powf(world->config.linear_damping, dt);
-  float angular_damping = powf(world->config.angular_damping, dt);
+  float linear_damping = world->config.linear_damping;
+  float angular_damping = world->config.angular_damping;
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
@@ -352,16 +354,21 @@ void integrate_bodies(physics_world *world, float dt) {
 
     v3 omega = matrix_rotate(angular_momentum, inertia);
 
-    quat q_omega = { omega.x, omega.y, omega.z, 0 };
-    quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-    quat q_orientation = qadd(rotation, dq);
-    rotation = qnormalize(q_orientation);
+    if (lensq(omega) > min_velocity_threshold_sqr) {
+      quat q_omega = { omega.x, omega.y, omega.z, 0 };
+      quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
+      quat q_orientation = qadd(rotation, dq);
+      rotation = qnormalize(q_orientation);
+    }
 
     dynamics->accelerations[i] = acceleration;
     dynamics->velocities[i] = velocity;
     dynamics->angular_momenta[i] = angular_momentum;
     dynamics->rotations[i] = rotation;
-    dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
+
+    if (lensq(velocity) > min_velocity_threshold_sqr) {
+      dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
+    }
   }
 }
 
