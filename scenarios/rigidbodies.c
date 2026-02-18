@@ -21,20 +21,11 @@ void scenario_setup_scene(physics_world *world) {
 
   *NEW_BOX.position = (v3) { 0, 0.5, 0 };
 
-  // for (int i = -1; i <= 1; ++i) {
-  //   for (int j = -1; j <= 1; ++j) {
-  //     *NEW_BOX.position = (v3) { i, 0.5f, j };
-  //   }
-  // }
+  body big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
+  *big_box.position = (v3) { 0, 1.5, -5 };
 
-  // for (int i = -1; i <= 1; ++i) {
-  //   *NEW_BOX.position = (v3) { i, 1.5f, -1 };
-  // }
-
-  // *NEW_BOX.position = (v3) { -1, 1.5f, 0 };
-  // *NEW_BOX.position = (v3) { 1, 1.5f, 0 };
-
-  // *NEW_BOX.position = (v3) { 0, 2.5f, -1 };
+  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1, 3, 10 });
+  *big_box.position = (v3) { -7, 1.5, 0 };
 
   #undef NEW_BOX
 }
@@ -53,6 +44,17 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
     *big_box.angular_momentum = (v3) { 1, 1, 1 };
 
     physics_awaken_body(world, world->dynamics.count - 1);
+  }
+
+  if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    v3 direction = normalize(sub(cam->target, cam->position));
+
+    body ball = physics_add_sphere(world, BODY_DYNAMIC, 3, 0.7);
+    *ball.position = add(cam->position, direction);
+
+    count_t index = world->dynamics.count - 1;
+    world->dynamics.impulses[index] = scale(direction, 70);
+    physics_awaken_body(world, index);
   }
 }
 

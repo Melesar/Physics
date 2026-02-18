@@ -357,16 +357,16 @@ static void print_diagnostics(physics_world *world) {
 #endif
 }
 
-static void draw_physics_bodies() {
-  size_t dynamic_count = world->dynamics.count;
+static void draw_physics_bodies_type(body_type type) {
+  common_data *data = type == BODY_DYNAMIC ? (common_data*) &world->dynamics : &world->statics;
+  size_t count = data->count;
 
-  for (size_t i = 0; i < dynamic_count; ++i) {
+  for (size_t i = 0; i < count; ++i) {
     m4 scale;
-    count_t index = world->dynamics.outer_lookup[i];
-    v3 position = world->dynamics.positions[index];
-    quat rotation = world->dynamics.rotations[index];
-    v3 angular_momentum = world->dynamics.angular_momenta[index];
-    body_shape shape = world->dynamics.shapes[index];
+    count_t index = data->outer_lookup[i];
+    v3 position = data->positions[index];
+    quat rotation = data->rotations[index];
+    body_shape shape = data->shapes[index];
 
     m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[i % 20];
@@ -385,6 +385,19 @@ static void draw_physics_bodies() {
       default:
         break;
     }
+  }
+}
+
+static void draw_physics_bodies() {
+  draw_physics_bodies_type(BODY_DYNAMIC);
+  draw_physics_bodies_type(BODY_STATIC);
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  for(count_t i = 0; i < dynamics->count; ++i) {
+    count_t index = dynamics->outer_lookup[i];
+    v3 position = dynamics->positions[index];
+    quat rotation = dynamics->rotations[index];
+    v3 angular_momentum = dynamics->angular_momenta[index];
 
     if (draw_gismos)
       draw_body_axes(position, rotation);

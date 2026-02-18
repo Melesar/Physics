@@ -14,10 +14,10 @@ const float rwa_base_bias = 0.7f;
 //   return (v3){ principal, mass * radius * radius / 2.0, principal };
 // }
 
-// static v3 sphere_inertia(float radius, float mass) {
-//   float scale = 2.0 * mass * radius * radius / 5.0;
-//   return scale(one(), scale);
-// }
+static v3 sphere_inertia(float radius, float mass) {
+  float scale = 2.0 * mass * radius * radius / 5.0;
+  return scale(one(), scale);
+}
 
 static v3 box_inertia(v3 size, float mass) {
   float m = mass / 12;
@@ -180,16 +180,20 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     world->dynamics.angular_impulses[index] = zero();
     world->dynamics.accelerations[index] = zero();
 
-    m3 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
+    v3 inertia_vector = one();
     switch (shape.type) {
       case SHAPE_BOX:
-        *inv_inertia_tensor = matrix_initial_inertia(invert(box_inertia(shape.box.size, mass)));
+        inertia_vector = box_inertia(shape.box.size, mass);
+        break;
+
+      case SHAPE_SPHERE:
+        inertia_vector = sphere_inertia(shape.sphere.radius, mass);
         break;
 
       default:
-        *inv_inertia_tensor = matrix_identity();
         break;
     }
+    world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia_vector));
   }
 
   return (body) {
@@ -379,7 +383,12 @@ void physics_awaken_body(physics_world* world, count_t index) {
   if (index < dynamics->awake_count || index >= dynamics->count)
     return;
 
-  dynamics->motion_avgs[index] = 2.0 * sleep_threshold;
+  count_t target_index = dynamics->awake_count > 0 ? dynamics->awake_count - 1 : 0;
+  if (index != target_index)
+    swap_bodies(world, index, target_index);
+
+  dynamics->motion_avgs[target_index] = 2.0 * sleep_threshold;
+  dynamics->awake_count += 1;
 }
 
 void physics_reset(physics_world *world) {
