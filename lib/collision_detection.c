@@ -1,4 +1,5 @@
 #include "physics.h"
+#include "pmath.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -471,19 +472,45 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
       body_shape shape_a = dynamics->shapes[i];
       body_shape shape_b = statics->shapes[j];
 
-      if (shape_b.type == SHAPE_PLANE) {
-        switch (shape_a.type) {
-          case SHAPE_BOX:
-            box_plane_collision(collisions, i, j, dynamics, statics);
-            break;
+      switch(shape_b.type) {
+        case SHAPE_PLANE:
+          switch(shape_a.type) {
+            case SHAPE_BOX:
+              box_plane_collision(collisions, i, j, dynamics, statics);
+              break;
 
-          case SHAPE_SPHERE:
-            sphere_plane_collision(collisions, i, j, dynamics, statics);
-            break;
+            case SHAPE_SPHERE:
+              sphere_plane_collision(collisions, i, j, dynamics, statics);
+              break;
 
-          default:
-            break;
-        }
+            default:
+              break;
+          }
+          break;
+
+        case SHAPE_BOX:
+          switch(shape_a.type) {
+            case SHAPE_BOX:
+              box_box_collision(collisions, i, j, dynamics, statics);
+              break;
+
+            case SHAPE_SPHERE:
+              if (box_sphere_collision(collisions, j, i, statics, dynamics)) {
+                collision *collision = &collisions->collisions[collisions->collisions_count - 1];
+                collision->index_a = i;
+
+                contact *contact = &collisions->contacts[collision->contacts_offset];
+                contact->normal = negate(contact->normal);
+              }
+              break;
+
+            default:
+              break;
+          }
+          break;
+
+        default:
+          break;
       }
     }
   }
