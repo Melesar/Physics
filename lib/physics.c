@@ -62,6 +62,7 @@ extern void collisions_teardown(collisions *collisions);
 
 physics_config physics_default_config() {
   return (physics_config) {
+    .gravity = (v3) { 0, -9.81f, 0 },
     .dynamics_capacity = 32,
     .statics_capacity = 8,
     .collisions_capacity = 64,
@@ -319,7 +320,7 @@ bool physics_get_motion_avg(physics_world *world, body_handle handle, float *mot
 }
 
 void integrate_bodies(physics_world *world, float dt) {
-  v3 gravity_acc = scale(GRAVITY_V, dt);
+  v3 gravity_acc = scale(world->config.gravity, dt);
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);
 

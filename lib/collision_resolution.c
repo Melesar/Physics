@@ -7,25 +7,16 @@ extern float sleep_threshold;
 void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
   collision collision = world->collisions->collisions[collision_index];
   count_t awake_count = world->dynamics.awake_count;
+  count_t body_count = collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
+  count_t body_ids[2] = { collision.index_a, collision.index_b };
 
-  // TODO: revisit this when there are other external forces than gravity.
-  float gravity_multiplier;
-  bool is_static_collision = collision_index >= world->collisions->dynamic_collisions_count;
-  bool awake_a = collision.index_a < awake_count;
-  bool awake_b = collision.index_b < awake_count;
-  if (is_static_collision) {
-    gravity_multiplier = 1.0;
-  } else if (awake_a && awake_b) {
-    gravity_multiplier = 0;
-  } else if (awake_a && !awake_b) {
-    gravity_multiplier = 1.0;
-  } else if (!awake_a && awake_b) {
-    gravity_multiplier = -1.0;
-  } else {
-    gravity_multiplier = 0;
+  v3 accelerations[2] = { 0 };
+  for(count_t k = 0; k < body_count; k++) {
+    if (body_ids[k] < awake_count)
+      accelerations[k] = world->dynamics.accelerations[body_ids[k]];
   }
 
-  float acceleration_velocity = gravity_multiplier * dot(GRAVITY_V, contact->normal) * dt;
+  float acceleration_velocity = dot(sub(accelerations[0], accelerations[1]), contact->normal) * dt;
   float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? world->config.restitution : 0.0f;
   float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 
@@ -89,12 +80,12 @@ void prepare_contacts(physics_world *world, float dt) {
         contact->relative_position[k] = sub(contact->point, dynamics->positions[body_ids[k]]);
       }
 
-      v3 acceleration_velocity = scale(GRAVITY_V, dt);
-      acceleration_velocity = matrix_rotate(acceleration_velocity, world_to_contact);
-      acceleration_velocity.y = 0;
-
       v3 local_velocity[2] = { 0 };
       for (count_t k = 0; k < body_count; ++k) {
+        v3 acceleration_velocity = scale(dynamics->accelerations[body_ids[k]], dt);
+        acceleration_velocity = matrix_rotate(acceleration_velocity, world_to_contact);
+        acceleration_velocity.y = 0;
+
         v3 vel = add(dynamics->velocities[body_ids[k]], cross(angular_velocity[k], contact->relative_position[k]));
         vel = matrix_rotate(vel, world_to_contact);
         local_velocity[k] = add(vel, acceleration_velocity);

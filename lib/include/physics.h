@@ -6,9 +6,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define GRAVITY 9.81f
-#define GRAVITY_V (v3) { 0, -9.81f, 0 }
-
 typedef uint32_t count_t;
 
 // ======== DIAGNOSTICS ========
@@ -68,6 +65,8 @@ typedef struct {
 } raycast_hit;
 
 typedef struct {
+  v3 gravity;
+
   count_t dynamics_capacity;
   count_t statics_capacity;
   count_t collisions_capacity;
