@@ -27,7 +27,7 @@ static m3 contact_space_transform(const contact *contact) {
   v3 y_axis = contact->normal;
   v3 x_axis, z_axis;
 
-  if (fabsf(y_axis.y) > fabsf(y_axis.z)) {
+  if (fabsf(y_axis.z - 1) < 0.001f || fabsf(y_axis.y) > fabsf(y_axis.z)) {
     // Take (1, 0, 0) as initial guess
     const float s = 1.0 / sqrtf(y_axis.y * y_axis.y + y_axis.z * y_axis.z);
 
