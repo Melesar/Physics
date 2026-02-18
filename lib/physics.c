@@ -1,4 +1,5 @@
 #include "physics.h"
+#include "pmath.h"
 #include "stdlib.h"
 #include <math.h>
 #include <stdlib.h>
@@ -7,7 +8,6 @@
 
 const float sleep_threshold = 0.1f;
 const float rwa_base_bias = 0.7f;
-
 
 // static v3 cylinder_inertia(float radius, float height, float mass) {
 //   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -76,11 +76,15 @@ physics_config physics_default_config() {
   };
 }
 
-body_handle make_body_handle(body_type type, count_t index) {
+body_handle make_body_handle(const physics_world *world, body_type type, count_t index) {
   return (body_handle) {
     .type = type,
-    .index = index,
+    .index = type == BODY_DYNAMIC ? world->dynamics.inner_lookup[index] : index,
   };
+}
+
+count_t handle_to_inner_index(const physics_world *world, body_handle handle) {
+  return handle.type == BODY_DYNAMIC ? world->dynamics.outer_lookup[handle.index] : handle.index;
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -191,11 +195,56 @@ bool physics_get_shape(physics_world *world, body_handle handle, body_shape *sha
   body_type type = handle.type;
   common_data *data = as_common(world, type);
 
-  if (handle.index >= data->count) {
+  if (handle.index >= data->count)
     return false;
-  }
 
   *shape = data->shapes[handle.index];
+  return true;
+}
+
+bool physics_get_velocity(physics_world *world, body_handle handle, v3 *velocity) {
+  if (handle.type != BODY_DYNAMIC) {
+    *velocity = zero();
+    return true;
+  }
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (handle.index >= dynamics->count)
+    return false;
+
+  *velocity = dynamics->velocities[handle_to_inner_index(world, handle)];
+  return true;
+}
+
+bool physics_get_angular_velocity(physics_world *world, body_handle handle, v3 *angular_velocity) {
+  if (handle.type != BODY_DYNAMIC) {
+    *angular_velocity = zero();
+    return true;
+  }
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (handle.index >= dynamics->count)
+    return false;
+
+  count_t index = handle_to_inner_index(world, handle);
+  v3 angular_momentum = dynamics->angular_momenta[index];
+  m3 inv_inertia = dynamics->inv_intertias[index];
+
+  *angular_velocity = matrix_rotate(angular_momentum, inv_inertia);
+  return true;
+}
+
+bool physics_get_motion_avg(physics_world *world, body_handle handle, float *motion_avg) {
+  if (handle.type != BODY_DYNAMIC) {
+    *motion_avg = 0.0f;
+    return true;
+  }
+
+  dynamic_bodies *dynamics = &world->dynamics;
+  if (handle.index >= dynamics->count)
+    return false;
+
+  *motion_avg = dynamics->motion_avgs[handle_to_inner_index(world, handle)];
   return true;
 }
 

@@ -169,6 +169,9 @@ body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
 
 bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape);
+bool physics_get_velocity(physics_world *world, body_handle handle, v3 *velocity);
+bool physics_get_angular_velocity(physics_world *world, body_handle handle, v3 *angular_velocity);
+bool physics_get_motion_avg(physics_world *world, body_handle handle, float *motion_avg);
 
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, count_t index);

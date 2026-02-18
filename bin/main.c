@@ -5,6 +5,7 @@
 #include "rlgl.h"
 #include "pmath.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 #define RLIGHTS_IMPLEMENTATION
 #include "shaders/rlights.h"
@@ -43,6 +44,7 @@ static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
 static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
+static void draw_ui_widget_observe_body(struct nk_context* ctx);
 static void print_diagnostics(physics_world *world);
 
 extern void scenario_initialize(program_config* config, physics_config *physics_config);
@@ -71,6 +73,16 @@ bool draw_collisions = false;
 bool collision_debug_mode = false;
 bool draw_gismos = false;
 bool draw_angular_momenta = false;
+bool observe_body_mode = false;
+
+typedef struct {
+  bool has_hit;
+  body_handle handle;
+  body_shape shape;
+  bool is_dynamic;
+} observed_body_state;
+
+static observed_body_state observed_body = {0};
 
 static collision_debug_state debug_state;
 
@@ -183,6 +195,23 @@ static void process_inputs(physics_world *world, Camera* camera) {
 
   if (!edit_mode)
     scenario_handle_input(world, camera);
+
+  if (observe_body_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    Ray ray = GetScreenToWorldRay(GetMousePosition(), *camera);
+    v3 origin = { ray.position.x, ray.position.y, ray.position.z };
+    v3 direction = { ray.direction.x, ray.direction.y, ray.direction.z };
+
+    raycast_hit hit;
+    count_t hit_count = physics_raycast(world, origin, direction, 1000.0f, 1, &hit);
+    if (hit_count > 0) {
+      observed_body.has_hit = true;
+      observed_body.handle = hit.body;
+      observed_body.is_dynamic = (hit.body.type == BODY_DYNAMIC);
+      physics_get_shape(world, hit.body, &observed_body.shape);
+    } else {
+      observed_body.has_hit = false;
+    }
+  }
 }
 
 static void draw_ui_widget_controls(struct nk_context* ctx) {
@@ -190,7 +219,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   const float row_height = 18.0f;
   const float window_width = 220.0f;
-  const int checkbox_count = 6;
+  const int checkbox_count = 7;
 
   float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
   float padding_y = ctx->style.window.padding.y;
@@ -227,6 +256,11 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool angular = draw_angular_momenta ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Draw angular momenta", &angular);
       draw_angular_momenta = angular != 0;
+
+      nk_bool observe = observe_body_mode ? nk_true : nk_false;
+      nk_checkbox_label(ctx, "Observe body", &observe);
+      if (!observe) observed_body.has_hit = false;
+      observe_body_mode = observe != 0;
     }
   }
 
@@ -238,6 +272,67 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
     physics_draw_config_widget(world, ctx);
   if (collision_debug_mode)
     physics_draw_debug_widget(world, &debug_state, ctx);
+  if (observe_body_mode)
+    draw_ui_widget_observe_body(ctx);
+}
+
+static void draw_ui_widget_observe_body(struct nk_context* ctx) {
+  static const char* window_name = "ui_widget_observe_body";
+
+  const float row_height = 18.0f;
+  const float window_width = 260.0f;
+
+  int row_count = 1; // "No body selected" or shape line
+  if (observed_body.has_hit && observed_body.is_dynamic)
+    row_count += 5; // velocity, |velocity|, angular velocity, |angular velocity|, motion avg
+
+  float header_height = ctx->style.font->height + ctx->style.window.header.padding.y * 2.0f;
+  float padding_y = ctx->style.window.padding.y;
+  float spacing_y = ctx->style.window.spacing.y;
+  float window_height = header_height + (padding_y * 2.0f) + (row_height * row_count) + (spacing_y * (row_count - 1)) + 10.0f;
+
+  if (nk_begin_titled(ctx, window_name, "Observe body", nk_rect(20, 300, window_width, window_height), NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_MINIMIZABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_TITLE)) {
+    if (!nk_window_is_collapsed(ctx, window_name)) {
+      nk_window_set_size(ctx, window_name, nk_vec2(window_width, window_height));
+      nk_layout_row_dynamic(ctx, row_height, 1);
+
+      if (!observed_body.has_hit) {
+        nk_label(ctx, "No body selected", NK_TEXT_LEFT);
+      } else {
+        char buf[128];
+
+        const char *shape_name;
+        switch (observed_body.shape.type) {
+          case SHAPE_BOX:    shape_name = "Box";    break;
+          case SHAPE_SPHERE: shape_name = "Sphere"; break;
+          case SHAPE_PLANE:  shape_name = "Plane";  break;
+          default:           shape_name = "Unknown";
+        }
+        snprintf(buf, sizeof(buf), "Shape: %s", shape_name);
+        nk_label(ctx, buf, NK_TEXT_LEFT);
+
+        if (observed_body.is_dynamic) {
+          v3 vel = {0}, av = {0};
+          physics_get_velocity(world, observed_body.handle, &vel);
+          physics_get_angular_velocity(world, observed_body.handle, &av);
+          snprintf(buf, sizeof(buf), "Velocity: (%.2f, %.2f, %.2f)", vel.x, vel.y, vel.z);
+          nk_label(ctx, buf, NK_TEXT_LEFT);
+          snprintf(buf, sizeof(buf), "  |velocity|: %.2f", len(vel));
+          nk_label(ctx, buf, NK_TEXT_LEFT);
+          snprintf(buf, sizeof(buf), "Ang. vel: (%.2f, %.2f, %.2f)", av.x, av.y, av.z);
+          nk_label(ctx, buf, NK_TEXT_LEFT);
+          snprintf(buf, sizeof(buf), "  |ang. vel|: %.2f", len(av));
+          nk_label(ctx, buf, NK_TEXT_LEFT);
+          float motion_avg = 0;
+          physics_get_motion_avg(world, observed_body.handle, &motion_avg);
+          snprintf(buf, sizeof(buf), "Motion avg: %.4f", motion_avg);
+          nk_label(ctx, buf, NK_TEXT_LEFT);
+        }
+      }
+    }
+  }
+
+  nk_end(ctx);
 }
 
 static void print_diagnostics(physics_world *world) {

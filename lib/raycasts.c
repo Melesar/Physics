@@ -4,7 +4,7 @@
 #include <math.h>
 
 extern common_data* as_common(physics_world *world, body_type type);
-extern body_handle make_body_handle(body_type type, count_t index);
+extern body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
 
 static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation, raycast_hit *hit) {
   v3 half = scale(size, 0.5f);
@@ -128,7 +128,7 @@ static count_t raycast_bodies(physics_world *world, body_type type, v3 origin, v
     }
 
     if (num_hits > prev_count) {
-      hit->body = make_body_handle(type, i);
+      hit->body = make_body_handle(world, type, i);
     }
 
     if (num_hits >= max_hits) {
