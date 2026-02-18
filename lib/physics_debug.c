@@ -1,6 +1,7 @@
 #include "physics.h"
 #include "string.h"
 
+extern void clear_forces(physics_world *world);
 extern void integrate_bodies(physics_world *world, float dt);
 extern void prepare_contacts(physics_world *world, float dt);
 extern void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
@@ -163,6 +164,8 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
     case CDBG_DONE: {
       // All done — finish the frame
       update_awake_statuses(world, state->dt);
+      clear_forces(world);
+
       state->active = false;
       state->phase = CDBG_IDLE;
       state->needs_integration = true;

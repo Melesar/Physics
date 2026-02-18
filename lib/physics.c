@@ -45,6 +45,7 @@ common_data* as_common(physics_world *world, body_type type) {
 // static void move_body(physics_world *world, count_t src_index, count_t dst_index);
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
 
+extern void clear_forces(physics_world *world);
 extern void update_awake_statuses(physics_world *world, float dt);
 extern void prepare_contacts(physics_world *world, float dt);
 extern void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
@@ -104,12 +105,22 @@ physics_world* physics_init(const physics_config *config) {
 
   #undef INIT_COMMONS
 
-  world->dynamics.inv_masses = malloc(sizeof(float) * config->dynamics_capacity);
-  world->dynamics.velocities = malloc(sizeof(v3) * config->dynamics_capacity);
-  world->dynamics.angular_momenta = malloc(sizeof(v3) * config->dynamics_capacity);
-  world->dynamics.inv_inertia_tensors = malloc(sizeof(m3) * config->dynamics_capacity);
-  world->dynamics.inv_intertias = malloc(sizeof(m3) * config->dynamics_capacity);
-  world->dynamics.motion_avgs = malloc(sizeof(float) * config->dynamics_capacity);
+  const count_t vectors = sizeof(v3) * config->dynamics_capacity;
+  const count_t floats = sizeof(float) * config->dynamics_capacity;
+  const count_t matrices = sizeof(m3) * config->dynamics_capacity;
+
+  world->dynamics.forces = malloc(vectors);
+  world->dynamics.torques = malloc(vectors);
+  world->dynamics.impulses = malloc(vectors);
+  world->dynamics.angular_impulses = malloc(vectors);
+  world->dynamics.accelerations = malloc(vectors);
+
+  world->dynamics.inv_masses = malloc(floats);
+  world->dynamics.velocities = malloc(vectors);
+  world->dynamics.angular_momenta = malloc(vectors);
+  world->dynamics.inv_inertia_tensors = malloc(matrices);
+  world->dynamics.inv_intertias = malloc(matrices);
+  world->dynamics.motion_avgs = malloc(floats);
   world->dynamics.awake_count = 0;
 
   world->config = *config;
@@ -136,6 +147,11 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     commons->shapes = realloc(commons->shapes, sizeof(body_shape) * commons->capacity);
 
     if (type == BODY_DYNAMIC) {
+      world->dynamics.forces = realloc(world->dynamics.forces, sizeof(v3) * commons->capacity);
+      world->dynamics.torques = realloc(world->dynamics.torques, sizeof(v3) * commons->capacity);
+      world->dynamics.impulses = realloc(world->dynamics.impulses, sizeof(v3) * commons->capacity);
+      world->dynamics.angular_impulses = realloc(world->dynamics.angular_impulses, sizeof(v3) * commons->capacity);
+
       world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
       world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * commons->capacity);
       world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * commons->capacity);
@@ -157,6 +173,11 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     world->dynamics.velocities[index] = zero();
     world->dynamics.angular_momenta[index] = zero();
     world->dynamics.motion_avgs[index] = 0;
+    world->dynamics.forces[index] = zero();
+    world->dynamics.torques[index] = zero();
+    world->dynamics.impulses[index] = zero();
+    world->dynamics.angular_impulses[index] = zero();
+    world->dynamics.accelerations[index] = zero();
 
     m3 *inv_inertia_tensor = &world->dynamics.inv_inertia_tensors[index];
     switch (shape.type) {
@@ -190,6 +211,55 @@ body physics_add_box(physics_world *world, body_type type, float mass, v3 size) 
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius) {
   return physics_add_body(world, type, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
 }
+
+void physics_apply_force(physics_world *world, body_handle handle, v3 force) {
+  if (handle.type != BODY_DYNAMIC)
+    return;
+
+  count_t index = handle_to_inner_index(world, handle);
+  v3 prev_force = world->dynamics.forces[index];
+
+  world->dynamics.forces[index] = add(prev_force, force);
+}
+
+void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position) {
+  if (handle.type != BODY_DYNAMIC)
+    return;
+
+  count_t index = handle_to_inner_index(world, handle);
+  v3 prev_force = world->dynamics.forces[index];
+  v3 prev_torque = world->dynamics.torques[index];
+
+  v3 torque = cross(position, force);
+
+  world->dynamics.forces[index] = add(prev_force, force);
+  world->dynamics.torques[index] = add(prev_torque, torque);
+}
+
+void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse) {
+  if (handle.type != BODY_DYNAMIC)
+    return;
+
+  count_t index = handle_to_inner_index(world, handle);
+  v3 prev_impulse = world->dynamics.impulses[index];
+
+  world->dynamics.impulses[index] = add(prev_impulse, impulse);
+}
+
+void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impulse, v3 position) {
+  if (handle.type != BODY_DYNAMIC)
+    return;
+
+  count_t index = handle_to_inner_index(world, handle);
+  v3 prev_force = world->dynamics.impulses[index];
+  v3 prev_angular_impulse = world->dynamics.angular_impulses[index];
+
+  v3 angular_impulse = cross(position, impulse);
+
+  world->dynamics.impulses[index] = add(prev_force, impulse);
+  world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
+}
+
 
 bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape) {
   body_type type = handle.type;
@@ -255,20 +325,38 @@ void integrate_bodies(physics_world *world, float dt) {
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
-    dynamics->velocities[i] = add(dynamics->velocities[i], gravity_acc);
-    dynamics->velocities[i] = scale(dynamics->velocities[i], linear_damping);
-    dynamics->angular_momenta[i] = scale(dynamics->angular_momenta[i], angular_damping);
+    float inv_mass = dynamics->inv_masses[i];
+
+    v3 acceleration = scale(dynamics->forces[i], inv_mass * dt);
+    acceleration = add(acceleration, scale(dynamics->impulses[i], inv_mass));
+    acceleration = add(acceleration, gravity_acc);
+
+    v3 velocity = dynamics->velocities[i];
+    velocity = add(velocity, acceleration);
+    velocity = scale(velocity, linear_damping);
 
     quat rotation = dynamics->rotations[i];
     m3 inertia = matrix_inertia(dynamics->inv_inertia_tensors[i], rotation);
-    v3 omega = matrix_rotate(dynamics->angular_momenta[i], inertia);
+
+    v3 momentum_delta = scale(dynamics->torques[i], dt);
+    momentum_delta = add(momentum_delta, dynamics->angular_impulses[i]);
+
+    v3 angular_momentum = dynamics->angular_momenta[i];
+    angular_momentum = add(angular_momentum, momentum_delta);
+    angular_momentum = scale(angular_momentum, angular_damping);
+
+    v3 omega = matrix_rotate(angular_momentum, inertia);
 
     quat q_omega = { omega.x, omega.y, omega.z, 0 };
     quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
     quat q_orientation = qadd(rotation, dq);
+    rotation = qnormalize(q_orientation);
 
-    dynamics->rotations[i] = qnormalize(q_orientation);
-    dynamics->positions[i] = add(dynamics->positions[i], scale(dynamics->velocities[i], dt));
+    dynamics->accelerations[i] = acceleration;
+    dynamics->velocities[i] = velocity;
+    dynamics->angular_momenta[i] = angular_momentum;
+    dynamics->rotations[i] = rotation;
+    dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
   }
 }
 
@@ -277,6 +365,7 @@ void physics_step(physics_world* world, float dt) {
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
+  clear_forces(world);
 
 #ifdef DIAGNOSTICS
   world->diagnostics.frames_simulated += 1;
@@ -317,6 +406,12 @@ void physics_teardown(physics_world* world) {
 
   #undef TEARDOWN_COMMONS
 
+  free(world->dynamics.forces);
+  free(world->dynamics.torques);
+  free(world->dynamics.impulses);
+  free(world->dynamics.angular_impulses);
+  free(world->dynamics.accelerations);
+
   free(world->dynamics.inv_masses);
   free(world->dynamics.velocities);
   free(world->dynamics.angular_momenta);
@@ -334,6 +429,16 @@ void physics_teardown(physics_world* world) {
   free(world);
 }
 
+void clear_forces(physics_world *world) {
+  dynamic_bodies *dynamics = &world->dynamics;
+
+  const count_t size = sizeof(v3) * dynamics->count;
+  memset(dynamics->forces, 0, size);
+  memset(dynamics->torques, 0, size);
+  memset(dynamics->impulses, 0, size);
+  memset(dynamics->angular_impulses, 0, size);
+  memset(dynamics->accelerations, 0, size);
+}
 
 void update_awake_statuses(physics_world *world, float dt) {
   dynamic_bodies *dynamics = &world->dynamics;
@@ -423,6 +528,12 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
   SWAP(m3, inv_inertia_tensors)
   SWAP(m3, inv_intertias)
   SWAP(float, motion_avgs)
+
+  SWAP(v3, forces)
+  SWAP(v3, torques)
+  SWAP(v3, impulses)
+  SWAP(v3, angular_impulses)
+  SWAP(v3, accelerations)
 
   SWAP(count_t, inner_lookup)
 

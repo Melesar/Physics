@@ -132,12 +132,20 @@ typedef struct {
 typedef struct {
   COMMON_FIELDS
 
+  // Forces
+  v3 *forces;
+  v3 *torques;
+  v3 *impulses;
+  v3 *angular_impulses;
+
+  // Dynamics
   float *inv_masses;
   v3 *velocities;
   v3 *angular_momenta;
   m3 *inv_inertia_tensors;
 
   // Derived values.
+  v3 *accelerations;
   m3 *inv_intertias;
 
   // Sleeping
@@ -167,6 +175,11 @@ physics_world* physics_init(const physics_config *config);
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
+
+void physics_apply_force(physics_world *world, body_handle handle, v3 force);
+void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);
+void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse);
+void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impulse, v3 position);
 
 bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape);
 bool physics_get_velocity(physics_world *world, body_handle handle, v3 *velocity);
