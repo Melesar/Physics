@@ -137,6 +137,9 @@ fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.Optimize
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
 
+    var sanitizers = try std.ArrayList([]const u8).initCapacity(b.allocator, 2);
+    errdefer sanitizers.deinit(b.allocator);
+
     try flags.appendSlice(b.allocator, COMMON_FLAGS);
 
     if (options.diagnostic) {
@@ -145,6 +148,7 @@ fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.Optimize
 
     switch (optimize) {
         .Debug => {
+            try sanitizers.appendSlice(b.allocator, &.{ "float-divide-by-zero", "leak" });
             try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG" });
         },
 
@@ -159,6 +163,10 @@ fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.Optimize
         .ReleaseSmall => {
             try flags.appendSlice(b.allocator, &.{"-Os"});
         },
+    }
+
+    if (sanitizers.items.len > 0) {
+        try flags.append(b.allocator, b.fmt("-fsanitize={s}", .{try std.mem.join(b.allocator, ",", try sanitizers.toOwnedSlice(b.allocator))}));
     }
 
     return flags.toOwnedSlice(b.allocator);
