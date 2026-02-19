@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) !void {
     const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
     const libRootModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
 
-    const flags = try compilerFlags(b, options, optimize);
+    const flags = try compilerFlags(b, options, target.result, optimize);
     defer b.allocator.free(flags);
 
     const librarySources = try collectSources(b, "lib");
@@ -133,7 +133,7 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
     }
 }
 
-fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
 
@@ -148,7 +148,6 @@ fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.Optimize
 
     switch (optimize) {
         .Debug => {
-            try sanitizers.appendSlice(b.allocator, &.{ "float-divide-by-zero", "leak" });
             try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG" });
         },
 
@@ -163,6 +162,14 @@ fn compilerFlags(b: *std.Build, options: Options, optimize: std.builtin.Optimize
         .ReleaseSmall => {
             try flags.appendSlice(b.allocator, &.{"-Os"});
         },
+    }
+
+    if (optimize == .Debug or optimize == .ReleaseSafe) {
+        try sanitizers.append(b.allocator, "float-divide-by-zero");
+
+        if (target.os.tag != .macos or target.cpu.arch != .aarch64) {
+            try sanitizers.append(b.allocator, "leak");
+        }
     }
 
     if (sanitizers.items.len > 0) {
