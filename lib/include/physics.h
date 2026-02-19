@@ -55,6 +55,8 @@ typedef struct {
   quat* rotation;
   v3* velocity;
   v3* angular_momentum;
+
+  body_handle handle;
 } body;
 
 typedef struct {
@@ -186,7 +188,7 @@ bool physics_get_angular_velocity(physics_world *world, body_handle handle, v3 *
 bool physics_get_motion_avg(physics_world *world, body_handle handle, float *motion_avg);
 
 void physics_step(physics_world* world, float dt);
-void physics_awaken_body(physics_world* world, count_t index);
+void physics_awaken_body(physics_world* world, body_handle handle);
 void physics_reset(physics_world *world);
 
 count_t physics_raycast(physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);

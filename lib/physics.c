@@ -203,6 +203,7 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     .rotation = &commons->rotations[index],
     .velocity = type == BODY_DYNAMIC ? &world->dynamics.velocities[index] : NULL,
     .angular_momentum = type == BODY_DYNAMIC ? &world->dynamics.angular_momenta[index] : NULL,
+    .handle = make_body_handle(world, type, index),
   };
 }
 
@@ -385,7 +386,11 @@ void physics_step(physics_world* world, float dt) {
 
  }
 
-void physics_awaken_body(physics_world* world, count_t index) {
+void physics_awaken_body(physics_world* world, body_handle handle) {
+  if (handle.type != BODY_DYNAMIC)
+    return;
+
+  count_t index = handle_to_inner_index(world, handle);
   dynamic_bodies *dynamics = &world->dynamics;
   if (index < dynamics->awake_count || index >= dynamics->count)
     return;
