@@ -25,6 +25,8 @@ typedef enum {
   SHAPE_BOX,
   SHAPE_SPHERE,
   SHAPE_PLANE,
+  SHAPE_CYLINDER,
+  SHAPE_CAPSULE,
 
   SHAPES_COUNT
 } shape_type;
@@ -36,6 +38,8 @@ typedef struct {
     struct { v3 size; } box;
     struct { v3 normal; } plane;
     struct { float radius; } sphere;
+    struct { float radius; float half_height; } cylinder;
+    struct { float radius; float half_height; } capsule;
   };
 
 } body_shape;
