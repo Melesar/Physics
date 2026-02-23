@@ -9,11 +9,19 @@ bool is_collision;
 raycast_hit hit;
 
 void scenario_initialize(program_config* config, physics_config *physics) {
-  (void) physics;
-
   config->window_title = "Rigidbodies";
   config->camera_position = (v3) { 22.542, 11.645, 20.752 };
   config->camera_target = (v3) { 0, 0, 0 };
+
+  physics->max_penentration_iterations = 100;
+  physics->max_velocity_iterations = 100;
+  physics->linear_damping = 0.95;
+  physics->angular_damping = 0.8;
+  physics->velocity_epsilon = 0.01;
+  physics->penetration_epsilon = 0.01;
+  physics->restitution_damping_limit = 0.25;
+  physics->sleep_base_bias = 0.5;
+  physics->sleep_threshold = 0.3;
 }
 
 void scenario_setup_scene(physics_world *world) {

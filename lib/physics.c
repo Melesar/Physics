@@ -8,8 +8,6 @@
 
 const float min_velocity_threshold = 0.07f;
 const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
-const float sleep_threshold = 0.1f;
-const float rwa_base_bias = 0.3f;
 
 // static v3 cylinder_inertia(float radius, float height, float mass) {
 //   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -76,6 +74,8 @@ physics_config physics_default_config() {
     .max_velocity_iterations = 20,
     .penetration_epsilon = 0.005,
     .velocity_epsilon = 0.1,
+    .sleep_threshold = 0.3,
+    .sleep_base_bias = 0.5,
     .restitution_damping_limit = 0.2,
   };
 }
@@ -328,8 +328,8 @@ bool physics_get_motion_avg(physics_world *world, body_handle handle, float *mot
 
 void integrate_bodies(physics_world *world, float dt) {
   v3 gravity_acc = scale(world->config.gravity, dt);
-  float linear_damping = world->config.linear_damping;
-  float angular_damping = world->config.angular_damping;
+  float linear_damping = powf(world->config.linear_damping, dt);
+  float angular_damping = powf(world->config.angular_damping, dt);
 
   dynamic_bodies *dynamics = &world->dynamics;
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
@@ -355,21 +355,16 @@ void integrate_bodies(physics_world *world, float dt) {
 
     v3 omega = matrix_rotate(angular_momentum, inertia);
 
-    if (lensq(omega) > min_velocity_threshold_sqr) {
-      quat q_omega = { omega.x, omega.y, omega.z, 0 };
-      quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
-      quat q_orientation = qadd(rotation, dq);
-      rotation = qnormalize(q_orientation);
-    }
+    quat q_omega = { omega.x, omega.y, omega.z, 0 };
+    quat dq = qscale(qmul(q_omega, rotation), 0.5 * dt);
+    quat q_orientation = qadd(rotation, dq);
+    rotation = qnormalize(q_orientation);
 
     dynamics->accelerations[i] = acceleration;
     dynamics->velocities[i] = velocity;
     dynamics->angular_momenta[i] = angular_momentum;
     dynamics->rotations[i] = rotation;
-
-    if (lensq(velocity) > min_velocity_threshold_sqr) {
-      dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
-    }
+    dynamics->positions[i] = add(dynamics->positions[i], scale(velocity, dt));
   }
 }
 
@@ -399,7 +394,7 @@ void physics_awaken_body(physics_world* world, body_handle handle) {
   if (index != target_index)
     swap_bodies(world, index, target_index);
 
-  dynamics->motion_avgs[target_index] = 2.0 * sleep_threshold;
+  dynamics->motion_avgs[target_index] = 2.0 * world->config.sleep_threshold;
   dynamics->awake_count += 1;
 }
 
@@ -463,6 +458,7 @@ void clear_forces(physics_world *world) {
 }
 
 void update_awake_statuses(physics_world *world, float dt) {
+  const float sleep_threshold = world->config.sleep_threshold;
   dynamic_bodies *dynamics = &world->dynamics;
   if (dynamics->count == 0)
     return;
@@ -473,9 +469,12 @@ void update_awake_statuses(physics_world *world, float dt) {
 
     float current_motion = dynamics->motion_avgs[i];
     float new_motion = lensq(dynamics->velocities[i]) + lensq(angular_velocity);
-    float bias = powf(rwa_base_bias, dt);
+    float bias = powf(world->config.sleep_base_bias, dt);
 
-    dynamics->motion_avgs[i] = current_motion * bias + new_motion * (1 - bias);
+    float motion = current_motion * bias + new_motion * (1 - bias);
+    motion = fmin(motion, 10 * sleep_threshold);
+
+    dynamics->motion_avgs[i] = motion;
   }
 
   count_t left = 0;

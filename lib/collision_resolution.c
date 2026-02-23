@@ -2,8 +2,6 @@
 #include "math.h"
 #include "pmath.h"
 
-extern float sleep_threshold;
-
 void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
   collision collision = world->collisions->collisions[collision_index];
   count_t awake_count = world->dynamics.awake_count;
@@ -353,6 +351,7 @@ void update_awake_status_for_collision(physics_world *world, count_t collision_i
   if (body_a_awake == body_b_awake)
     return;
 
+  const float sleep_threshold = world->config.sleep_threshold;
   if (!body_a_awake)
     world->dynamics.motion_avgs[collision->index_a] = 2.0 * sleep_threshold;
 

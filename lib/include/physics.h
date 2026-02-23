@@ -85,6 +85,8 @@ typedef struct {
   float velocity_epsilon;
 
   float restitution_damping_limit;
+  float sleep_threshold;
+  float sleep_base_bias;
 } physics_config;
 
 typedef struct {
