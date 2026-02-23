@@ -72,10 +72,10 @@ physics_config physics_default_config() {
     .friction = 0.3,
     .max_penentration_iterations = 10,
     .max_velocity_iterations = 20,
+    .sleep_base_bias = 0.5,
+    .sleep_threshold = 0.3,
     .penetration_epsilon = 0.005,
     .velocity_epsilon = 0.1,
-    .sleep_threshold = 0.3,
-    .sleep_base_bias = 0.5,
     .restitution_damping_limit = 0.2,
   };
 }
@@ -458,11 +458,11 @@ void clear_forces(physics_world *world) {
 }
 
 void update_awake_statuses(physics_world *world, float dt) {
-  const float sleep_threshold = world->config.sleep_threshold;
   dynamic_bodies *dynamics = &world->dynamics;
   if (dynamics->count == 0)
     return;
 
+  const float sleep_threshold = world->config.sleep_threshold;
   count_t awake_count = dynamics->awake_count;
   for (count_t i = 0; i < awake_count; ++i) {
     v3 angular_velocity = matrix_rotate(dynamics->angular_momenta[i], dynamics->inv_intertias[i]);
@@ -472,7 +472,7 @@ void update_awake_statuses(physics_world *world, float dt) {
     float bias = powf(world->config.sleep_base_bias, dt);
 
     float motion = current_motion * bias + new_motion * (1 - bias);
-    motion = fmin(motion, 10 * sleep_threshold);
+    motion = fminf(motion, 10 * sleep_threshold);
 
     dynamics->motion_avgs[i] = motion;
   }
