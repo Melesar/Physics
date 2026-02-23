@@ -129,31 +129,48 @@ void resolve_interpenetration_contact(physics_world *world, count_t collision_in
     total_inertia += linear_inertia[k] + angular_inertia_contact[k];
   }
 
+  const float angular_limit = 0.2f;
   float inv_inertia = 1 / total_inertia;
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
     float sign = k ? -1 : 1;
     float linear_move = sign * contact->depth * linear_inertia[k] * inv_inertia;
     float angular_move = sign * contact->depth * angular_inertia_contact[k] * inv_inertia;
-    v3 linear_delta = scale(contact->normal, linear_move);
 
-    world->dynamics.positions[body_index] = add(position[k], linear_delta);
-    deltas[2 * k] = linear_delta;
+    float projection_len = -dot(contact->normal, contact->relative_position[k]);
+    v3 projection = contact->relative_position[k];
+    projection = add(projection, scale(contact->normal, projection_len));
 
-    if (fabsf(angular_inertia_contact[k]) <= 0.0001) {
-      deltas[2 * k + 1] = zero();
-      continue;
+    float max_magnitude = angular_limit * len(projection);
+    if (angular_move < -max_magnitude) {
+      float total_move = angular_move + linear_move;
+      angular_move = -max_magnitude;
+      linear_move = total_move - angular_move;
+    } else if (angular_move > max_magnitude) {
+      float total_move = angular_move + linear_move;
+      angular_move = max_magnitude;
+      linear_move = total_move - angular_move;
     }
 
-    v3 impulse_per_move = matrix_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
-    v3 rotation_per_move = scale(impulse_per_move, 1.0 / angular_inertia_contact[k]);
-    v3 rotation_delta = scale(rotation_per_move, angular_move);
+    if (fabsf(angular_move) < 0.001) {
+      deltas[2 * k + 1] = zero();
+    } else {
+      v3 target_angular_direction = matrix_rotate(torque_per_impulse[k], inv_inertia_tensor[k]);
+      deltas[2 * k + 1] = scale(target_angular_direction, angular_move / angular_inertia_contact[k]);
+    }
 
+    v3 linear_delta = scale(contact->normal, linear_move);
+    deltas[2 * k] = linear_delta;
+    world->dynamics.positions[body_index] = add(position[k], linear_delta);
+
+    v3 rotation_delta = deltas[2 * k + 1];
     quat q_omega = { rotation_delta.x, rotation_delta.y, rotation_delta.z, 0 };
-    quat dq = qmul(q_omega, rotation[k]);
+    quat dq = qscale(qmul(q_omega, rotation[k]), 0.5);
     world->dynamics.rotations[body_index] = qnormalize(qadd(rotation[k], dq));
 
-    deltas[2 * k + 1] = rotation_delta;
+    world->dynamics.inv_intertias[body_index] = matrix_inertia(
+      world->dynamics.inv_inertia_tensors[body_index],
+      world->dynamics.rotations[body_index]);
   }
 }
 
