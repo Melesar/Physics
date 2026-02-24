@@ -406,7 +406,7 @@ static void draw_physics_bodies() {
       draw_body_angular_momentum(position, angular_momentum);
   }
 
-  if (!debug_state.active || debug_state.phase == CDBG_IDLE || debug_state.phase == CDBG_DONE)
+  if (!debug_state.active || debug_state.prev_phase == CDBG_IDLE || debug_state.prev_phase == CDBG_DONE)
     return;
 
   contact c = world->collisions->contacts[debug_state.current_contact_index];

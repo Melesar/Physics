@@ -227,6 +227,7 @@ typedef struct {
 
 typedef struct {
   bool active;
+  collision_debug_phase prev_phase;
   collision_debug_phase phase;
   count_t iteration;
   bool is_dynamic;
@@ -247,9 +248,6 @@ typedef struct {
 
   // Internal state carried between steps
   float dt;
-  bool penetration_done;
-  bool velocity_done;
-  bool needs_integration; // true when a new frame needs physics integration
 } collision_debug_state;
 
 void physics_debug_state_init(collision_debug_state *state);

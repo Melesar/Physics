@@ -22,9 +22,6 @@ void physics_debug_state_init(collision_debug_state *state) {
   state->is_dynamic = false;
   state->current_contact_index = (count_t)-1;
   state->dt = 0;
-  state->penetration_done = false;
-  state->velocity_done = false;
-  state->needs_integration = true;
   state->depth_update_count = 0;
   state->velocity_update_count = 0;
 
@@ -43,10 +40,12 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
         clear_forces(world);
 
         state->active = false;
+        state->prev_phase = CDBG_IDLE;
         return;
       }
 
       state->active = true;
+      state->prev_phase = CDBG_IDLE;
       state->phase = CDBG_PENETRATION_RESOLVE;
       state->dt = dt;
       state->iteration = 0;
@@ -61,15 +60,18 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
           state->is_dynamic = worst_collision < world->collisions->dynamic_collisions_count;
           state->current_collision_index = worst_collision;
           state->current_contact_index = worst_contact;
+          state->prev_phase = CDBG_PENETRATION_RESOLVE;
           state->phase = CDBG_DEPTH_UPDATE;
 
           update_awake_status_for_collision(world, worst_collision);
           resolve_interpenetration_contact(world, worst_collision, &world->collisions->contacts[worst_contact], state->deltas);
         } else {
+          state->prev_phase = CDBG_DEPTH_UPDATE;
           state->phase = CDBG_VELOCITY_RESOLVE;
           state->iteration = 0;
         }
       } else {
+        state->prev_phase = CDBG_DEPTH_UPDATE;
         state->phase = CDBG_VELOCITY_RESOLVE;
         state->iteration = 0;
       }
@@ -78,6 +80,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
     case CDBG_DEPTH_UPDATE:
       update_penetration_depths_ex(world, state->current_collision_index, state->deltas, state->depth_updates, &state->depth_update_count);
       state->iteration += 1;
+      state->prev_phase = CDBG_DEPTH_UPDATE;
       state->phase = CDBG_PENETRATION_RESOLVE;
       break;
 
@@ -89,15 +92,18 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
           state->current_collision_index = worst_collisions;
           state->current_contact_index = worst_contact;
           state->phase = CDBG_VELOCITY_UPDATE;
+          state->prev_phase = CDBG_VELOCITY_RESOLVE;
 
           update_awake_status_for_collision(world, worst_collisions);
           resolve_velocity_contact(world, worst_collisions, &world->collisions->contacts[worst_contact], state->deltas);
         } else {
           state->iteration = 0;
+          state->prev_phase = CDBG_VELOCITY_UPDATE;
           state->phase = CDBG_DONE;
         }
       } else {
         state->iteration = 0;
+        state->prev_phase = CDBG_VELOCITY_UPDATE;
         state->phase = CDBG_DONE;
       }
       break;
@@ -106,6 +112,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
       update_velocity_deltas_ex(world, state->current_collision_index, state->deltas, state->dt, state->velocity_updates, &state->velocity_update_count);
       state->iteration += 1;
       state->phase = CDBG_VELOCITY_RESOLVE;
+      state->prev_phase = CDBG_VELOCITY_UPDATE;
       break;
 
     case CDBG_DONE:
@@ -114,6 +121,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
 
       state->active = false;
       state->phase = CDBG_IDLE;
+      state->prev_phase = CDBG_DONE;
       break;
   }
 }
