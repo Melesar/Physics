@@ -59,6 +59,8 @@ extern void resolve_collisions(physics_world *world, float dt);
 extern collisions* collisions_init(const physics_config *config);
 extern void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);
 extern void collisions_teardown(collisions *collisions);
+extern void collision_log_begin_frame(const physics_world *world, float dt);
+extern void collision_log_end_frame(void);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -371,7 +373,9 @@ void integrate_bodies(physics_world *world, float dt) {
 void physics_step(physics_world* world, float dt) {
   integrate_bodies(world, dt);
   collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
+  collision_log_begin_frame(world, dt);
   resolve_collisions(world, dt);
+  collision_log_end_frame();
   update_awake_statuses(world, dt);
   clear_forces(world);
 
@@ -411,6 +415,8 @@ void physics_reset(physics_world *world) {
 
 
 void physics_teardown(physics_world* world) {
+  physics_collision_log_disable();
+
   #define TEARDOWN_COMMONS(type) \
     free(world->type.positions); \
     free(world->type.rotations); \

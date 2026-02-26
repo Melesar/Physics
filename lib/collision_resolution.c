@@ -2,6 +2,14 @@
 #include "math.h"
 #include "pmath.h"
 
+extern void collision_log_prepare_contact(count_t contact_index, const contact *ct);
+extern void collision_log_adjust_positions_iteration(count_t iteration);
+extern void collision_log_penetration(count_t contact_index, const contact *ct, const v3 *deltas, bool is_dynamic);
+extern void collision_log_depth_update(count_t contact_index, const contact *ct, float before, float after);
+extern void collision_log_adjust_velocities_iteration(count_t iteration);
+extern void collision_log_velocity_resolution(count_t contact_index, const contact *ct, const v3 *deltas, bool is_dynamic);
+extern void collision_log_desired_velocity_update(count_t contact_index, const contact *ct, v3 local_velocity_before, v3 local_velocity_after, float ddv_before, float ddv_after);
+
 void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
   collision collision = world->collisions->collisions[collision_index];
   count_t awake_count = world->dynamics.awake_count;
@@ -92,6 +100,7 @@ void prepare_contacts(physics_world *world, float dt) {
       contact->local_velocity = sub(local_velocity[0], local_velocity[1]);
 
       update_desired_velocity_delta(world, i, contact, dt);
+      collision_log_prepare_contact(j, contact);
     }
   }
 }
@@ -207,6 +216,10 @@ void update_penetration_depths_ex(physics_world *world, count_t collision_index,
       if (records && record_count && contact->depth != depth_before && *record_count < CDBG_MAX_CONTACTS) {
         records[*record_count] = (depth_update_record){ .index = index, .before = depth_before, .after = contact->depth };
         (*record_count)++;
+      }
+
+      if (contact->depth != depth_before) {
+        collision_log_depth_update(index, contact, depth_before, contact->depth);
       }
     }
   }
@@ -370,6 +383,8 @@ void resolve_interpenetrations(physics_world *world) {
   count_t max_penetration_index = -1;
   count_t collision_index = -1;
   while (iterations < world->config.max_penentration_iterations) {
+    collision_log_adjust_positions_iteration(iterations);
+
     if (!find_worst_penetration(world, &collision_index, &max_penetration_index))
       break;
 
@@ -379,6 +394,7 @@ void resolve_interpenetrations(physics_world *world) {
 
     v3 deltas[4];
     resolve_interpenetration_contact(world, collision_index, contact, deltas);
+    collision_log_penetration(max_penetration_index, contact, deltas, collision_index < world->collisions->dynamic_collisions_count);
     update_penetration_depths(world, collision_index, deltas);
 
     iterations += 1;
@@ -444,6 +460,16 @@ void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_ind
         };
         (*record_count)++;
       }
+
+      if (changed) {
+        collision_log_desired_velocity_update(
+          index,
+          contact,
+          local_vel_before,
+          contact->local_velocity,
+          ddv_before,
+          contact->desired_delta_velocity);
+      }
     }
   }
 }
@@ -462,6 +488,8 @@ void resolve_velocities(physics_world *world, float dt) {
   count_t worst_contact_index = -1;
   count_t worst_collision_index = -1;
   while (iterations < world->config.max_velocity_iterations) {
+    collision_log_adjust_velocities_iteration(iterations);
+
     if (!find_worst_velocity(world, &worst_collision_index, &worst_contact_index))
       break;
 
@@ -471,6 +499,7 @@ void resolve_velocities(physics_world *world, float dt) {
 
     v3 deltas[4];
     resolve_velocity_contact(world, worst_collision_index, contact, deltas);
+    collision_log_velocity_resolution(worst_contact_index, contact, deltas, worst_collision_index < world->collisions->dynamic_collisions_count);
     update_velocity_deltas(world, worst_collision_index, deltas, dt);
 
     iterations += 1;

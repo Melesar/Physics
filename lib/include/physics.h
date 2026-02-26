@@ -193,6 +193,8 @@ bool physics_get_motion_avg(physics_world *world, body_handle handle, float *mot
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, body_handle handle);
 void physics_reset(physics_world *world);
+void physics_collision_log_enable(const char *path, count_t max_frames);
+void physics_collision_log_disable(void);
 
 count_t physics_raycast(physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
 

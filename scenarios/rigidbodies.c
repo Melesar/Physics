@@ -26,16 +26,18 @@ void scenario_initialize(program_config* config, physics_config *physics) {
 }
 
 void scenario_setup_scene(physics_world *world) {
-  body big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
-  *big_box.position = (v3) { 0, 1.5, -5 };
+  physics_collision_log_enable("boxes_collision.log", 10);
 
-  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
-  *big_box.position = (v3) { 0, 1.5, 5 };
+  // body big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
+  // *big_box.position = (v3) { 0, 1.5, -5 };
 
-  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1, 3, 10 });
-  *big_box.position = (v3) { -7, 1.5, 0 };
+  // big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
+  // *big_box.position = (v3) { 0, 1.5, 5 };
 
-  big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
+  // big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1, 3, 10 });
+  // *big_box.position = (v3) { -7, 1.5, 0 };
+
+  body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
   *big_box.position = (v3) { 0, 1.3 * 0.5, 0 };
 }
 
