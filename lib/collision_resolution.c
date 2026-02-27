@@ -26,7 +26,7 @@ void update_desired_velocity_delta(physics_world *world, count_t collision_index
   float restitution = fabsf(contact->local_velocity.y) >= world->config.restitution_damping_limit ? world->config.restitution : 0.0f;
   float desired_delta = -contact->local_velocity.y - restitution * (contact->local_velocity.y - acceleration_velocity);
 
-  contact->desired_delta_velocity = fmaxf(desired_delta, 0.0);
+  contact->desired_delta_velocity = desired_delta;
 }
 
 static m3 contact_space_transform(const contact *contact) {
