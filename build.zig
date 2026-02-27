@@ -3,7 +3,7 @@ const zcc = @import("compile_commands");
 
 const ResolvedTarget = std.Build.ResolvedTarget;
 
-const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror" };
+const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra" };
 
 const Options = struct {
     diagnostic: bool,

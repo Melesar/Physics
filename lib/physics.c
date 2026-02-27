@@ -327,7 +327,7 @@ bool physics_get_motion_avg(physics_world *world, body_handle handle, float *mot
 }
 
 void integrate_bodies(physics_world *world, float dt) {
-  v3 gravity_acc = scale(world->config.gravity, dt);
+  v3 gravity_acc = world->config.gravity;
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);
 
@@ -335,12 +335,14 @@ void integrate_bodies(physics_world *world, float dt) {
   for (count_t i = 0; i < dynamics->awake_count; ++i) {
     float inv_mass = dynamics->inv_masses[i];
 
-    v3 acceleration = scale(dynamics->forces[i], inv_mass * dt);
-    acceleration = add(acceleration, scale(dynamics->impulses[i], inv_mass));
+    v3 acceleration = scale(dynamics->forces[i], inv_mass);
     acceleration = add(acceleration, gravity_acc);
 
+    v3 impulse = scale(dynamics->impulses[i], inv_mass);
+
     v3 velocity = dynamics->velocities[i];
-    velocity = add(velocity, acceleration);
+    velocity = add(velocity, scale(acceleration, dt));
+    velocity = add(velocity, impulse);
     velocity = scale(velocity, linear_damping);
 
     quat rotation = dynamics->rotations[i];
