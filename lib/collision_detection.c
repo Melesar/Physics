@@ -197,6 +197,8 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
     // one and two (and therefore also the vector between their
     // centres).
     fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, collisions);
+    collision->index_a = index_b;
+    collision->index_b = index_a;
   } else {
     // We've got an edge-edge contact. Find out which axes
     best_axis -= 6;
