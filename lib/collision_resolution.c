@@ -7,7 +7,7 @@ extern void collision_log_adjust_positions_iteration(count_t iteration);
 extern void collision_log_penetration(count_t contact_index, const contact *ct, const v3 *deltas, bool is_dynamic);
 extern void collision_log_depth_update(count_t contact_index, const contact *ct, float before, float after);
 extern void collision_log_adjust_velocities_iteration(count_t iteration);
-extern void collision_log_velocity_resolution(count_t contact_index, const contact *ct, const v3 *deltas, bool is_dynamic);
+extern void collision_log_velocity_resolution(const physics_world *world, count_t collision_index, count_t contact_index, const contact *ct, const v3 *deltas, const v3 world_space_impulse, bool is_dynamic);
 extern void collision_log_desired_velocity_update(count_t contact_index, const contact *ct, v3 local_velocity_before, v3 local_velocity_after, float ddv_before, float ddv_after);
 
 void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
@@ -229,7 +229,8 @@ static void update_penetration_depths(physics_world *world, count_t collision_in
   update_penetration_depths_ex(world, collision_index, deltas, NULL, NULL);
 }
 
-void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas) {
+void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas, v3 *world_space_impulse) {
+  dynamic_bodies *dynamics = &world->dynamics;
   count_t body_count = worst_collision_index < world->collisions->dynamic_collisions_count ? 2 : 1;
   count_t body_ids[] = { world->collisions->collisions[worst_collision_index].index_a, world->collisions->collisions[worst_collision_index].index_b };
 
@@ -242,11 +243,12 @@ void resolve_velocity_contact(physics_world *world, count_t worst_collision_inde
     count_t body_index = body_ids[k];
     m3 r_cross = matrix_skew_symmetric(contact->relative_position[k]);
 
-    m3 delta_velocity_world = matrix_multiply(r_cross, world->dynamics.inv_intertias[body_index]);
+    m3 inv_inertia = matrix_inertia(dynamics->inv_inertia_tensors[body_index], dynamics->rotations[body_index]);
+    m3 delta_velocity_world = matrix_multiply(r_cross, inv_inertia);
     delta_velocity_world = matrix_multiply(delta_velocity_world, r_cross);
     delta_velocity_world = matrix_negate(delta_velocity_world);
 
-    inv_mass += world->dynamics.inv_masses[body_index];
+    inv_mass += dynamics->inv_masses[body_index];
     delta_velocity = matrix_add(delta_velocity, delta_velocity_world);
   }
 
@@ -275,17 +277,17 @@ void resolve_velocity_contact(physics_world *world, count_t worst_collision_inde
     contact_space_impulse.z *= world->config.friction * contact_space_impulse.y;
   }
 
-  v3 world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
+  *world_space_impulse = matrix_rotate(contact_space_impulse, contact->basis);
 
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    float inv_mass = world->dynamics.inv_masses[body_index];
+    float inv_mass = dynamics->inv_masses[body_index];
 
-    v3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
-    v3 angular_impulse_delta = cross(contact->relative_position[k], world_space_impulse);
+    v3 linear_impulse_delta = scale(*world_space_impulse, inv_mass);
+    v3 angular_impulse_delta = cross(contact->relative_position[k], *world_space_impulse);
 
-    v3 *velocity = &world->dynamics.velocities[body_index];
-    v3 *angular_momentum = &world->dynamics.angular_momenta[body_index];
+    v3 *velocity = &dynamics->velocities[body_index];
+    v3 *angular_momentum = &dynamics->angular_momenta[body_index];
 
     *velocity = add(*velocity, linear_impulse_delta);
     *angular_momentum = add(*angular_momentum, angular_impulse_delta);
@@ -293,7 +295,7 @@ void resolve_velocity_contact(physics_world *world, count_t worst_collision_inde
     deltas[2 * k] = linear_impulse_delta;
     deltas[2 * k + 1] = angular_impulse_delta;
 
-    world_space_impulse = scale(world_space_impulse, -1);
+    *world_space_impulse = scale(*world_space_impulse, -1);
   }
 }
 
@@ -444,7 +446,16 @@ void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_ind
             contact->local_velocity = add(contact->local_velocity, scale(delta_velocity, (k ? -1 : 1)));
 
             update_desired_velocity_delta(world, i, contact, dt);
-            changed = true;
+            collision_log_desired_velocity_update(
+              index,
+              contact,
+              local_vel_before,
+              contact->local_velocity,
+              ddv_before,
+              contact->desired_delta_velocity);
+
+            local_vel_before = contact->local_velocity;
+            ddv_before = contact->desired_delta_velocity;
           }
         }
       }
@@ -459,16 +470,6 @@ void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_ind
           .ddv_after = contact->desired_delta_velocity,
         };
         (*record_count)++;
-      }
-
-      if (changed) {
-        collision_log_desired_velocity_update(
-          index,
-          contact,
-          local_vel_before,
-          contact->local_velocity,
-          ddv_before,
-          contact->desired_delta_velocity);
       }
     }
   }
@@ -498,8 +499,9 @@ void resolve_velocities(physics_world *world, float dt) {
     update_awake_status_for_collision(world, worst_collision_index);
 
     v3 deltas[4];
-    resolve_velocity_contact(world, worst_collision_index, contact, deltas);
-    collision_log_velocity_resolution(worst_contact_index, contact, deltas, worst_collision_index < world->collisions->dynamic_collisions_count);
+    v3 world_space_impulse;
+    resolve_velocity_contact(world, worst_collision_index, contact, deltas, &world_space_impulse);
+    collision_log_velocity_resolution(world, worst_collision_index, worst_contact_index, contact, deltas, world_space_impulse, worst_collision_index < world->collisions->dynamic_collisions_count);
     update_velocity_deltas(world, worst_collision_index, deltas, dt);
 
     iterations += 1;

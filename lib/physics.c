@@ -50,7 +50,7 @@ extern void update_awake_statuses(physics_world *world, float dt);
 extern void prepare_contacts(physics_world *world, float dt);
 extern void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
 extern void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
-extern void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas);
+extern void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas, v3 *world_space_impulse);
 extern bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
 extern bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
 extern void update_awake_status_for_collision(physics_world *world, count_t collision_index);

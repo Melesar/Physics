@@ -42,25 +42,4 @@
     "show_summary": true,
     "show_command": true,
   },
-  {
-    "label": "Cyclone boxes",
-    "command": "make && bin/linux/boxes",
-    "use_new_terminal": false,
-    "allow_concurrent_runs": false,
-    // What to do with the terminal pane and tab, after the command was started:
-    // * `always` — always show the task's pane, and focus the corresponding tab in it (default)
-    // * `no_focus` — always show the task's pane, add the task's tab in it, but don't focus it
-    // * `never` — do not alter focus, but still add/reuse the task's tab in its pane
-    "cwd": "/Users/s.pikhota/Projects/Personal/Physics/cyclone-physics",
-    "reveal": "no_focus",
-    "reveal_target": "dock",
-    // What to do with the terminal pane and tab, after the command had finished:
-    // * `never` — Do nothing when the command finishes (default)
-    // * `always` — always hide the terminal tab, hide the pane also if it was the last tab in it
-    // * `on_success` — hide the terminal tab on task success only, otherwise behaves similar to `always`
-    "hide": "on_success",
-    "shell": "system",
-    "show_summary": true,
-    "show_command": true,
-  },
 ]

@@ -14,19 +14,21 @@ void scenario_initialize(program_config* config, physics_config *physics) {
   config->camera_target = (v3) { 0, 0, 0 };
 
   (void) physics;
-  // physics->max_penentration_iterations = 100;
-  // physics->max_velocity_iterations = 100;
-  // physics->linear_damping = 0.95;
-  // physics->angular_damping = 0.8;
-  // physics->velocity_epsilon = 0.01;
-  // physics->penetration_epsilon = 0.01;
-  // physics->restitution_damping_limit = 0.25;
-  // physics->sleep_base_bias = 0.5;
-  // physics->sleep_threshold = 0.3;
+  physics->max_penentration_iterations = 100;
+  physics->max_velocity_iterations = 100;
+  physics->linear_damping = 0.95;
+  physics->angular_damping = 0.8;
+  physics->friction = 0.9;
+  physics->restitution = 0.2;
+  physics->velocity_epsilon = 0.01;
+  physics->penetration_epsilon = 0.01;
+  physics->restitution_damping_limit = 0.25;
+  physics->sleep_base_bias = 0.5;
+  physics->sleep_threshold = 0.3;
 }
 
 void scenario_setup_scene(physics_world *world) {
-  physics_collision_log_enable("boxes_collision.log", 10);
+  physics_collision_log_enable("boxes_collision.log", 240);
 
   // body big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
   // *big_box.position = (v3) { 0, 1.5, -5 };
@@ -39,6 +41,11 @@ void scenario_setup_scene(physics_world *world) {
 
   body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
   *big_box.position = (v3) { 0, 1.3 * 0.5, 0 };
+
+  big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
+  *big_box.position = (v3) { 0, 7, 0 };
+
+  physics_awaken_body(world, big_box.handle);
 }
 
 void scenario_simulate(physics_world *world, float dt) {

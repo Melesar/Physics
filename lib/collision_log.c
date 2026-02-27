@@ -8,7 +8,7 @@ typedef struct {
   bool enabled;
   bool frame_active;
   bool capturing;
-  bool wait_for_separation;
+  bool completed;
   count_t tracked_a;
   count_t tracked_b;
   count_t frames_logged;
@@ -31,15 +31,24 @@ static bool pair_colliding(const physics_world *world, count_t index_a, count_t 
   return false;
 }
 
-static void print_vec3(FILE *file, const char *name, v3 value) {
+static char* spaces = "                                            ";
+
+static void print_vec3(FILE *file, const char *name, v3 value, count_t indent) {
+  count_t max_spaces = strlen(spaces);
+  count_t spaces_count = indent > max_spaces ? max_spaces : indent;
+  fprintf(file, spaces + max_spaces - spaces_count);
   fprintf(file, "%s=(%.6f, %.6f, %.6f)", name, value.x, value.y, value.z);
 }
 
 static void print_contact(FILE *file, count_t contact_index, const contact *ct) {
   fprintf(file, "      contact=%u\n", contact_index);
-  print_vec3(file, "point", ct->point);
+  print_vec3(file, "point", ct->point, 6);
   fprintf(file, "\n");
-  print_vec3(file, "normal", ct->normal);
+  print_vec3(file, "normal", ct->normal, 6);
+  fprintf(file, "\n");
+  print_vec3(file, "relative_pos[0]", ct->relative_position[0], 6);
+  fprintf(file, "\n");
+  print_vec3(file, "relative_pos[1]", ct->relative_position[1], 6);
   fprintf(file, "\n");
   fprintf(file, "      depth=%.6f\n", ct->depth);
   fprintf(
@@ -48,6 +57,8 @@ static void print_contact(FILE *file, count_t contact_index, const contact *ct) 
     ct->basis.m0[0], ct->basis.m0[1], ct->basis.m0[2],
     ct->basis.m1[0], ct->basis.m1[1], ct->basis.m1[2],
     ct->basis.m2[0], ct->basis.m2[1], ct->basis.m2[2]);
+  print_vec3(file, "local_velocity", ct->local_velocity, 6);
+  fprintf(file, "\n");
   fprintf(file, "      desiredDeltaVelocity=%.6f\n", ct->desired_delta_velocity);
 }
 
@@ -61,7 +72,7 @@ void physics_collision_log_enable(const char *path, count_t max_frames) {
   g_log.enabled = true;
   g_log.frame_active = false;
   g_log.capturing = false;
-  g_log.wait_for_separation = false;
+  g_log.completed = false;
   g_log.tracked_a = 0;
   g_log.tracked_b = 0;
   g_log.frames_logged = 0;
@@ -88,12 +99,8 @@ void collision_log_begin_frame(const physics_world *world, float dt) {
 
   g_log.frame_active = false;
 
-  if (g_log.wait_for_separation) {
-    if (pair_colliding(world, g_log.tracked_a, g_log.tracked_b))
-      return;
-
-    g_log.wait_for_separation = false;
-  }
+  if (g_log.completed)
+    return;
 
   if (!g_log.capturing) {
     if (world->collisions->dynamic_collisions_count == 0)
@@ -108,14 +115,15 @@ void collision_log_begin_frame(const physics_world *world, float dt) {
 
   if (g_log.frames_logged >= g_log.max_frames) {
     g_log.capturing = false;
-    g_log.wait_for_separation = true;
+    g_log.completed = true;
     return;
   }
 
-  if (!pair_colliding(world, g_log.tracked_a, g_log.tracked_b)) {
-    g_log.capturing = false;
-    return;
-  }
+  // if (!pair_colliding(world, g_log.tracked_a, g_log.tracked_b)) {
+  //   g_log.capturing = false;
+  //   g_log.completed = true;
+  //   return;
+  // }
 
   g_log.frame_active = true;
   g_log.frames_logged += 1;
@@ -208,7 +216,7 @@ void collision_log_adjust_velocities_iteration(count_t iteration) {
   fprintf(g_log.file, "  [adjustVelocities] iteration=%u\n", iteration);
 }
 
-void collision_log_velocity_resolution(count_t contact_index, const contact *ct, const v3 *deltas, bool is_dynamic) {
+void collision_log_velocity_resolution(const physics_world *world, count_t collision_index, count_t contact_index, const contact *ct, const v3 *deltas, const v3 world_space_impulse, bool is_dynamic) {
   if (!g_log.frame_active || !g_log.file)
     return;
 
@@ -220,6 +228,16 @@ void collision_log_velocity_resolution(count_t contact_index, const contact *ct,
   v3 velocity2 = is_dynamic ? deltas[2] : zero();
   v3 rotation2 = is_dynamic ? deltas[3] : zero();
 
+  collision col = world->collisions->collisions[collision_index];
+  m3 inv_inertia_1 = matrix_inertia(world->dynamics.inv_inertia_tensors[col.index_a], world->dynamics.rotations[col.index_a]);
+  rotation1 = matrix_rotate(rotation1, inv_inertia_1);
+
+  if (is_dynamic) {
+    m3 inv_inertia_2 = matrix_inertia(world->dynamics.inv_inertia_tensors[col.index_b], world->dynamics.rotations[col.index_b]);
+    rotation2 = matrix_rotate(rotation2, inv_inertia_2);
+  }
+
+  fprintf(g_log.file, "      impulse=(%.6f, %.6f, %.6f)\n", world_space_impulse.x, world_space_impulse.y, world_space_impulse.z);
   fprintf(g_log.file, "      velocityChange[0]=(%.6f, %.6f, %.6f)\n", velocity1.x, velocity1.y, velocity1.z);
   fprintf(g_log.file, "      velocityChange[1]=(%.6f, %.6f, %.6f)\n", velocity2.x, velocity2.y, velocity2.z);
   fprintf(g_log.file, "      rotationChange[0]=(%.6f, %.6f, %.6f)\n", rotation1.x, rotation1.y, rotation1.z);
