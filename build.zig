@@ -21,38 +21,39 @@ pub fn build(b: *std.Build) !void {
     const options = Options.getOptions(b);
 
     const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
-    const libRootModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+    const banduraModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
 
     const flags = try compilerFlags(b, options, target.result, optimize);
     defer b.allocator.free(flags);
 
-    const librarySources = try collectSources(b, "lib");
-    defer b.allocator.free(librarySources);
+    const banduraSources = try collectSources(b, "bandura/src");
+    defer b.allocator.free(banduraSources);
 
-    libRootModule.addCSourceFiles(.{
-        .files = librarySources,
+    banduraModule.addCSourceFiles(.{
+        .files = banduraSources,
         .flags = flags,
     });
 
-    const lib = b.addLibrary(.{
+    const banduraLib = b.addLibrary(.{
         .name = "bandura",
         .linkage = .dynamic,
-        .root_module = libRootModule,
+        .root_module = banduraModule,
     });
 
-    lib.addIncludePath(b.path("lib/include"));
+    banduraLib.addIncludePath(b.path("bandura/include"));
 
-    b.installArtifact(lib);
+    b.installArtifact(banduraLib);
+    // b.addInstallHeaderFile(b.path("bandura/include/bandura.h"), ".");
 
-    const scenarioSources = try collectSources(b, "scenarios");
+    const scenarioSources = try collectSources(b, "runner/scenarios");
     defer b.allocator.free(scenarioSources);
 
     var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, scenarioSources.len + 2);
     defer targets.deinit(b.allocator);
 
-    targets.appendAssumeCapacity(lib);
+    targets.appendAssumeCapacity(banduraLib);
 
-    const binarySources = try collectSources(b, "bin");
+    const binarySources = try collectSources(b, "runner");
     defer b.allocator.free(binarySources);
 
     for (scenarioSources) |scenarioFile| {
@@ -71,13 +72,14 @@ pub fn build(b: *std.Build) !void {
 
         scenario.addIncludePath(raylib.path("src"));
         scenario.addIncludePath(raylib.path("examples"));
-        scenario.addIncludePath(b.path("bin/include"));
-        scenario.addIncludePath(b.path("lib/include"));
+        scenario.addIncludePath(b.path("runner/include"));
+        scenario.addIncludePath(b.path("bandura/include"));
+        // scenario.addIncludePath(b.pathJoin(b.install_path, "include"));
 
         linkLibraries(scenario, target);
 
         scenario.linkLibrary(raylib.artifact("raylib"));
-        scenario.linkLibrary(lib);
+        scenario.linkLibrary(banduraLib);
 
         b.installArtifact(scenario);
 
@@ -101,8 +103,8 @@ pub fn build(b: *std.Build) !void {
         }),
     });
 
-    tests.linkLibrary(lib);
-    tests.addIncludePath(b.path("include"));
+    tests.linkLibrary(banduraLib);
+    tests.addIncludePath(b.path("bandura/include"));
 
     const runTests = b.addRunArtifact(tests);
     const testStep = b.step("test", "Run tests");
