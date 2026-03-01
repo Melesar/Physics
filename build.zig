@@ -3,7 +3,7 @@ const zcc = @import("compile_commands");
 
 const ResolvedTarget = std.Build.ResolvedTarget;
 
-const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra" };
+const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Wno-unused-parameter" };
 
 const Options = struct {
     diagnostic: bool,
@@ -148,7 +148,7 @@ fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: 
 
     switch (optimize) {
         .Debug => {
-            try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG" });
+            try flags.appendSlice(b.allocator, &.{ "-g", "-O0", "-DDEBUG_MODE" });
         },
 
         .ReleaseSafe => {
