@@ -2,7 +2,6 @@
 #include "physics.h"
 #include "raylib.h"
 
-#include <math.h>
 #include <unistd.h>
 
 bool is_collision;
@@ -13,7 +12,6 @@ void scenario_initialize(program_config* config, physics_config *physics) {
   config->camera_position = (v3) { 22.542, 11.645, 20.752 };
   config->camera_target = (v3) { 0, 0, 0 };
 
-  (void) physics;
   physics->max_penentration_iterations = 100;
   physics->max_velocity_iterations = 100;
   physics->linear_damping = 0.95;
@@ -42,8 +40,6 @@ void scenario_setup_scene(physics_world *world) {
 }
 
 void scenario_simulate(physics_world *world, float dt) {
-  (void) world;
-  (void) dt;
 }
 
 void scenario_handle_input(physics_world *world, Camera *cam) {

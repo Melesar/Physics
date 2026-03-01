@@ -146,7 +146,9 @@ static bool try_axis(const collision_box *box_a, const collision_box *box_b, v3 
 #define CHECK_OVERLAP(axis, index) \
   if (!try_axis(&box_a, &box_b, (axis), (index), offset, &penetration, &best_axis)) return 0;
 
-static count_t box_box_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+static count_t box_box_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b, bool *switched_bodies) {
+  *switched_bodies = false;
+
   collision_box box_a = collision_box_make(data_a, index_a);
   collision_box box_b = collision_box_make(data_b, index_b);
 
@@ -197,8 +199,7 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
     // one and two (and therefore also the vector between their
     // centres).
     fill_point_face_box_box(&box_b, &box_a, scale(offset, -1), best_axis - 3, penetration, collisions);
-    collision->index_a = index_b;
-    collision->index_b = index_a;
+    *switched_bodies = true;
   } else {
     // We've got an edge-edge contact. Find out which axes
     best_axis -= 6;
@@ -434,7 +435,13 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_BOX:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics);
+              bool did_switch_bodies;
+              dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics, &did_switch_bodies);
+              if (did_switch_bodies) {
+                collision *collision = &collisions->collisions[collisions->collisions_count - 1];
+                collision->index_a = j;
+                collision->index_b = i;
+              }
               break;
 
             case SHAPE_SPHERE:
@@ -493,7 +500,13 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_BOX:
           switch(shape_a.type) {
             case SHAPE_BOX:
-              box_box_collision(collisions, i, j, dynamics, statics);
+              bool did_switch_bodies;
+              box_box_collision(collisions, i, j, dynamics, statics, &did_switch_bodies);
+              if (did_switch_bodies) {
+                collision *collision = &collisions->collisions[collisions->collisions_count - 1];
+                contact *contact = &collisions->contacts[collision->contacts_offset];
+                contact->normal = negate(contact->normal);
+              }
               break;
 
             case SHAPE_SPHERE:
