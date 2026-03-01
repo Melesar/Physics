@@ -1,5 +1,5 @@
 #include "core.h"
-#include "physics.h"
+// #include "physics.h"
 #include "raylib.h"
 
 #include <unistd.h>
@@ -35,7 +35,7 @@ void scenario_setup_scene(physics_world *world) {
   big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1, 3, 10 });
   *big_box.position = (v3) { -7, 1.5, 0 };
 
-  big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
+  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1.3, 1.3, 1.3 });
   *big_box.position = (v3) { 0, 1.3 * 0.5, 0 };
 }
 

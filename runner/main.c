@@ -449,8 +449,8 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
 
         BeginShaderMode(shader);
 
-          if (draw_collisions)
-            physics_draw_collisions(world);
+          // if (draw_collisions)
+          //   physics_draw_collisions(world);
 
           draw_physics_bodies();
           scenario_draw_scene(world);

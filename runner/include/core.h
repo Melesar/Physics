@@ -1,9 +1,9 @@
 #ifndef CORE_H
 #define CORE_H
 
+#include "bandura.h"
 #define NK_INCLUDE_STANDARD_VARARGS
 #include "raylib-nuklear.h"
-#include "physics.h"
 
 #define COLOR_GREEN_ACTIVE   (Color){0x00, 0xff, 0x88, 0xFF}
 #define COLOR_RED_HIGHLIGHT  (Color){0xff, 0x33, 0x66, 0xFF}
@@ -55,7 +55,7 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
 
 void physics_draw_stats(const physics_world *world, struct nk_context* ctx);
 void physics_draw_config_widget(physics_world *world, struct nk_context* ctx);
-void physics_draw_collisions(const physics_world *world);
+// void physics_draw_collisions(const physics_world *world);
 void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx);
 
 #endif

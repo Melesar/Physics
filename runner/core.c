@@ -1,5 +1,4 @@
 #include "core.h"
-#include "physics.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
@@ -231,19 +230,19 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
   nk_end(ctx);
 }
 
-void physics_draw_collisions(const physics_world *world) {
-  count_t count = world->collisions->collisions_count;
+// void physics_draw_collisions(const physics_world *world) {
+//   count_t count = world->collisions->collisions_count;
 
-  for (count_t i = 0; i < count; ++i) {
-    collision c = world->collisions->collisions[i];
+//   for (count_t i = 0; i < count; ++i) {
+//     collision c = world->collisions->collisions[i];
 
-    for (count_t j = 0; j < c.contacts_count; ++j) {
-      contact contact = world->collisions->contacts[c.contacts_offset + j];
+//     for (count_t j = 0; j < c.contacts_count; ++j) {
+//       contact contact = world->collisions->contacts[c.contacts_offset + j];
 
-      draw_arrow(contact.point, contact.normal, RED);
-    }
-  }
-}
+//       draw_arrow(contact.point, contact.normal, RED);
+//     }
+//   }
+// }
 static const char* debug_phase_label(collision_debug_phase phase) {
   switch (phase) {
     case CDBG_PENETRATION_RESOLVE:

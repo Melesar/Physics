@@ -41,9 +41,9 @@ pub fn build(b: *std.Build) !void {
     });
 
     banduraLib.addIncludePath(b.path("bandura/include"));
+    banduraLib.installHeader(b.path("bandura/include/bandura.h"), "bandura.h");
 
     b.installArtifact(banduraLib);
-    // b.addInstallHeaderFile(b.path("bandura/include/bandura.h"), ".");
 
     const scenarioSources = try collectSources(b, "runner/scenarios");
     defer b.allocator.free(scenarioSources);
@@ -73,8 +73,6 @@ pub fn build(b: *std.Build) !void {
         scenario.addIncludePath(raylib.path("src"));
         scenario.addIncludePath(raylib.path("examples"));
         scenario.addIncludePath(b.path("runner/include"));
-        scenario.addIncludePath(b.path("bandura/include"));
-        // scenario.addIncludePath(b.pathJoin(b.install_path, "include"));
 
         linkLibraries(scenario, target);
 
@@ -104,7 +102,6 @@ pub fn build(b: *std.Build) !void {
     });
 
     tests.linkLibrary(banduraLib);
-    tests.addIncludePath(b.path("bandura/include"));
 
     const runTests = b.addRunArtifact(tests);
     const testStep = b.step("test", "Run tests");
