@@ -147,6 +147,9 @@ count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 common_data* as_common(physics_world *world, body_type type);
 const common_data* as_common_const(const physics_world *world, body_type type);
 
+collisions* collisions_init(const physics_config *config);
+void collisions_teardown(collisions *collisions);
+
 void clear_forces(physics_world *world);
 void integrate_bodies(physics_world *world, float dt);
 void prepare_contacts(physics_world *world, float dt);

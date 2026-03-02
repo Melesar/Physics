@@ -47,23 +47,7 @@ const common_data* as_common_const(const physics_world *world, body_type type) {
   return as_common((physics_world*)world, type);
 }
 
-// static void move_body(physics_world *world, count_t src_index, count_t dst_index);
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b);
-
-extern void clear_forces(physics_world *world);
-extern void update_awake_statuses(physics_world *world, float dt);
-extern void prepare_contacts(physics_world *world, float dt);
-extern void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
-extern void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
-extern void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas);
-extern bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
-extern bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
-extern void update_awake_status_for_collision(physics_world *world, count_t collision_index);
-extern void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
-extern void resolve_collisions(physics_world *world, float dt);
-extern collisions* collisions_init(const physics_config *config);
-extern void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);
-extern void collisions_teardown(collisions *collisions);
 
 physics_config physics_default_config() {
   return (physics_config) {
@@ -629,20 +613,6 @@ void update_awake_statuses(physics_world *world, float dt) {
 
   dynamics->awake_count = awake_count;
 }
-
-
-
-// static void move_body(physics_world *world, count_t src_index, count_t dst_index) {
-//   world->dynamics.positions[dst_index] = world->dynamics.positions[src_index];
-//   world->dynamics.rotations[dst_index] = world->dynamics.rotations[src_index];
-//   world->dynamics.shapes[dst_index] = world->dynamics.shapes[src_index];
-//   world->dynamics.inv_masses[dst_index] = world->dynamics.inv_masses[src_index];
-//   world->dynamics.velocities[dst_index] = world->dynamics.velocities[src_index];
-//   world->dynamics.angular_momenta[dst_index] = world->dynamics.angular_momenta[src_index];
-//   world->dynamics.inv_inertia_tensors[dst_index] = world->dynamics.inv_inertia_tensors[src_index];
-//   world->dynamics.inv_intertias[dst_index] = world->dynamics.inv_intertias[src_index];
-//   world->dynamics.motion_avgs[dst_index] = world->dynamics.motion_avgs[src_index];
-// }
 
 static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) {
   #define SWAP(type, arr) \

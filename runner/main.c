@@ -44,7 +44,6 @@ static void process_inputs(physics_world *world, Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
 static void draw_ui_widget_observe_body(struct nk_context* ctx);
-static void print_diagnostics(physics_world *world);
 
 extern void scenario_initialize(program_config* config, physics_config *physics_config);
 extern void scenario_setup_scene(physics_world *world);
@@ -134,18 +133,6 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        // if (collision_debug_mode) {
-        //   if (debug_state.active) {
-        //     simulation_running = false;
-        //     physics_step_debug(world, simulation_step, &debug_state);
-        //   } else {
-        //     scenario_simulate(world, simulation_step);
-        //     physics_step_debug(world, simulation_step, &debug_state);
-        //   }
-        // } else {
-        //   scenario_simulate(world, simulation_step);
-        //   physics_step(world, simulation_step);
-        // }
         scenario_simulate(world, simulation_step);
         physics_step(world, simulation_step);
 
@@ -271,8 +258,6 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
     physics_draw_stats(world, ctx);
   if (show_physics_config_widget)
     physics_draw_config_widget(world, ctx);
-  // if (collision_debug_mode)
-  //   physics_draw_debug_widget(world, &debug_state, ctx);
   if (observe_body_mode)
     draw_ui_widget_observe_body(ctx);
 }
@@ -428,9 +413,6 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader) {
       BeginMode3D(camera);
 
         BeginShaderMode(shader);
-
-          // if (draw_collisions)
-          //   physics_draw_collisions(world);
 
           draw_physics_bodies();
           scenario_draw_scene(world);
