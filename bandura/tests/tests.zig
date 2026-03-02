@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const c = @cImport(@cInclude("physics.h"));
+const c = @cImport(@cInclude("bandura.h"));
 
 test "Box collision" {
     const config = c.physics_default_config();
