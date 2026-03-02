@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "physics.h"
 #include <math.h>
 #include <stdlib.h>
@@ -351,6 +352,85 @@ count_t box_sphere_collision(collisions *collisions, count_t i, count_t j, const
   return 1;
 }
 
+count_t cylinder_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+  v3 cylinder_center = data_a->positions[i];
+  quat cylinder_rotation = data_a->rotations[i];
+  float cylinder_radius = data_a->shapes[i].cylinder.radius;
+  float cylinder_half_height = data_a->shapes[i].cylinder.height * 0.5f;
+
+  v3 sphere_center = data_b->positions[j];
+  float sphere_radius = data_b->shapes[j].sphere.radius;
+
+  m4 cylinder_transform = mul(as_matrix(cylinder_rotation), MatrixTranslate(cylinder_center.x, cylinder_center.y, cylinder_center.z));
+  v3 local_sphere_center = transform(sphere_center, inverse(cylinder_transform));
+
+  float clamped_y = local_sphere_center.y;
+  if (clamped_y > cylinder_half_height) clamped_y = cylinder_half_height;
+  else if (clamped_y < -cylinder_half_height) clamped_y = -cylinder_half_height;
+
+  v3 radial = { local_sphere_center.x, 0, local_sphere_center.z };
+  float radial_len_sq = lensq(radial);
+  float radial_len = sqrtf(radial_len_sq);
+
+  v3 clamped_radial = radial;
+  if (radial_len_sq > cylinder_radius * cylinder_radius)
+    clamped_radial = scale(radial, cylinder_radius / radial_len);
+
+  v3 closest_local = { clamped_radial.x, clamped_y, clamped_radial.z };
+  v3 local_to_cylinder = sub(closest_local, local_sphere_center);
+  float distance = len(local_to_cylinder);
+
+  bool inside = fabsf(local_sphere_center.y) <= cylinder_half_height && radial_len_sq <= cylinder_radius * cylinder_radius;
+  if (!inside && distance > sphere_radius)
+    return 0;
+
+  v3 normal_local;
+  v3 contact_point_local;
+  float depth;
+
+  const float eps = 0.000001f;
+  if (inside) {
+    float side_depth = cylinder_radius - radial_len;
+    float cap_depth = cylinder_half_height - fabsf(local_sphere_center.y);
+
+    if (side_depth < cap_depth) {
+      v3 outward = radial_len > eps ? scale(radial, 1.0f / radial_len) : right();
+      contact_point_local = (v3) { outward.x * cylinder_radius, local_sphere_center.y, outward.z * cylinder_radius };
+      normal_local = scale(outward, -1.0f);
+      depth = sphere_radius + side_depth;
+    } else {
+      float sign = local_sphere_center.y >= 0.0f ? 1.0f : -1.0f;
+      contact_point_local = (v3) { local_sphere_center.x, sign * cylinder_half_height, local_sphere_center.z };
+      normal_local = (v3) { 0, -sign, 0 };
+      depth = sphere_radius + cap_depth;
+    }
+  } else {
+    contact_point_local = closest_local;
+    if (distance > eps)
+      normal_local = scale(local_to_cylinder, 1.0f / distance);
+    else
+      normal_local = (v3) { 0, local_sphere_center.y > 0.0f ? -1.0f : 1.0f, 0 };
+
+    depth = sphere_radius - distance;
+  }
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision *collision = &collisions->collisions[collisions->collisions_count++];
+  collision->contacts_count = 1;
+  collision->contacts_offset = collisions->contacts_count;
+  collision->index_a = i;
+  collision->index_b = j;
+
+  contact *contact = &collisions->contacts[collisions->contacts_count++];
+  contact->point = transform(contact_point_local, cylinder_transform);
+  contact->normal = normalize(rotate(normal_local, cylinder_rotation));
+  contact->depth = depth;
+
+  return 1;
+}
+
 count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 p1 = data_a->positions[i];
   v3 p2 = data_b->positions[j];
@@ -519,6 +599,17 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
           }
           break;
 
+        case SHAPE_CYLINDER:
+          switch (shape_b.type) {
+            case SHAPE_SPHERE:
+              dyn_count += cylinder_sphere_collision(collisions, i, j, dynamics, dynamics);
+              break;
+
+            default:
+              break;
+          }
+          break;
+
         default:
           break;
       }
@@ -578,6 +669,22 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
               break;
           }
           break;
+
+        case SHAPE_CYLINDER:
+          switch (shape_a.type) {
+            case SHAPE_SPHERE:
+              if (cylinder_sphere_collision(collisions, j, i, statics, dynamics)) {
+                collision *collision = &collisions->collisions[collisions->collisions_count - 1];
+                collision->index_a = i;
+
+                contact *contact = &collisions->contacts[collision->contacts_offset];
+                contact->normal = negate(contact->normal);
+              }
+              break;
+
+            default:
+              break;
+          }
 
         default:
           break;
