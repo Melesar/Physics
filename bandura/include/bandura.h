@@ -140,8 +140,15 @@ typedef struct {
   float restitution_damping_limit;
 } physics_config;
 
+typedef struct {
+  v3 point;
+  v3 normal;
+  float depth;
+} contact_t;
+
 #ifndef LIB_BUILD
 typedef void physics_world;
+typedef void collision_debug_state;
 #endif
 
 typedef struct {
@@ -192,56 +199,8 @@ count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, flo
 
 void physics_teardown(physics_world* world);
 
-#define CDBG_MAX_CONTACTS 64
-
-typedef enum {
-  CDBG_IDLE,
-  CDBG_PENETRATION_RESOLVE,
-  CDBG_DEPTH_UPDATE,
-  CDBG_VELOCITY_RESOLVE,
-  CDBG_VELOCITY_UPDATE,
-  CDBG_DONE,
-} collision_debug_phase;
-
-typedef struct {
-  count_t index;
-  float before;
-  float after;
-} depth_update_record;
-
-typedef struct {
-  count_t index;
-  v3 local_vel_before;
-  v3 local_vel_after;
-  float ddv_before;
-  float ddv_after;
-} velocity_update_record;
-
-typedef struct {
-  bool active;
-  collision_debug_phase prev_phase;
-  collision_debug_phase phase;
-  count_t iteration;
-  bool is_dynamic;
-
-  count_t current_collision_index;
-  count_t current_contact_index;
-
-  // Deltas from resolve steps (body1 linear, body1 angular, body2 linear, body2 angular)
-  v3 deltas[4];
-
-  // Depth update records
-  count_t depth_update_count;
-  depth_update_record depth_updates[CDBG_MAX_CONTACTS];
-
-  // Velocity update records
-  count_t velocity_update_count;
-  velocity_update_record velocity_updates[CDBG_MAX_CONTACTS];
-
-  // Internal state carried between steps
-  float dt;
-} collision_debug_state;
-
-void physics_debug_state_init(collision_debug_state *state);
+collision_debug_state *physics_debug_state_init();
+void physics_debug_state_reset(collision_debug_state *state);
+bool physics_debug_current_contact(const physics_world *world, const collision_debug_state *state, contact_t *contact);
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state);
 #endif

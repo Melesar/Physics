@@ -83,7 +83,7 @@ typedef struct {
 
 static observed_body_state observed_body = {0};
 
-static collision_debug_state debug_state;
+static collision_debug_state *debug_state;
 
 static Model groundModel;
 static physics_world *world;
@@ -112,6 +112,8 @@ int main(int argc, char** argv) {
   setup_scene(shader);
   scenario_setup_scene(world);
 
+  debug_state = physics_debug_state_init();
+
   if (argc > 1 && !strncmp(argv[1], "-p", 2)) {
     simulation_running = false;
   }
@@ -132,18 +134,20 @@ int main(int argc, char** argv) {
       for (int i = 0; i < sim_count; i++) {
         if (!simulation_running && !step_forward) break;
 
-        if (collision_debug_mode) {
-          if (debug_state.active) {
-            simulation_running = false;
-            physics_step_debug(world, simulation_step, &debug_state);
-          } else {
-            scenario_simulate(world, simulation_step);
-            physics_step_debug(world, simulation_step, &debug_state);
-          }
-        } else {
-          scenario_simulate(world, simulation_step);
-          physics_step(world, simulation_step);
-        }
+        // if (collision_debug_mode) {
+        //   if (debug_state.active) {
+        //     simulation_running = false;
+        //     physics_step_debug(world, simulation_step, &debug_state);
+        //   } else {
+        //     scenario_simulate(world, simulation_step);
+        //     physics_step_debug(world, simulation_step, &debug_state);
+        //   }
+        // } else {
+        //   scenario_simulate(world, simulation_step);
+        //   physics_step(world, simulation_step);
+        // }
+        scenario_simulate(world, simulation_step);
+        physics_step(world, simulation_step);
 
         step_forward = false;
       }
@@ -243,7 +247,7 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
       nk_bool cdbg = collision_debug_mode ? nk_true : nk_false;
       nk_checkbox_label(ctx, "Collision debugging", &cdbg);
       if (cdbg && !collision_debug_mode)
-        physics_debug_state_init(&debug_state);
+        physics_debug_state_reset(debug_state);
       collision_debug_mode = cdbg != 0;
 
       nk_bool gismos = draw_gismos ? nk_true : nk_false;
@@ -269,8 +273,8 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
     physics_draw_config_widget(world, ctx);
   // if (collision_debug_mode)
   //   physics_draw_debug_widget(world, &debug_state, ctx);
-  // if (observe_body_mode)
-  //   draw_ui_widget_observe_body(ctx);
+  if (observe_body_mode)
+    draw_ui_widget_observe_body(ctx);
 }
 
 static void draw_ui_widget_observe_body(struct nk_context* ctx) {
@@ -383,11 +387,10 @@ static void draw_physics_bodies() {
       draw_body_angular_momentum(position, angular_momentum);
   }
 
-  // if (!debug_state.active || debug_state.prev_phase == CDBG_IDLE || debug_state.prev_phase == CDBG_DONE)
-  //   return;
-
-  // contact c = world->collisions->contacts[debug_state.current_contact_index];
-  // draw_arrow(c.point, c.normal,RED);
+  contact_t contact;
+  if (physics_debug_current_contact(world, debug_state, &contact)) {
+    draw_arrow(contact.point, contact.normal, RED);
+  }
 }
 
 static void draw_body_axes(v3 position, quat rotation) {

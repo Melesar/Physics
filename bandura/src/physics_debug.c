@@ -1,21 +1,14 @@
 #include "physics.h"
 #include "string.h"
+#include <stdlib.h>
 
-extern void clear_forces(physics_world *world);
-extern void integrate_bodies(physics_world *world, float dt);
-extern void prepare_contacts(physics_world *world, float dt);
-extern void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
-extern void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
-extern void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas);
-extern bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
-extern bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
-extern void update_awake_status_for_collision(physics_world *world, count_t collision_index);
-extern void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
-extern void resolve_collisions(physics_world *world, float dt);
-extern void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);
-extern void update_awake_statuses(physics_world *world, float dt);
+collision_debug_state *physics_debug_state_init() {
+  collision_debug_state *state = malloc(sizeof(collision_debug_state));
+  physics_debug_state_reset(state);
+  return state;
+}
 
-void physics_debug_state_init(collision_debug_state *state) {
+void physics_debug_state_reset(collision_debug_state *state) {
   state->active = false;
   state->phase = CDBG_IDLE;
   state->iteration = 0;
@@ -26,6 +19,19 @@ void physics_debug_state_init(collision_debug_state *state) {
   state->velocity_update_count = 0;
 
   memset(state->deltas, 0, sizeof(v3) * 4);
+}
+
+bool physics_debug_current_contact(const physics_world *world, const collision_debug_state *state, contact_t *out_contact) {
+  if (state->active && state->prev_phase != CDBG_IDLE && state->prev_phase != CDBG_DONE) {
+    contact world_contact = world->collisions->contacts[state->current_contact_index];
+    out_contact->point = world_contact.point;
+    out_contact->normal = world_contact.normal;
+    out_contact->depth = world_contact.depth;
+
+    return true;
+  }
+
+  return false;
 }
 
 void physics_step_debug(physics_world *world, float dt, collision_debug_state *state) {

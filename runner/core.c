@@ -242,28 +242,28 @@ void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
 //     }
 //   }
 // }
-static const char* debug_phase_label(collision_debug_phase phase) {
-  switch (phase) {
-    case CDBG_PENETRATION_RESOLVE:
-      return "Penetration resolve";
+// static const char* debug_phase_label(collision_debug_phase phase) {
+//   switch (phase) {
+//     case CDBG_PENETRATION_RESOLVE:
+//       return "Penetration resolve";
 
-    case CDBG_DEPTH_UPDATE:
-      return "Depth update";
+//     case CDBG_DEPTH_UPDATE:
+//       return "Depth update";
 
-    case CDBG_VELOCITY_RESOLVE:
-      return "Velocity resolve";
+//     case CDBG_VELOCITY_RESOLVE:
+//       return "Velocity resolve";
 
-    case CDBG_VELOCITY_UPDATE:
-      return "Velocity update";
+//     case CDBG_VELOCITY_UPDATE:
+//       return "Velocity update";
 
-    case CDBG_DONE:
-      return "Done";
+//     case CDBG_DONE:
+//       return "Done";
 
-    case CDBG_IDLE:
-      return "Idle";
-  }
-  return "Unknown";
-}
+//     case CDBG_IDLE:
+//       return "Idle";
+//   }
+//   return "Unknown";
+// }
 
 // void physics_draw_debug_widget(const physics_world *world, const collision_debug_state *state, struct nk_context *ctx) {
 //   if (!state->active)
@@ -406,12 +406,12 @@ static const char* debug_phase_label(collision_debug_phase phase) {
 //   nk_end(ctx);
 // }
 
-static void fclose_cleanup(FILE **f) {
-  if (f && *f) {
-    fclose(*f);
-    f = NULL;
-  }
-}
+// static void fclose_cleanup(FILE **f) {
+//   if (f && *f) {
+//     fclose(*f);
+//     f = NULL;
+//   }
+// }
 
 // static void dump_body(const physics_world *world, FILE *file, count_t body_index) {
 //   float mass = 1.0f / world->dynamics.inv_masses[body_index];

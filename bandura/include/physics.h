@@ -2,6 +2,7 @@
 #define PHYSICS_H
 
 typedef struct physics_world_t physics_world;
+typedef struct collision_debug_state_t collision_debug_state;
 
 #define LIB_BUILD
 
@@ -90,9 +91,74 @@ struct physics_world_t {
   count_t generation;
 };
 
+#define CDBG_MAX_CONTACTS 64
+
+typedef enum {
+  CDBG_IDLE,
+  CDBG_PENETRATION_RESOLVE,
+  CDBG_DEPTH_UPDATE,
+  CDBG_VELOCITY_RESOLVE,
+  CDBG_VELOCITY_UPDATE,
+  CDBG_DONE,
+} collision_debug_phase;
+
+typedef struct {
+  count_t index;
+  float before;
+  float after;
+} depth_update_record;
+
+typedef struct {
+  count_t index;
+  v3 local_vel_before;
+  v3 local_vel_after;
+  float ddv_before;
+  float ddv_after;
+} velocity_update_record;
+
+struct collision_debug_state_t {
+  bool active;
+  collision_debug_phase prev_phase;
+  collision_debug_phase phase;
+  count_t iteration;
+  bool is_dynamic;
+
+  count_t current_collision_index;
+  count_t current_contact_index;
+
+  // Deltas from resolve steps (body1 linear, body1 angular, body2 linear, body2 angular)
+  v3 deltas[4];
+
+  // Depth update records
+  count_t depth_update_count;
+  depth_update_record depth_updates[CDBG_MAX_CONTACTS];
+
+  // Velocity update records
+  count_t velocity_update_count;
+  velocity_update_record velocity_updates[CDBG_MAX_CONTACTS];
+
+  // Internal state carried between steps
+  float dt;
+};
+
 body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
 count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 
 common_data* as_common(physics_world *world, body_type type);
 const common_data* as_common_const(const physics_world *world, body_type type);
+
+void clear_forces(physics_world *world);
+void integrate_bodies(physics_world *world, float dt);
+void prepare_contacts(physics_world *world, float dt);
+void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
+void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
+void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas);
+bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
+bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
+void update_awake_status_for_collision(physics_world *world, count_t collision_index);
+void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
+void resolve_collisions(physics_world *world, float dt);
+void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);
+void update_awake_statuses(physics_world *world, float dt);
+
 #endif

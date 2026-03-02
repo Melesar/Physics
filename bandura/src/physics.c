@@ -268,7 +268,7 @@ void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impul
   world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
 }
 
-physics_config* physics_get_config(physics_world *world) {
+physics_config* physics_edit_config(physics_world *world) {
   return &world->config;
 }
 
