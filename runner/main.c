@@ -346,6 +346,11 @@ static void draw_physics_bodies_typed(body_type type) {
         DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, transform));
         break;
 
+      case SHAPE_CYLINDER:
+        scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
+        DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, transform));
+        break;
+
       default:
         break;
     }
@@ -495,6 +500,7 @@ static void setup_scene(Shader shader) {
   meshes[SHAPE_BOX] = GenMeshCube(1, 1, 1);
   meshes[SHAPE_SPHERE] = GenMeshSphere(1, 16, 16);
   meshes[SHAPE_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
+  meshes[SHAPE_CYLINDER] = GenMeshCylinder(1, 1, 32);
 
   for (size_t i = 0; i < 20; ++i) {
     Material m = LoadMaterialDefault();

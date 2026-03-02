@@ -174,6 +174,10 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
         inertia_vector = sphere_inertia(shape.sphere.radius, mass);
         break;
 
+      case SHAPE_CYLINDER:
+        inertia_vector = cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
+        break;
+
       default:
         break;
     }
@@ -202,6 +206,10 @@ body physics_add_box(physics_world *world, body_type type, float mass, v3 size) 
 
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius) {
   return physics_add_body(world, type, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+}
+
+body physics_add_cylinder(physics_world *world, body_type type, float mass, float radius, float height) {
+  return physics_add_body(world, type, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
 }
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force) {

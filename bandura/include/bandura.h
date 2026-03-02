@@ -75,6 +75,7 @@ typedef enum {
   SHAPE_BOX,
   SHAPE_SPHERE,
   SHAPE_PLANE,
+  SHAPE_CYLINDER,
 
   SHAPES_COUNT
 } shape_type;
@@ -86,6 +87,7 @@ typedef struct {
     struct { v3 size; } box;
     struct { v3 normal; } plane;
     struct { float radius; } sphere;
+    struct { float radius; float height; } cylinder;
   };
 
 } body_shape;
@@ -163,6 +165,8 @@ physics_world* physics_init(const physics_config *config);
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
 body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
 body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
+body physics_add_cylinder(physics_world *world, body_type type, float mass, float radius, float height);
+
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);
 void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);
