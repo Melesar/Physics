@@ -263,10 +263,10 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   nk_end(ctx);
 
-  // if (show_physics_world_stats)
-  //   physics_draw_stats(world, ctx);
-  // if (show_physics_config_widget)
-  //   physics_draw_config_widget(world, ctx);
+  if (show_physics_world_stats)
+    physics_draw_stats(world, ctx);
+  if (show_physics_config_widget)
+    physics_draw_config_widget(world, ctx);
   // if (collision_debug_mode)
   //   physics_draw_debug_widget(world, &debug_state, ctx);
   // if (observe_body_mode)
@@ -366,19 +366,22 @@ static void draw_physics_bodies_typed(body_type type) {
 static void draw_physics_bodies() {
   draw_physics_bodies_typed(BODY_DYNAMIC);
   draw_physics_bodies_typed(BODY_STATIC);
-  // dynamic_bodies *dynamics = &world->dynamics;
-  // for(count_t i = 0; i < dynamics->count; ++i) {
-  //   count_t index = dynamics->outer_lookup[i];
-  //   v3 position = dynamics->positions[index];
-  //   quat rotation = dynamics->rotations[index];
-  //   v3 angular_momentum = dynamics->angular_momenta[index];
 
-  //   if (draw_gismos)
-  //     draw_body_axes(position, rotation);
+  body_enumerator_typed enumerator;
+  physics_enumerate_bodies_typed(world, BODY_DYNAMIC, &enumerator);
 
-  //   if (draw_angular_momenta)
-  //     draw_body_angular_momentum(position, angular_momentum);
-  // }
+  while(physics_body_next_typed(world, &enumerator)) {
+    v3 position = physics_get_position(world, enumerator.handle);
+    quat rotation = physics_get_rotation(world, enumerator.handle);
+
+    if (draw_gismos) {
+      draw_body_axes(position, rotation);
+    }
+
+    v3 angular_momentum = physics_get_angular_momentum(world, enumerator.handle);
+    if (draw_angular_momenta)
+      draw_body_angular_momentum(position, angular_momentum);
+  }
 
   // if (!debug_state.active || debug_state.prev_phase == CDBG_IDLE || debug_state.prev_phase == CDBG_DONE)
   //   return;

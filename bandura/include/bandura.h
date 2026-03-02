@@ -164,24 +164,31 @@ void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, 
 void physics_apply_impulse(physics_world *world, body_handle handle, v3 impulse);
 void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impulse, v3 position);
 
-v3 physics_get_position(physics_world *world, body_handle handle);
-quat physics_get_rotation(physics_world *world, body_handle handle);
-body_shape physics_get_shape(physics_world *world, body_handle handle);
-v3 physics_get_velocity(physics_world *world, body_handle handle);
-v3 physics_get_angular_velocity(physics_world *world, body_handle handle);
-float physics_get_motion_avg(physics_world *world, body_handle handle);
+count_t physics_body_count(const physics_world *world, body_type type);
+count_t physics_awake_count(const physics_world *world);
+count_t physics_collisions_count(const physics_world *world);
 
-void physics_enumerate_bodies(physics_world *world, body_enumerator *enumerator);
-void physics_enumerate_bodies_typed(physics_world *world, body_type type, body_enumerator_typed *enumerator);
+physics_config* physics_edit_config(physics_world *world);
 
-bool physics_body_next(physics_world *world, body_enumerator *enumerator);
-bool physics_body_next_typed(physics_world *world, body_enumerator_typed *enumerator);
+v3 physics_get_position(const physics_world *world, body_handle handle);
+quat physics_get_rotation(const physics_world *world, body_handle handle);
+body_shape physics_get_shape(const physics_world *world, body_handle handle);
+v3 physics_get_velocity(const physics_world *world, body_handle handle);
+v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
+v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
+float physics_get_motion_avg(const physics_world *world, body_handle handle);
+
+void physics_enumerate_bodies(const physics_world *world, body_enumerator *enumerator);
+void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
+
+bool physics_body_next(const physics_world *world, body_enumerator *enumerator);
+bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);
 
 void physics_step(physics_world* world, float dt);
 void physics_awaken_body(physics_world* world, body_handle handle);
 void physics_reset(physics_world *world);
 
-count_t physics_raycast(physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
+count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits);
 
 void physics_teardown(physics_world* world);
 

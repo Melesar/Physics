@@ -1,6 +1,4 @@
-#include "raylib.h"
 #include "core.h"
-#include "raylib-nuklear.h"
 #include "rlgl.h"
 #include <float.h>
 #include <limits.h>
@@ -162,73 +160,74 @@ void draw_model_with_wireframe(Model model, Vector3 position, float scale, Color
   rlDisableWireMode();
 }
 
-// void physics_draw_stats(const physics_world *world, struct nk_context* ctx) {
-//   static const char* window_name = "physics_world_stats";
-//   const float row_height = 18.0f;
-//   const float window_width = 240.0f;
-//   const int row_count = 4;
+void physics_draw_stats(const physics_world *world, struct nk_context* ctx) {
+  static const char* window_name = "physics_world_stats";
+  const float row_height = 18.0f;
+  const float window_width = 240.0f;
+  const int row_count = 4;
 
-//   bool draw_content = begin_widget_window(ctx, window_name, "Physics world stats", 20.0f, 200.0f, window_width, row_height, row_count);
+  bool draw_content = begin_widget_window(ctx, window_name, "Physics world stats", 20.0f, 200.0f, window_width, row_height, row_count);
 
-//   if (draw_content) {
-//     count_t dynamic_count = world->dynamics.count;
-//     count_t static_count = world->statics.count;
-//     count_t collisions_total = world->collisions->collisions_count;
-//     count_t awake_total = (count_t) world->dynamics.awake_count;
+  if (draw_content) {
+    count_t dynamic_count = physics_body_count(world, BODY_DYNAMIC);
+    count_t static_count = physics_body_count(world, BODY_STATIC);
+    count_t collisions_total = physics_collisions_count(world);
+    count_t awake_total = physics_awake_count(world);
 
-//     nk_layout_row_dynamic(ctx, row_height, 1);
-//     nk_label(ctx, "Body count:", NK_TEXT_ALIGN_LEFT);
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_label(ctx, "Body count:", NK_TEXT_ALIGN_LEFT);
 
-//     nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
-//     nk_layout_row_push(ctx, 0.5f);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Dynamic %u", dynamic_count);
-//     nk_layout_row_push(ctx, 0.5f);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Static %u", static_count);
-//     nk_layout_row_end(ctx);
+    nk_layout_row_begin(ctx, NK_DYNAMIC, row_height, 2);
+    nk_layout_row_push(ctx, 0.5f);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Dynamic %u", dynamic_count);
+    nk_layout_row_push(ctx, 0.5f);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Static %u", static_count);
+    nk_layout_row_end(ctx);
 
-//     nk_layout_row_dynamic(ctx, row_height, 1);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collisions count: %u", collisions_total);
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Collisions count: %u", collisions_total);
 
-//     nk_layout_row_dynamic(ctx, row_height, 1);
-//     nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Awake bodies: %u", awake_total);
-//   }
+    nk_layout_row_dynamic(ctx, row_height, 1);
+    nk_labelf(ctx, NK_TEXT_ALIGN_LEFT, "Awake bodies: %u", awake_total);
+  }
 
-//   nk_end(ctx);
-// }
+  nk_end(ctx);
+}
 
-// void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
-//   static const char* window_name = "physics_config_widget";
-//   const float row_height = 15.0f;
-//   const float window_width = 260.0f;
-//   const int row_count = 6;
+void physics_draw_config_widget(physics_world *world, struct nk_context* ctx) {
+  static const char* window_name = "physics_config_widget";
+  const float row_height = 15.0f;
+  const float window_width = 260.0f;
+  const int row_count = 6;
 
-//   bool draw_content = begin_widget_window(ctx, window_name, "Physics config", 20.0f, 360.0f, window_width, row_height, row_count);
+  bool draw_content = begin_widget_window(ctx, window_name, "Physics config", 20.0f, 360.0f, window_width, row_height, row_count);
 
-//   if (draw_content) {
-//     int max_penetration_iterations = (int) world->config.max_penentration_iterations;
-//     int max_velocity_iterations = (int) world->config.max_velocity_iterations;
+  physics_config *config = physics_edit_config(world);
+  if (draw_content) {
+    int max_penetration_iterations = (int) config->max_penentration_iterations;
+    int max_velocity_iterations = (int) config->max_velocity_iterations;
 
-//     draw_edit_float(ctx, "Linear damping", &world->config.linear_damping);
-//     draw_edit_float(ctx, "Angular damping", &world->config.angular_damping);
-//     draw_edit_float(ctx, "Restitution", &world->config.restitution);
-//     draw_edit_float(ctx, "Friction", &world->config.friction);
-//     draw_edit_int(ctx, "Penetration iterations", &max_penetration_iterations);
-//     draw_edit_int(ctx, "Velocity iterations", &max_velocity_iterations);
-//     draw_edit_float(ctx, "Penetration epsilon", &world->config.penetration_epsilon);
-//     draw_edit_float(ctx, "Velocity epsilon", &world->config.velocity_epsilon);
-//     draw_edit_float(ctx, "Restitution damp limit", &world->config.restitution_damping_limit);
+    draw_edit_float(ctx, "Linear damping", &config->linear_damping);
+    draw_edit_float(ctx, "Angular damping", &config->angular_damping);
+    draw_edit_float(ctx, "Restitution", &config->restitution);
+    draw_edit_float(ctx, "Friction", &config->friction);
+    draw_edit_int(ctx, "Penetration iterations", &max_penetration_iterations);
+    draw_edit_int(ctx, "Velocity iterations", &max_velocity_iterations);
+    draw_edit_float(ctx, "Penetration epsilon", &config->penetration_epsilon);
+    draw_edit_float(ctx, "Velocity epsilon", &config->velocity_epsilon);
+    draw_edit_float(ctx, "Restitution damp limit", &config->restitution_damping_limit);
 
-//     if (max_penetration_iterations < 0)
-//       max_penetration_iterations = 0;
-//     if (max_velocity_iterations < 0)
-//       max_velocity_iterations = 0;
+    if (max_penetration_iterations < 0)
+      max_penetration_iterations = 0;
+    if (max_velocity_iterations < 0)
+      max_velocity_iterations = 0;
 
-//     world->config.max_penentration_iterations = (count_t) max_penetration_iterations;
-//     world->config.max_velocity_iterations = (count_t) max_velocity_iterations;
-//   }
+    config->max_penentration_iterations = (count_t) max_penetration_iterations;
+    config->max_velocity_iterations = (count_t) max_velocity_iterations;
+  }
 
-//   nk_end(ctx);
-// }
+  nk_end(ctx);
+}
 
 // void physics_draw_collisions(const physics_world *world) {
 //   count_t count = world->collisions->collisions_count;

@@ -29,6 +29,7 @@ static v3 box_inertia(v3 size, float mass) {
   return scale(i, m);
 }
 
+
 common_data* as_common(physics_world *world, body_type type) {
   switch (type) {
     case BODY_DYNAMIC:
@@ -40,6 +41,10 @@ common_data* as_common(physics_world *world, body_type type) {
     default:
       return NULL;
   }
+}
+
+const common_data* as_common_const(const physics_world *world, body_type type) {
+  return as_common((physics_world*)world, type);
 }
 
 // static void move_body(physics_world *world, count_t src_index, count_t dst_index);
@@ -263,64 +268,91 @@ void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impul
   world->dynamics.angular_impulses[index] = add(prev_angular_impulse, angular_impulse);
 }
 
-
-v3 physics_get_position(physics_world *world, body_handle handle) {
-  common_data *data = as_common(world, handle.type);
-  return data->positions[handle.index];
+physics_config* physics_get_config(physics_world *world) {
+  return &world->config;
 }
 
-quat physics_get_rotation(physics_world *world, body_handle handle) {
-  common_data *data = as_common(world, handle.type);
-  return data->rotations[handle.index];
+count_t physics_body_count(const physics_world *world, body_type type) {
+  return as_common_const(world, type)->count;
 }
 
-body_shape physics_get_shape(physics_world *world, body_handle handle) {
-  common_data *data = as_common(world, handle.type);
-  return data->shapes[handle.index];
+count_t physics_awake_count(const physics_world *world) {
+  return world->dynamics.awake_count;
 }
 
-v3 physics_get_velocity(physics_world *world, body_handle handle) {
+count_t physics_collisions_count(const physics_world *world) {
+  return world->collisions->collisions_count;
+}
+
+
+v3 physics_get_position(const physics_world *world, body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+  return data->positions[handle_to_inner_index(world, handle)];
+}
+
+quat physics_get_rotation(const physics_world *world, body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+  return data->rotations[handle_to_inner_index(world, handle)];
+}
+
+body_shape physics_get_shape(const physics_world *world, body_handle handle) {
+  const common_data *data = as_common_const(world, handle.type);
+  return data->shapes[handle_to_inner_index(world, handle)];
+}
+
+v3 physics_get_velocity(const physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
     return zero();
   }
 
-  return world->dynamics.velocities[handle.index];
+  return world->dynamics.velocities[handle_to_inner_index(world, handle)];
 }
 
-v3 physics_get_angular_velocity(physics_world *world, body_handle handle) {
+v3 physics_get_angular_velocity(const physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
     return zero();
   }
 
-  dynamic_bodies *dynamics = &world->dynamics;
-  v3 momentum = dynamics->angular_momenta[handle.index];
-  quat rotation = dynamics->rotations[handle.index];
-  m3 inv_inertia = dynamics->inv_inertia_tensors[handle.index];
+  const dynamic_bodies *dynamics = &world->dynamics;
+  count_t index = handle_to_inner_index(world, handle);
+  v3 momentum = dynamics->angular_momenta[index];
+  quat rotation = dynamics->rotations[index];
+  m3 inv_inertia = dynamics->inv_inertia_tensors[index];
 
   return matrix_rotate(momentum, matrix_inertia(inv_inertia, rotation));
 }
 
-float physics_get_motion_avg(physics_world *world, body_handle handle) {
+
+
+v3 physics_get_angular_momentum(const physics_world *world, body_handle handle) {
+  if (handle.type != BODY_DYNAMIC) {
+    return zero();
+  }
+
+  return world->dynamics.angular_momenta[handle_to_inner_index(world, handle)];
+}
+
+float physics_get_motion_avg(const physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
     return 0;
   }
 
-  return world->dynamics.motion_avgs[handle.index];
+  return world->dynamics.motion_avgs[handle_to_inner_index(world, handle)];
 }
 
 const count_t sentinel_index = (count_t)~0 >> 1;
 
-void physics_enumerate_bodies(physics_world *world, body_enumerator *enumerator) {
+void physics_enumerate_bodies(const physics_world *world, body_enumerator *enumerator) {
   enumerator->handle = (body_handle) { .type = BODY_DYNAMIC, .index = sentinel_index & 0x7FFFFFFF };
   enumerator->generation = world->generation;
 }
 
-void physics_enumerate_bodies_typed(physics_world *world, body_type type, body_enumerator *enumerator) {
+void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator *enumerator) {
   enumerator->handle = (body_handle) { .type = type, .index = sentinel_index & 0x7FFFFFFF };
   enumerator->generation = world->generation;
 }
 
-bool physics_body_next(physics_world *world, body_enumerator *enumerator) {
+bool physics_body_next(const physics_world *world, body_enumerator *enumerator) {
   if (enumerator->generation != world->generation) {
     return false;
   }
@@ -371,12 +403,12 @@ bool physics_body_next(physics_world *world, body_enumerator *enumerator) {
   }
 }
 
-bool physics_body_next_typed(physics_world *world, body_enumerator_typed *enumerator) {
+bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator) {
   if (enumerator->generation != world->generation) {
     return false;
   }
 
-  common_data *data = as_common(world, enumerator->handle.type);
+  const common_data *data = as_common_const(world, enumerator->handle.type);
   if (enumerator->handle.index == sentinel_index) {
     if (data->count == 0) {
       return false;

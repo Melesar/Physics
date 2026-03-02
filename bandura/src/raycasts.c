@@ -2,9 +2,6 @@
 #include <float.h>
 #include <math.h>
 
-extern common_data* as_common(physics_world *world, body_type type);
-extern body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
-
 static bool raycast_box(v3 origin, v3 direction, float max_distance, v3 position, v3 size, quat rotation, raycast_hit *hit) {
   v3 half = scale(size, 0.5f);
   quat inv_rotation = qinvert(rotation);
@@ -101,13 +98,13 @@ static bool raycast_plane(v3 origin, v3 direction, float max_distance, v3 point,
   return true;
 }
 
-static count_t raycast_bodies(physics_world *world, body_type type, v3 origin, v3 direction, float max_distance, count_t hit_count, count_t max_hits, raycast_hit *hits) {
+static count_t raycast_bodies(const physics_world *world, body_type type, v3 origin, v3 direction, float max_distance, count_t hit_count, count_t max_hits, raycast_hit *hits) {
   if (hit_count >= max_hits) {
     return 0;
   }
 
   count_t num_hits = 0;
-  common_data *data = as_common(world, type);
+  const common_data *data = as_common_const(world, type);
   for(count_t i = 0; i < data->count; ++i) {
     body_shape shape = data->shapes[i];
     raycast_hit *hit = hits + hit_count + num_hits;
@@ -138,7 +135,7 @@ static count_t raycast_bodies(physics_world *world, body_type type, v3 origin, v
   return num_hits;
 }
 
-count_t physics_raycast(physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits) {
+count_t physics_raycast(const physics_world *world, v3 origin, v3 direction, float max_distance, count_t max_hits, raycast_hit *hits) {
   count_t hit_count = 0;
 
   hit_count += raycast_bodies(world, BODY_DYNAMIC, origin, direction, max_distance, hit_count, max_hits, hits);

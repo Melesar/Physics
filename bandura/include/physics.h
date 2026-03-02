@@ -90,5 +90,9 @@ struct physics_world_t {
   count_t generation;
 };
 
+body_handle make_body_handle(const physics_world *world, body_type type, count_t index);
+count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 
+common_data* as_common(physics_world *world, body_type type);
+const common_data* as_common_const(const physics_world *world, body_type type);
 #endif
