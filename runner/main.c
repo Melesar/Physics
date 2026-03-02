@@ -500,7 +500,14 @@ static void setup_scene(Shader shader) {
   meshes[SHAPE_BOX] = GenMeshCube(1, 1, 1);
   meshes[SHAPE_SPHERE] = GenMeshSphere(1, 16, 16);
   meshes[SHAPE_PLANE] = GenMeshPlane(200.0f, 200.0f, 1, 1);
-  meshes[SHAPE_CYLINDER] = GenMeshCylinder(1, 1, 32);
+
+  Mesh cylinder = GenMeshCylinder(1, 1, 32);
+  for (int i = 0; i < cylinder.vertexCount; ++i) {
+    cylinder.vertices[i * 3 + 1] -= 0.5;
+  }
+  UpdateMeshBuffer(cylinder, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, cylinder.vertices, 3 * cylinder.vertexCount * sizeof(float), 0);
+
+  meshes[SHAPE_CYLINDER] = cylinder;
 
   for (size_t i = 0; i < 20; ++i) {
     Material m = LoadMaterialDefault();
