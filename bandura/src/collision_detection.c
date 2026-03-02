@@ -411,6 +411,58 @@ static count_t sphere_plane_collision(collisions *collisions, count_t index_a, c
   return 1;
 }
 
+static count_t cylinder_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  v3 plane_point = data_b->positions[index_b];
+  v3 plane_normal = data_b->shapes[index_b].plane.normal;
+
+  v3 cylinder_center = data_a->positions[index_a];
+  quat cylinder_rotation = data_a->rotations[index_a];
+  float cylinder_radius = data_a->shapes[index_a].cylinder.radius;
+  float cylinder_half_height = data_a->shapes[index_a].cylinder.height * 0.5f;
+
+  v3 cylinder_axis = rotate(up(), cylinder_rotation);
+  float axis_projection = dot(cylinder_axis, plane_normal);
+  float radial_projection_sq = 1.0f - axis_projection * axis_projection;
+  if (radial_projection_sq < 0.0f)
+    radial_projection_sq = 0.0f;
+
+  float radial_projection = sqrtf(radial_projection_sq);
+  float center_distance = dot(sub(cylinder_center, plane_point), plane_normal);
+  float min_distance = center_distance - cylinder_half_height * fabsf(axis_projection) - cylinder_radius * radial_projection;
+  if (min_distance > 0.0f)
+    return 0;
+
+  ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
+  ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
+
+  collision *collision = &collisions->collisions[collisions->collisions_count++];
+  contact *contact = &collisions->contacts[collisions->contacts_count];
+
+  collision->index_a = index_a;
+  collision->index_b = index_b;
+  collision->contacts_offset = collisions->contacts_count;
+  collision->contacts_count = 1;
+
+  float cap_sign = axis_projection > 0.0f ? -1.0f : 1.0f;
+  v3 cap_offset = scale(cylinder_axis, cap_sign * cylinder_half_height);
+
+  v3 radial_axis = sub(plane_normal, scale(cylinder_axis, axis_projection));
+  float radial_axis_len_sqr = lensq(radial_axis);
+  v3 radial_offset = zero();
+  if (radial_axis_len_sqr > 0.000001f)
+    radial_offset = scale(normalize(radial_axis), -cylinder_radius);
+
+  v3 deepest_point = add(cylinder_center, add(cap_offset, radial_offset));
+
+  contact->normal = plane_normal;
+  contact->point = add(deepest_point, scale(plane_normal, -min_distance));
+  contact->depth = -min_distance;
+
+  collisions->contacts_count++;
+
+  return 1;
+}
+
 collisions* collisions_init(const physics_config *config) {
   collisions* result =  malloc(sizeof(collisions));
 
@@ -489,6 +541,10 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
 
             case SHAPE_SPHERE:
               sphere_plane_collision(collisions, i, j, dynamics, statics);
+              break;
+
+            case SHAPE_CYLINDER:
+              cylinder_plane_collision(collisions, i, j, dynamics, statics);
               break;
 
             default:
