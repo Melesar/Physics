@@ -44,7 +44,7 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
   (void) cam;
 
   if (IsKeyPressed(KEY_X)) {
-    body big_box = physics_add_cylinder(world, BODY_DYNAMIC, 10, 1, 3);
+    body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
     *big_box.position = (v3) { 0, 7, 0 };
     *big_box.angular_momentum = (v3) { 1, 1, 1 };
 
