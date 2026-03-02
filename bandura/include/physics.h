@@ -1,11 +1,6 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
-typedef struct physics_world_t physics_world;
-typedef struct collision_debug_state_t collision_debug_state;
-
-#define LIB_BUILD
-
 #include "bandura.h"
 #include "stdbool.h"
 #include <stddef.h>

@@ -146,10 +146,8 @@ typedef struct {
   float depth;
 } contact_t;
 
-#ifndef LIB_BUILD
-typedef void physics_world;
-typedef void collision_debug_state;
-#endif
+typedef struct physics_world_t physics_world;
+typedef struct collision_debug_state_t collision_debug_state;
 
 typedef struct {
   body_handle handle;
