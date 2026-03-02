@@ -1,9 +1,9 @@
 #include "raylib.h"
+#include "bandura.h"
 #include "core.h"
 #include "raymath.h"
 #include "string.h"
 #include "rlgl.h"
-#include "pmath.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -11,7 +11,6 @@
 #include "shaders/rlights.h"
 #include "rcamera.h"
 #include "raylib-nuklear.h"
-#include "physics.h"
 
 const int ui_font_size = 14;
 const int screen_width = 1920;
@@ -161,8 +160,6 @@ int main(int argc, char** argv) {
     deltaTime = GetFrameTime();
   }
 
-  print_diagnostics(world);
-
   physics_teardown(world);
 
   UnloadNuklear(ctx);
@@ -207,7 +204,7 @@ static void process_inputs(physics_world *world, Camera* camera) {
       observed_body.has_hit = true;
       observed_body.handle = hit.body;
       observed_body.is_dynamic = (hit.body.type == BODY_DYNAMIC);
-      physics_get_shape(world, hit.body, &observed_body.shape);
+      observed_body.shape = physics_get_shape(world, hit.body);
     } else {
       observed_body.has_hit = false;
     }
@@ -266,14 +263,14 @@ static void draw_ui_widget_controls(struct nk_context* ctx) {
 
   nk_end(ctx);
 
-  if (show_physics_world_stats)
-    physics_draw_stats(world, ctx);
-  if (show_physics_config_widget)
-    physics_draw_config_widget(world, ctx);
-  if (collision_debug_mode)
-    physics_draw_debug_widget(world, &debug_state, ctx);
-  if (observe_body_mode)
-    draw_ui_widget_observe_body(ctx);
+  // if (show_physics_world_stats)
+  //   physics_draw_stats(world, ctx);
+  // if (show_physics_config_widget)
+  //   physics_draw_config_widget(world, ctx);
+  // if (collision_debug_mode)
+  //   physics_draw_debug_widget(world, &debug_state, ctx);
+  // if (observe_body_mode)
+  //   draw_ui_widget_observe_body(ctx);
 }
 
 static void draw_ui_widget_observe_body(struct nk_context* ctx) {
@@ -313,8 +310,8 @@ static void draw_ui_widget_observe_body(struct nk_context* ctx) {
 
         if (observed_body.is_dynamic) {
           v3 vel = {0}, av = {0};
-          physics_get_velocity(world, observed_body.handle, &vel);
-          physics_get_angular_velocity(world, observed_body.handle, &av);
+          vel = physics_get_velocity(world, observed_body.handle);
+          av = physics_get_angular_velocity(world, observed_body.handle);
           snprintf(buf, sizeof(buf), "Velocity: (%.2f, %.2f, %.2f)", vel.x, vel.y, vel.z);
           nk_label(ctx, buf, NK_TEXT_LEFT);
           snprintf(buf, sizeof(buf), "  |velocity|: %.2f", len(vel));
@@ -324,7 +321,7 @@ static void draw_ui_widget_observe_body(struct nk_context* ctx) {
           snprintf(buf, sizeof(buf), "  |ang. vel|: %.2f", len(av));
           nk_label(ctx, buf, NK_TEXT_LEFT);
           float motion_avg = 0;
-          physics_get_motion_avg(world, observed_body.handle, &motion_avg);
+          motion_avg = physics_get_motion_avg(world, observed_body.handle);
           snprintf(buf, sizeof(buf), "Motion avg: %.4f", motion_avg);
           nk_label(ctx, buf, NK_TEXT_LEFT);
         }
@@ -335,41 +332,19 @@ static void draw_ui_widget_observe_body(struct nk_context* ctx) {
   nk_end(ctx);
 }
 
-static void print_diagnostics(physics_world *world) {
-#ifdef DIAGNOSTICS
-  diagnostics d = world->diagnostics;
+static void draw_physics_bodies_typed(body_type type) {
+  body_enumerator_typed enumerator;
+  physics_enumerate_bodies_typed(world, type, &enumerator);
 
-  TraceLog(LOG_INFO, "Physics world diagnostics:");
+  count_t i = 0;
+  while(physics_body_next_typed(world, &enumerator)) {
+    v3 position = physics_get_position(world, enumerator.handle);
+    quat rotation = physics_get_rotation(world, enumerator.handle);
+    body_shape shape = physics_get_shape(world, enumerator.handle);
 
-  float p50, p75, p99;
-  percentiles_query(&d.penetration_depth, &p50, &p75, &p99);
-  TraceLog(LOG_INFO, "Penetration depth percentiles: p50=%f, p75=%f, p99=%f", p50, p75, p99);
-
-  percentiles_query(&d.velocity_deltas, &p50, &p75, &p99);
-  TraceLog(LOG_INFO, "Velocity percentiles: p50=%f, p75=%f, p99=%f", p50, p75, p99);
-
-  float penetrations_percentage = (float) d.unresolved_penetrations / d.frames_simulated * 100.0;
-  float velocities_percentage = (float) d.unresolved_velocities / d.frames_simulated * 100.0;
-  TraceLog(LOG_INFO, "Unresolved penetrations: %.1f %", penetrations_percentage);
-  TraceLog(LOG_INFO, "Unresolved velocities: %.1f %", velocities_percentage);
-#else
-  (void) world;
-#endif
-}
-
-static void draw_physics_bodies_type(body_type type) {
-  common_data *data = type == BODY_DYNAMIC ? (common_data*) &world->dynamics : &world->statics;
-  size_t count = data->count;
-
-  for (size_t i = 0; i < count; ++i) {
     m4 scale;
-    count_t index = data->outer_lookup[i];
-    v3 position = data->positions[index];
-    quat rotation = data->rotations[index];
-    body_shape shape = data->shapes[index];
-
     m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
-    Material material = materials[i % 20];
+    Material material = materials[i++ % 20];
 
     switch (shape.type) {
       case SHAPE_BOX:
@@ -389,28 +364,27 @@ static void draw_physics_bodies_type(body_type type) {
 }
 
 static void draw_physics_bodies() {
-  draw_physics_bodies_type(BODY_DYNAMIC);
-  draw_physics_bodies_type(BODY_STATIC);
+  draw_physics_bodies_typed(BODY_DYNAMIC);
+  draw_physics_bodies_typed(BODY_STATIC);
+  // dynamic_bodies *dynamics = &world->dynamics;
+  // for(count_t i = 0; i < dynamics->count; ++i) {
+  //   count_t index = dynamics->outer_lookup[i];
+  //   v3 position = dynamics->positions[index];
+  //   quat rotation = dynamics->rotations[index];
+  //   v3 angular_momentum = dynamics->angular_momenta[index];
 
-  dynamic_bodies *dynamics = &world->dynamics;
-  for(count_t i = 0; i < dynamics->count; ++i) {
-    count_t index = dynamics->outer_lookup[i];
-    v3 position = dynamics->positions[index];
-    quat rotation = dynamics->rotations[index];
-    v3 angular_momentum = dynamics->angular_momenta[index];
+  //   if (draw_gismos)
+  //     draw_body_axes(position, rotation);
 
-    if (draw_gismos)
-      draw_body_axes(position, rotation);
+  //   if (draw_angular_momenta)
+  //     draw_body_angular_momentum(position, angular_momentum);
+  // }
 
-    if (draw_angular_momenta)
-      draw_body_angular_momentum(position, angular_momentum);
-  }
+  // if (!debug_state.active || debug_state.prev_phase == CDBG_IDLE || debug_state.prev_phase == CDBG_DONE)
+  //   return;
 
-  if (!debug_state.active || debug_state.prev_phase == CDBG_IDLE || debug_state.prev_phase == CDBG_DONE)
-    return;
-
-  contact c = world->collisions->contacts[debug_state.current_contact_index];
-  draw_arrow(c.point, c.normal,RED);
+  // contact c = world->collisions->contacts[debug_state.current_contact_index];
+  // draw_arrow(c.point, c.normal,RED);
 }
 
 static void draw_body_axes(v3 position, quat rotation) {

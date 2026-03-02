@@ -1,5 +1,5 @@
 #include "physics.h"
-#include "pmath.h"
+#include "bandura.h"
 #include "stdlib.h"
 #include <math.h>
 #include <stdlib.h>
@@ -9,10 +9,10 @@
 const float min_velocity_threshold = 0.07f;
 const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
 
-// static v3 cylinder_inertia(float radius, float height, float mass) {
-//   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
-//   return (v3){ principal, mass * radius * radius / 2.0, principal };
-// }
+static v3 cylinder_inertia(float radius, float height, float mass) {
+  float principal =  mass * (3 * radius * radius + height * height) / 12.0;
+  return (v3){ principal, mass * radius * radius / 2.0, principal };
+}
 
 static v3 sphere_inertia(float radius, float mass) {
   float scale = 2.0 * mass * radius * radius / 5.0;
@@ -129,14 +129,7 @@ physics_world* physics_init(const physics_config *config) {
   world->config = *config;
   world->collisions = collisions_init(config);
 
-#ifdef DIAGNOSTICS
-  const count_t percentiles_buffer_size = 10000;
-  world->diagnostics.penetration_depth = percentiles_init(percentiles_buffer_size);
-  world->diagnostics.velocity_deltas = percentiles_init(percentiles_buffer_size);
-  world->diagnostics.unresolved_penetrations = 0;
-  world->diagnostics.unresolved_velocities = 0;
-  world->diagnostics.frames_simulated = 0;
-#endif
+  world->generation = 0;
 
   return world;
 }
@@ -197,6 +190,8 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
     }
     world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia_vector));
   }
+
+  world->generation += 1;
 
   return (body) {
     .position = &commons->positions[index],
@@ -269,61 +264,152 @@ void physics_apply_impulse_at(physics_world *world, body_handle handle, v3 impul
 }
 
 
-bool physics_get_shape(physics_world *world, body_handle handle, body_shape *shape) {
-  body_type type = handle.type;
-  common_data *data = as_common(world, type);
-
-  if (handle.index >= data->count)
-    return false;
-
-  *shape = data->shapes[handle.index];
-  return true;
+v3 physics_get_position(physics_world *world, body_handle handle) {
+  common_data *data = as_common(world, handle.type);
+  return data->positions[handle.index];
 }
 
-bool physics_get_velocity(physics_world *world, body_handle handle, v3 *velocity) {
+quat physics_get_rotation(physics_world *world, body_handle handle) {
+  common_data *data = as_common(world, handle.type);
+  return data->rotations[handle.index];
+}
+
+body_shape physics_get_shape(physics_world *world, body_handle handle) {
+  common_data *data = as_common(world, handle.type);
+  return data->shapes[handle.index];
+}
+
+v3 physics_get_velocity(physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
-    *velocity = zero();
-    return true;
+    return zero();
+  }
+
+  return world->dynamics.velocities[handle.index];
+}
+
+v3 physics_get_angular_velocity(physics_world *world, body_handle handle) {
+  if (handle.type != BODY_DYNAMIC) {
+    return zero();
   }
 
   dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.index >= dynamics->count)
-    return false;
+  v3 momentum = dynamics->angular_momenta[handle.index];
+  quat rotation = dynamics->rotations[handle.index];
+  m3 inv_inertia = dynamics->inv_inertia_tensors[handle.index];
 
-  *velocity = dynamics->velocities[handle_to_inner_index(world, handle)];
-  return true;
+  return matrix_rotate(momentum, matrix_inertia(inv_inertia, rotation));
 }
 
-bool physics_get_angular_velocity(physics_world *world, body_handle handle, v3 *angular_velocity) {
+float physics_get_motion_avg(physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
-    *angular_velocity = zero();
+    return 0;
+  }
+
+  return world->dynamics.motion_avgs[handle.index];
+}
+
+const count_t sentinel_index = (count_t)~0 >> 1;
+
+void physics_enumerate_bodies(physics_world *world, body_enumerator *enumerator) {
+  enumerator->handle = (body_handle) { .type = BODY_DYNAMIC, .index = sentinel_index & 0x7FFFFFFF };
+  enumerator->generation = world->generation;
+}
+
+void physics_enumerate_bodies_typed(physics_world *world, body_type type, body_enumerator *enumerator) {
+  enumerator->handle = (body_handle) { .type = type, .index = sentinel_index & 0x7FFFFFFF };
+  enumerator->generation = world->generation;
+}
+
+bool physics_body_next(physics_world *world, body_enumerator *enumerator) {
+  if (enumerator->generation != world->generation) {
+    return false;
+  }
+
+  // Initial case. We assume that nobody messes with the enumerator after its initialization.
+  if (enumerator->handle.index == sentinel_index) {
+    if (world->dynamics.count > 0) {
+      enumerator->handle.index = world->dynamics.outer_lookup[0];
+      return true;
+    }
+
+    if (world->statics.count > 0) {
+      enumerator->handle = (body_handle) { .type = BODY_STATIC, .index = 0 };
+      return true;
+    }
+
+    return false;
+  }
+
+  count_t index;
+  body_type type = enumerator->handle.type;
+
+  switch (type) {
+    case BODY_DYNAMIC:
+      index = world->dynamics.inner_lookup[enumerator->handle.index];
+      if (index < world->dynamics.count - 1) {
+        index += 1;
+        enumerator->handle.index = world->dynamics.outer_lookup[index];
+        return true;
+      }
+
+      if (world->statics.count > 0) {
+        enumerator->handle = (body_handle) { .type = BODY_STATIC, .index = 0 };
+        return true;
+      }
+
+      return false;
+
+    case BODY_STATIC:
+      index = enumerator->handle.index;
+      if (index < world->statics.count - 1) {
+        index += 1;
+        enumerator->handle.index = index;
+        return true;
+      }
+
+      return false;
+  }
+}
+
+bool physics_body_next_typed(physics_world *world, body_enumerator_typed *enumerator) {
+  if (enumerator->generation != world->generation) {
+    return false;
+  }
+
+  common_data *data = as_common(world, enumerator->handle.type);
+  if (enumerator->handle.index == sentinel_index) {
+    if (data->count == 0) {
+      return false;
+    }
+
+    enumerator->handle.index = enumerator->handle.type == BODY_DYNAMIC ? world->dynamics.outer_lookup[0] : 0;
     return true;
   }
 
-  dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.index >= dynamics->count)
-    return false;
+  count_t index;
+  switch(enumerator->handle.type) {
+    case BODY_DYNAMIC:
+      index = world->dynamics.inner_lookup[enumerator->handle.index];
+      if (index < data->count - 1) {
+        index += 1;
+        enumerator->handle.index = world->dynamics.outer_lookup[index];
+        return true;
+      }
 
-  count_t index = handle_to_inner_index(world, handle);
-  v3 angular_momentum = dynamics->angular_momenta[index];
-  m3 inv_inertia = dynamics->inv_intertias[index];
+      return false;
 
-  *angular_velocity = matrix_rotate(angular_momentum, inv_inertia);
-  return true;
-}
+    case BODY_STATIC:
+      index = enumerator->handle.index;
+      if (index < data->count - 1) {
+        index += 1;
+        enumerator->handle.index = world->statics.outer_lookup[index];
+        return true;
+      }
 
-bool physics_get_motion_avg(physics_world *world, body_handle handle, float *motion_avg) {
-  if (handle.type != BODY_DYNAMIC) {
-    *motion_avg = 0.0f;
-    return true;
+      return false;
   }
 
-  dynamic_bodies *dynamics = &world->dynamics;
-  if (handle.index >= dynamics->count)
-    return false;
-
-  *motion_avg = dynamics->motion_avgs[handle_to_inner_index(world, handle)];
-  return true;
+  return false;
 }
 
 void integrate_bodies(physics_world *world, float dt) {
@@ -376,11 +462,6 @@ void physics_step(physics_world* world, float dt) {
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
   clear_forces(world);
-
-#ifdef DIAGNOSTICS
-  world->diagnostics.frames_simulated += 1;
-#endif
-
  }
 
 void physics_awaken_body(physics_world* world, body_handle handle) {
@@ -439,11 +520,6 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.motion_avgs);
 
   collisions_teardown(world->collisions);
-
-#ifdef DIAGNOSTICS
-  percentiles_free(world->diagnostics.penetration_depth);
-  percentiles_free(world->diagnostics.velocity_deltas);
-#endif
 
   free(world);
 }
@@ -562,6 +638,7 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
 
   world->dynamics.outer_lookup[world->dynamics.inner_lookup[index_b]] = index_b;
   world->dynamics.outer_lookup[world->dynamics.inner_lookup[index_a]] = index_a;
+  world->generation += 1;
 
   #undef SWAP
 }

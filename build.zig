@@ -23,15 +23,15 @@ pub fn build(b: *std.Build) !void {
     const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
     const banduraModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
 
-    const flags = try compilerFlags(b, options, target.result, optimize);
-    defer b.allocator.free(flags);
+    const libFlags = try libraryFlags(b, options, target.result, optimize);
+    defer b.allocator.free(libFlags);
 
     const banduraSources = try collectSources(b, "bandura/src");
     defer b.allocator.free(banduraSources);
 
     banduraModule.addCSourceFiles(.{
         .files = banduraSources,
-        .flags = flags,
+        .flags = libFlags,
     });
 
     const banduraLib = b.addLibrary(.{
@@ -58,11 +58,14 @@ pub fn build(b: *std.Build) !void {
 
     for (scenarioSources) |scenarioFile| {
         const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+        const binFlags = try scenarioFlags(b, options, target.result, optimize);
+        defer b.allocator.free(binFlags);
+
         scenarioModule.addCSourceFiles(.{
             .files = binarySources,
-            .flags = flags,
+            .flags = binFlags,
         });
-        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = flags });
+        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = libFlags });
 
         const scenarioName = std.fs.path.stem(scenarioFile);
         const scenario = b.addExecutable(.{
@@ -132,7 +135,19 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
     }
 }
 
-fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+    var flags = try compilerFlags(b, options, target, optimize);
+    // try flags.append(b.allocator, "-DLIB_BUILD");
+
+    return flags.toOwnedSlice(b.allocator);
+}
+
+fn scenarioFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
+    var flags = try compilerFlags(b, options, target, optimize);
+    return flags.toOwnedSlice(b.allocator);
+}
+
+fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) !std.ArrayList([]const u8) {
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
 
@@ -175,7 +190,7 @@ fn compilerFlags(b: *std.Build, options: Options, target: std.Target, optimize: 
         try flags.append(b.allocator, b.fmt("-fsanitize={s}", .{try std.mem.join(b.allocator, ",", try sanitizers.toOwnedSlice(b.allocator))}));
     }
 
-    return flags.toOwnedSlice(b.allocator);
+    return flags;
 }
 
 fn collectSources(b: *std.Build, directory: []const u8) ![]const []const u8 {
