@@ -1,10 +1,6 @@
 #include "physics.h"
-#include "bandura.h"
-#include "stdlib.h"
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include "assert.h"
 
 const float min_velocity_threshold = 0.07f;
 const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
@@ -140,7 +136,7 @@ static void init_commons(common_data *data, body_shape shape, count_t index) {
   data->inner_lookup[index] = index;
 }
 
-static body physics_add_body_static(physics_world* world, body_shape shape) {
+static body add_primitive_body_static(physics_world* world, body_shape shape) {
   static_bodies *data = &world->statics;
   if (data->capacity < data->count + 1) {
     realloc_commons(data);
@@ -160,7 +156,7 @@ static body physics_add_body_static(physics_world* world, body_shape shape) {
   };
 }
 
-static body physics_add_body_dynamic(physics_world* world, body_shape shape, float mass) {
+static body add_primitive_body_dynamic(physics_world* world, body_shape shape, float mass) {
   dynamic_bodies *data = &world->dynamics;
   if (data->capacity < data->count + 1) {
     realloc_commons((common_data*) data);
@@ -222,28 +218,28 @@ static body physics_add_body_dynamic(physics_world* world, body_shape shape, flo
 }
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal) {
-  physics_add_body_static(world, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } });
-  world->statics.positions[world->statics.count - 1] = point;
+  body plane = add_primitive_body_static(world, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } });
+  world->statics.positions[handle_to_inner_index(world, plane.handle)] = point;
 }
 
 body physics_add_box_dynamic(physics_world *world, float mass, v3 size) {
-  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
 }
 
 body physics_add_box_static(physics_world *world, v3 size) {
-  return physics_add_body_static(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } });
+  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } });
 }
 
 body physics_add_sphere_dynamic(physics_world *world, float mass, float radius) {
-  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
 }
 
 body physics_add_cylinder_static(physics_world *world, float radius, float height) {
-  return physics_add_body_static(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } });
+  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } });
 }
 
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height) {
-  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
 }
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force) {
