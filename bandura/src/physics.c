@@ -140,86 +140,110 @@ static void init_commons(common_data *data, body_shape shape, count_t index) {
   data->inner_lookup[index] = index;
 }
 
-static body physics_add_body(physics_world* world, body_type type, body_shape shape, float mass) {
-  common_data *commons = as_common(world, type);
-  if (commons->capacity < commons->count + 1) {
-    realloc_commons(commons);
-    if (type == BODY_DYNAMIC) {
-      world->dynamics.forces = realloc(world->dynamics.forces, sizeof(v3) * commons->capacity);
-      world->dynamics.torques = realloc(world->dynamics.torques, sizeof(v3) * commons->capacity);
-      world->dynamics.impulses = realloc(world->dynamics.impulses, sizeof(v3) * commons->capacity);
-      world->dynamics.angular_impulses = realloc(world->dynamics.angular_impulses, sizeof(v3) * commons->capacity);
-      world->dynamics.accelerations = realloc(world->dynamics.accelerations, sizeof(v3) * commons->capacity);
-
-      world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
-      world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * commons->capacity);
-      world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * commons->capacity);
-      world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m3) * commons->capacity);
-      world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m3) * commons->capacity);
-      world->dynamics.motion_avgs = realloc(world->dynamics.motion_avgs, sizeof(float) * commons->capacity);
-    }
+static body physics_add_body_static(physics_world* world, body_shape shape) {
+  static_bodies *data = &world->statics;
+  if (data->capacity < data->count + 1) {
+    realloc_commons(data);
   }
 
-  count_t index = commons->count++;
-  init_commons(commons, shape, index);
-
-  if (type == BODY_DYNAMIC) {
-    world->dynamics.inv_masses[index] = 1.0 / mass;
-    world->dynamics.velocities[index] = zero();
-    world->dynamics.angular_momenta[index] = zero();
-    world->dynamics.motion_avgs[index] = 0;
-    world->dynamics.forces[index] = zero();
-    world->dynamics.torques[index] = zero();
-    world->dynamics.impulses[index] = zero();
-    world->dynamics.angular_impulses[index] = zero();
-    world->dynamics.accelerations[index] = zero();
-
-    v3 inertia_vector = one();
-    switch (shape.type) {
-      case SHAPE_BOX:
-        inertia_vector = box_inertia(shape.box.size, mass);
-        break;
-
-      case SHAPE_SPHERE:
-        inertia_vector = sphere_inertia(shape.sphere.radius, mass);
-        break;
-
-      case SHAPE_CYLINDER:
-        inertia_vector = cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
-        break;
-
-      default:
-        break;
-    }
-    world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia_vector));
-  }
+  count_t index = data->count++;
+  init_commons(data, shape, index);
 
   world->generation += 1;
 
   return (body) {
-    .position = &commons->positions[index],
-    .rotation = &commons->rotations[index],
-    .velocity = type == BODY_DYNAMIC ? &world->dynamics.velocities[index] : NULL,
-    .angular_momentum = type == BODY_DYNAMIC ? &world->dynamics.angular_momenta[index] : NULL,
-    .handle = make_body_handle(world, type, index),
+    .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = NULL,
+    .angular_momentum = NULL,
+    .handle = make_body_handle(world, BODY_STATIC, index)
+  };
+}
+
+static body physics_add_body_dynamic(physics_world* world, body_shape shape, float mass) {
+  dynamic_bodies *data = &world->dynamics;
+  if (data->capacity < data->count + 1) {
+    realloc_commons((common_data*) data);
+    world->dynamics.forces = realloc(world->dynamics.forces, sizeof(v3) * data->capacity);
+    world->dynamics.torques = realloc(world->dynamics.torques, sizeof(v3) * data->capacity);
+    world->dynamics.impulses = realloc(world->dynamics.impulses, sizeof(v3) * data->capacity);
+    world->dynamics.angular_impulses = realloc(world->dynamics.angular_impulses, sizeof(v3) * data->capacity);
+    world->dynamics.accelerations = realloc(world->dynamics.accelerations, sizeof(v3) * data->capacity);
+
+    world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * data->capacity);
+    world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * data->capacity);
+    world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * data->capacity);
+    world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m3) * data->capacity);
+    world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m3) * data->capacity);
+    world->dynamics.motion_avgs = realloc(world->dynamics.motion_avgs, sizeof(float) * data->capacity);
+  }
+
+  count_t index = data->count++;
+  init_commons((common_data*) data, shape, index);
+
+  world->dynamics.inv_masses[index] = 1.0 / mass;
+  world->dynamics.velocities[index] = zero();
+  world->dynamics.angular_momenta[index] = zero();
+  world->dynamics.motion_avgs[index] = 0;
+  world->dynamics.forces[index] = zero();
+  world->dynamics.torques[index] = zero();
+  world->dynamics.impulses[index] = zero();
+  world->dynamics.angular_impulses[index] = zero();
+  world->dynamics.accelerations[index] = zero();
+
+  v3 inertia_vector = one();
+  switch (shape.type) {
+    case SHAPE_BOX:
+      inertia_vector = box_inertia(shape.box.size, mass);
+      break;
+
+    case SHAPE_SPHERE:
+      inertia_vector = sphere_inertia(shape.sphere.radius, mass);
+      break;
+
+    case SHAPE_CYLINDER:
+      inertia_vector = cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
+      break;
+
+    default:
+      break;
+  }
+
+  world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia_vector));
+  world->generation += 1;
+
+  return (body) {
+    .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = &world->dynamics.velocities[index],
+    .angular_momentum = &world->dynamics.angular_momenta[index],
+    .handle = make_body_handle(world, BODY_DYNAMIC, index),
   };
 }
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal) {
-  physics_add_body(world, BODY_STATIC, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } }, INFINITY);
+  physics_add_body_static(world, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } });
   world->statics.positions[world->statics.count - 1] = point;
 }
 
-body physics_add_box(physics_world *world, body_type type, float mass, v3 size) {
-  return physics_add_body(world, type, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
+body physics_add_box_dynamic(physics_world *world, float mass, v3 size) {
+  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
 }
 
-body physics_add_sphere(physics_world *world, body_type type, float mass, float radius) {
-  return physics_add_body(world, type, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+body physics_add_box_static(physics_world *world, v3 size) {
+  return physics_add_body_static(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } });
 }
 
-body physics_add_cylinder(physics_world *world, body_type type, float mass, float radius, float height) {
-  return physics_add_body(world, type, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
+body physics_add_sphere_dynamic(physics_world *world, float mass, float radius) {
+  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+}
+
+body physics_add_cylinder_static(physics_world *world, float radius, float height) {
+  return physics_add_body_static(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } });
+}
+
+body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height) {
+  return physics_add_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
 }
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force) {

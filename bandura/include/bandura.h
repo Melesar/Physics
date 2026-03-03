@@ -163,9 +163,11 @@ physics_config physics_default_config();
 physics_world* physics_init(const physics_config *config);
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal);
-body physics_add_box(physics_world *world, body_type type, float mass, v3 size);
-body physics_add_sphere(physics_world *world, body_type type, float mass, float radius);
-body physics_add_cylinder(physics_world *world, body_type type, float mass, float radius, float height);
+body physics_add_box_dynamic(physics_world *world, float mass, v3 size);
+body physics_add_box_static(physics_world *world, v3 size);
+body physics_add_sphere_dynamic(physics_world *world, float mass, float radius);
+body physics_add_cylinder_static(physics_world *world, float radius, float height);
+body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
 
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);

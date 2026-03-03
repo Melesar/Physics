@@ -12,6 +12,7 @@ void scenario_initialize(program_config* config, physics_config *physics) {
 
   physics->dynamics_capacity = 1;
   physics->statics_capacity = 1;
+  // physics->collisions_capacity = 1;
   physics->max_penentration_iterations = 100;
   physics->max_velocity_iterations = 100;
   physics->linear_damping = 0.95;
@@ -26,16 +27,16 @@ void scenario_initialize(program_config* config, physics_config *physics) {
 }
 
 void scenario_setup_scene(physics_world *world) {
-  body big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
+  body big_box = physics_add_box_static(world, (v3) { 10, 3, 1 });
   *big_box.position = (v3) { 0, 1.5, -5 };
 
-  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 10, 3, 1 });
+  big_box = physics_add_box_static(world, (v3) { 10, 3, 1 });
   *big_box.position = (v3) { 0, 1.5, 5 };
 
-  big_box = physics_add_box(world, BODY_STATIC, 10, (v3) { 1, 3, 10 });
+  big_box = physics_add_box_static(world, (v3) { 1, 3, 10 });
   *big_box.position = (v3) { -7, 1.5, 0 };
 
-  big_box = physics_add_cylinder(world, BODY_STATIC, 10, 1, 3);
+  big_box = physics_add_cylinder_static(world, 1, 3);
   *big_box.position = (v3) { 0, 1.5, 0 };
 }
 
@@ -46,7 +47,7 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
   (void) cam;
 
   if (IsKeyPressed(KEY_X)) {
-    body big_box = physics_add_box(world, BODY_DYNAMIC, 10, (v3) { 1.3, 1.3, 1.3 });
+    body big_box = physics_add_box_dynamic(world, 10, (v3) { 1.3, 1.3, 1.3 });
     *big_box.position = (v3) { 0, 7, 0 };
     *big_box.angular_momentum = (v3) { 1, 1, 1 };
 
@@ -56,7 +57,7 @@ void scenario_handle_input(physics_world *world, Camera *cam) {
   if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
     v3 direction = normalize(sub(cam->target, cam->position));
 
-    body ball = physics_add_sphere(world, BODY_DYNAMIC, 3, 0.7);
+    body ball = physics_add_sphere_dynamic(world, 3, 0.7);
     *ball.position = add(cam->position, direction);
 
     physics_apply_impulse(world, ball.handle, scale(direction, 70));
