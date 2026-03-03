@@ -123,19 +123,33 @@ physics_world* physics_init(const physics_config *config) {
   return world;
 }
 
+static void realloc_commons(common_data *data) {
+  data->capacity = data->capacity << 1;
+  data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
+  data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
+  data->shapes = realloc(data->shapes, sizeof(body_shape) * data->capacity);
+  data->outer_lookup = realloc(data->outer_lookup, sizeof(count_t) * data->capacity);
+  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
+}
+
+static void init_commons(common_data *data, body_shape shape, count_t index) {
+  data->shapes[index] = shape;
+  data->positions[index] = zero();
+  data->rotations[index] = qidentity();
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
+}
+
 static body physics_add_body(physics_world* world, body_type type, body_shape shape, float mass) {
   common_data *commons = as_common(world, type);
   if (commons->capacity < commons->count + 1) {
-    commons->capacity = commons->capacity << 1;
-    commons->positions = realloc(commons->positions, sizeof(v3) * commons->capacity);
-    commons->rotations = realloc(commons->rotations, sizeof(quat) * commons->capacity);
-    commons->shapes = realloc(commons->shapes, sizeof(body_shape) * commons->capacity);
-
+    realloc_commons(commons);
     if (type == BODY_DYNAMIC) {
       world->dynamics.forces = realloc(world->dynamics.forces, sizeof(v3) * commons->capacity);
       world->dynamics.torques = realloc(world->dynamics.torques, sizeof(v3) * commons->capacity);
       world->dynamics.impulses = realloc(world->dynamics.impulses, sizeof(v3) * commons->capacity);
       world->dynamics.angular_impulses = realloc(world->dynamics.angular_impulses, sizeof(v3) * commons->capacity);
+      world->dynamics.accelerations = realloc(world->dynamics.accelerations, sizeof(v3) * commons->capacity);
 
       world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * commons->capacity);
       world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * commons->capacity);
@@ -147,11 +161,7 @@ static body physics_add_body(physics_world* world, body_type type, body_shape sh
   }
 
   count_t index = commons->count++;
-  commons->shapes[index] = shape;
-  commons->positions[index] = zero();
-  commons->rotations[index] = qidentity();
-  commons->outer_lookup[index] = index;
-  commons->inner_lookup[index] = index;
+  init_commons(commons, shape, index);
 
   if (type == BODY_DYNAMIC) {
     world->dynamics.inv_masses[index] = 1.0 / mass;

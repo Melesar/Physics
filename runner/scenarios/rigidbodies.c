@@ -10,6 +10,8 @@ void scenario_initialize(program_config* config, physics_config *physics) {
   config->camera_position = (v3) { 22.542, 11.645, 20.752 };
   config->camera_target = (v3) { 0, 0, 0 };
 
+  physics->dynamics_capacity = 1;
+  physics->statics_capacity = 1;
   physics->max_penentration_iterations = 100;
   physics->max_velocity_iterations = 100;
   physics->linear_damping = 0.95;
