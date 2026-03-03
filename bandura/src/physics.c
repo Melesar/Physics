@@ -1,9 +1,9 @@
 #include "physics.h"
+#include "bandura.h"
 #include <stdlib.h>
 #include <string.h>
 
-const float min_velocity_threshold = 0.07f;
-const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
+#define SHAPE_BRACKET_BLOCK_CAPACITY 64
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -23,6 +23,14 @@ static v3 box_inertia(v3 size, float mass) {
 
   v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
+}
+
+static bool find_empty_shape_slot(const physics_world *world, shape_dimension_bracket bracket, count_t *index) {
+
+}
+
+static void expand_shapes_bracket(physics_world *world, shape_dimension_bracket bracket) {
+
 }
 
 
@@ -51,6 +59,7 @@ physics_config physics_default_config() {
     .dynamics_capacity = 32,
     .statics_capacity = 8,
     .collisions_capacity = 64,
+    .shapes_brackets_capacity = { 64, 1, 1, 1, 1 },
     .linear_damping = 0.95,
     .angular_damping = 0.8,
     .restitution = 0.2,
@@ -76,22 +85,44 @@ count_t handle_to_inner_index(const physics_world *world, body_handle handle) {
   return handle.type == BODY_DYNAMIC ? world->dynamics.outer_lookup[handle.index] : handle.index;
 }
 
+static void init_commons(common_data *data, count_t capacity) {
+  data->capacity = capacity;
+  data->count = 0;
+  data->positions = malloc(sizeof(v3) * capacity);
+  data->rotations = malloc(sizeof(quat) * capacity);
+  data->shapes = malloc(sizeof(body_shapes) * capacity);
+  data->outer_lookup = malloc(sizeof(count_t) * capacity);
+  data->inner_lookup = malloc(sizeof(count_t) * capacity);
+}
+
+static void realloc_commons(common_data *data) {
+  data->capacity = data->capacity << 1;
+  data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
+  data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
+  data->shapes = realloc(data->shapes, sizeof(body_shapes) * data->capacity);
+  data->outer_lookup = realloc(data->outer_lookup, sizeof(count_t) * data->capacity);
+  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
+}
+
+static void add_primitive_body_common(physics_world *world, common_data *data, body_shape shape, count_t index) {
+  data->positions[index] = zero();
+  data->rotations[index] = qidentity();
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
+
+  count_t slot_index;
+  if (!find_empty_shape_slot(world, BRACKET_PRIMITIVE, &slot_index)) {
+    expand_shapes_bracket(world, BRACKET_PRIMITIVE);
+  }
+
+
+}
+
 physics_world* physics_init(const physics_config *config) {
   physics_world* world = malloc(sizeof(physics_world));
 
-  #define INIT_COMMONS(type, cap) \
-    world->type.capacity = cap; \
-    world->type.count = 0; \
-    world->type.positions = malloc(sizeof(v3) * cap); \
-    world->type.rotations = malloc(sizeof(quat) * cap); \
-    world->type.shapes = malloc(sizeof(body_shape) * cap); \
-    world->type.outer_lookup = malloc(sizeof(count_t) * cap); \
-    world->type.inner_lookup = malloc(sizeof(count_t) * cap); \
-
-  INIT_COMMONS(dynamics, config->dynamics_capacity);
-  INIT_COMMONS(statics, config->statics_capacity);
-
-  #undef INIT_COMMONS
+  init_commons((common_data*) &world->dynamics, config->dynamics_capacity);
+  init_commons((common_data*) &world->statics, config->statics_capacity);
 
   const count_t vectors = sizeof(v3) * config->dynamics_capacity;
   const count_t floats = sizeof(float) * config->dynamics_capacity;
@@ -119,22 +150,6 @@ physics_world* physics_init(const physics_config *config) {
   return world;
 }
 
-static void realloc_commons(common_data *data) {
-  data->capacity = data->capacity << 1;
-  data->positions = realloc(data->positions, sizeof(v3) * data->capacity);
-  data->rotations = realloc(data->rotations, sizeof(quat) * data->capacity);
-  data->shapes = realloc(data->shapes, sizeof(body_shape) * data->capacity);
-  data->outer_lookup = realloc(data->outer_lookup, sizeof(count_t) * data->capacity);
-  data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
-}
-
-static void init_commons(common_data *data, body_shape shape, count_t index) {
-  data->shapes[index] = shape;
-  data->positions[index] = zero();
-  data->rotations[index] = qidentity();
-  data->outer_lookup[index] = index;
-  data->inner_lookup[index] = index;
-}
 
 static body add_primitive_body_static(physics_world* world, body_shape shape) {
   static_bodies *data = &world->statics;
@@ -143,7 +158,7 @@ static body add_primitive_body_static(physics_world* world, body_shape shape) {
   }
 
   count_t index = data->count++;
-  init_commons(data, shape, index);
+  add_primitive_body_common(world, data, shape, index);
 
   world->generation += 1;
 
@@ -175,7 +190,7 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
   }
 
   count_t index = data->count++;
-  init_commons((common_data*) data, shape, index);
+  add_primitive_body_common(world, (common_data*) data, shape, index);
 
   world->dynamics.inv_masses[index] = 1.0 / mass;
   world->dynamics.velocities[index] = zero();
@@ -218,28 +233,28 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
 }
 
 void physics_add_plane(physics_world *world, v3 point, v3 normal) {
-  body plane = add_primitive_body_static(world, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal } });
+  body plane = add_primitive_body_static(world, (body_shape) { .type = SHAPE_PLANE, .plane = { .normal = normal }, .offset = zero(), .rotation = qidentity() });
   world->statics.positions[handle_to_inner_index(world, plane.handle)] = point;
 }
 
 body physics_add_box_dynamic(physics_world *world, float mass, v3 size) {
-  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
 body physics_add_box_static(physics_world *world, v3 size) {
-  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size } });
+  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_BOX, .box = { .size = size }, .offset = zero(), .rotation = qidentity() });
 }
 
 body physics_add_sphere_dynamic(physics_world *world, float mass, float radius) {
-  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = radius }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
 body physics_add_cylinder_static(physics_world *world, float radius, float height) {
-  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } });
+  return add_primitive_body_static(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = zero(), .rotation = qidentity() });
 }
 
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height) {
-  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height } }, mass);
+  return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = zero(), .rotation = qidentity() }, mass);
 }
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force) {
