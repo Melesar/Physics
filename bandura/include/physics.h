@@ -41,9 +41,25 @@ typedef struct {
   count_t count; \
   v3* positions; \
   quat* rotations; \
-  body_shape* shapes; \
+  body_shapes *shapes; \
   count_t *outer_lookup; \
   count_t *inner_lookup;
+
+typedef enum {
+  BRACKET_PRIMITIVE,
+  BRACKET_TWO,
+  BRACKET_FOUR,
+  BRACKET_EIGHT,
+  BRACKET_SIXTEEN,
+
+  BRACKET_COUNT
+} shape_dimension_bracket;
+
+typedef struct {
+  shape_dimension_bracket bracket : 3;
+  count_t offset : 24;
+  count_t count : 5;
+} body_shapes;
 
 typedef struct {
   COMMON_FIELDS
@@ -80,6 +96,7 @@ struct physics_world_t {
   static_bodies statics;
 
   collisions *collisions;
+  body_shape *shape_brackets[BRACKET_COUNT];
 
   physics_config config;
 

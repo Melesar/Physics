@@ -72,6 +72,11 @@ m3 matrix_inertia(m3 initial_inertia, quat rotation);
 typedef uint32_t count_t;
 
 typedef enum {
+  BODY_DYNAMIC,
+  BODY_STATIC,
+} body_type;
+
+typedef enum {
   SHAPE_BOX,
   SHAPE_SPHERE,
   SHAPE_PLANE,
@@ -90,12 +95,9 @@ typedef struct {
     struct { float radius; float height; } cylinder;
   };
 
+  v3 offset;
+  quat rotation;
 } body_shape;
-
-typedef enum {
-    BODY_DYNAMIC,
-    BODY_STATIC,
-} body_type;
 
 typedef struct {
   count_t type: 1;
@@ -124,6 +126,7 @@ typedef struct {
   count_t dynamics_capacity;
   count_t statics_capacity;
   count_t collisions_capacity;
+  count_t shapes_brackets_capacity[5];
 
   float linear_damping;
   float angular_damping;
@@ -168,7 +171,6 @@ body physics_add_box_static(physics_world *world, v3 size);
 body physics_add_sphere_dynamic(physics_world *world, float mass, float radius);
 body physics_add_cylinder_static(physics_world *world, float radius, float height);
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
-
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);
 void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);
