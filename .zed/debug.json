@@ -14,4 +14,15 @@
     "request": "launch",
     "adapter": "CodeLLDB",
   },
+  {
+    "label": "Debug body rain",
+    "build": {
+      "command": "zig",
+      "args": ["build"],
+      "cwd": "$ZED_WORKTREE_ROOT",
+    },
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/body_rain",
+    "request": "launch",
+    "adapter": "CodeLLDB",
+  },
 ]

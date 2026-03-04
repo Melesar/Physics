@@ -62,13 +62,13 @@ void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket
 
   count_t new_capacity = current_capacity * 2;
   count_t new_block_count = current_block_count + 1;
-  count_t shapes_count = bracket_capacity * new_block_count;
+  count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 
   uint64_t *new_bracket = allocate_bracket(new_block_count, shapes_count);
   memcpy(new_bracket, current_bracket, current_block_count * sizeof(uint64_t));
 
-  body_shape *shapes = (body_shape*) new_bracket + new_block_count * sizeof(uint64_t);
-  body_shape *old_shapes = current_bracket + current_block_count * sizeof(uint64_t);
+  body_shape *shapes = (body_shape*) &new_bracket[new_block_count];
+  body_shape *old_shapes = (body_shape*)((uint64_t*)current_bracket + current_block_count);
   memcpy(shapes, old_shapes, current_capacity * bracket_capacity * sizeof(body_shape));
 
   config->shapes_brackets_capacity[bracket] = new_capacity;
