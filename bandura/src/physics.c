@@ -1,4 +1,5 @@
 #include "physics.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,6 +21,57 @@ static v3 box_inertia(v3 size, float mass) {
 
   v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
+}
+
+static v3 inertia_vector(body_shape shape, float mass) {
+  switch (shape.type) {
+    case SHAPE_BOX:
+      return box_inertia(shape.box.size, mass);
+
+    case SHAPE_SPHERE:
+      return sphere_inertia(shape.sphere.radius, mass);
+
+    case SHAPE_CYLINDER:
+      return cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
+
+    default:
+      return one();
+  }
+}
+
+static void calculate_compound_shape_static(body_shape *shapes, float *masses, count_t count, float *total_mass) {
+  *total_mass = 0;
+  for (count_t i = 0; i < count; ++i) {
+    *total_mass += masses[i];
+  }
+
+  v3 center_of_mass = zero();
+  for (count_t i = 0; i < count; ++i) {
+    body_shape shape = shapes[i];
+    float mass = masses[i];
+
+    center_of_mass = add(center_of_mass, scale(shape.offset, mass / *total_mass));
+  }
+
+  for (count_t i = 0; i < count; ++i) {
+    shapes[i].offset = sub(shapes[i].offset, center_of_mass);
+  }
+}
+
+static void calculate_compound_shape_dynamic(body_shape *shapes, float *masses, count_t count, float *total_mass, m3 *inertia) {
+  calculate_compound_shape_static(shapes, masses, count, total_mass);
+
+  *inertia = (m3) { 0 };
+  for (count_t i = 0; i < count; ++i) {
+    body_shape shape = shapes[i];
+    float mass = masses[i];
+
+    m3 body_inertia = matrix_initial_inertia(inertia_vector(shape, mass));
+    body_inertia = matrix_inertia(body_inertia, shape.rotation);
+    body_inertia = matrix_displacement_inertia(body_inertia, shape.offset, mass);
+
+    *inertia = matrix_add(*inertia, body_inertia);
+  }
 }
 
 common_data* as_common(physics_world *world, body_type type) {
@@ -92,6 +144,21 @@ static void realloc_commons(common_data *data) {
   data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
 }
 
+static void realloc_dynamics(dynamic_bodies *data) {
+  data->forces = realloc(data->forces, sizeof(v3) * data->capacity);
+  data->torques = realloc(data->torques, sizeof(v3) * data->capacity);
+  data->impulses = realloc(data->impulses, sizeof(v3) * data->capacity);
+  data->angular_impulses = realloc(data->angular_impulses, sizeof(v3) * data->capacity);
+  data->accelerations = realloc(data->accelerations, sizeof(v3) * data->capacity);
+
+  data->inv_masses = realloc(data->inv_masses, sizeof(float) * data->capacity);
+  data->velocities = realloc(data->velocities, sizeof(v3) * data->capacity);
+  data->angular_momenta = realloc(data->angular_momenta, sizeof(v3) * data->capacity);
+  data->inv_inertia_tensors = realloc(data->inv_inertia_tensors, sizeof(m3) * data->capacity);
+  data->inv_intertias = realloc(data->inv_intertias, sizeof(m3) * data->capacity);
+  data->motion_avgs = realloc(data->motion_avgs, sizeof(float) * data->capacity);
+}
+
 static void teardown_commons(common_data *data) {
   free(data->positions);
   free(data->rotations);
@@ -100,21 +167,37 @@ static void teardown_commons(common_data *data) {
   free(data->inner_lookup);
 }
 
-static void add_primitive_body_common(physics_world *world, common_data *data, body_shape shape, count_t index) {
-  data->positions[index] = zero();
-  data->rotations[index] = qidentity();
-  data->outer_lookup[index] = index;
-  data->inner_lookup[index] = index;
+static shape_dimension_bracket get_shapes_bracket(count_t shapes_count) {
+  assert(shapes_count <= (1 << (BRACKET_COUNT - 1)));
 
-  const shape_dimension_bracket shapes_bracket = BRACKET_PRIMITIVE;
-  if (!shapes_any_slot_available(world, shapes_bracket)) {
-    shapes_expand_bracket(world, shapes_bracket);
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t bracket_capacity = 1 << i;
+    if (shapes_count <= bracket_capacity) {
+      return i;
+    }
   }
 
-  count_t shape_slot;
-  shapes_put_into_empty_slot(world, shapes_bracket, &shape, 1, &shape_slot);
+  return BRACKET_COUNT;
+}
 
-  data->shapes[index] = (body_shapes) { .bracket = shapes_bracket, .offset = shape_slot, .count = 1 };
+static void add_body_common(physics_world *world, common_data *data, shape_dimension_bracket bracket, body_shape* shapes, count_t shapes_count, count_t index) {
+  data->positions[index] = zero();
+  data->rotations[index] = qidentity();
+  data->shapes[index] = shapes_write(world, bracket, shapes, shapes_count);
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
+}
+
+static void add_body_dynamic(dynamic_bodies *data, float mass, count_t index) {
+  data->inv_masses[index] = 1.0 / mass;
+  data->velocities[index] = zero();
+  data->angular_momenta[index] = zero();
+  data->motion_avgs[index] = 0;
+  data->forces[index] = zero();
+  data->torques[index] = zero();
+  data->impulses[index] = zero();
+  data->angular_impulses[index] = zero();
+  data->accelerations[index] = zero();
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -159,7 +242,7 @@ static body add_primitive_body_static(physics_world* world, body_shape shape) {
   }
 
   count_t index = data->count++;
-  add_primitive_body_common(world, data, shape, index);
+  add_body_common(world, data, BRACKET_PRIMITIVE, &shape, 1, index);
 
   world->generation += 1;
 
@@ -176,59 +259,23 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
   dynamic_bodies *data = &world->dynamics;
   if (data->capacity < data->count + 1) {
     realloc_commons((common_data*) data);
-    world->dynamics.forces = realloc(world->dynamics.forces, sizeof(v3) * data->capacity);
-    world->dynamics.torques = realloc(world->dynamics.torques, sizeof(v3) * data->capacity);
-    world->dynamics.impulses = realloc(world->dynamics.impulses, sizeof(v3) * data->capacity);
-    world->dynamics.angular_impulses = realloc(world->dynamics.angular_impulses, sizeof(v3) * data->capacity);
-    world->dynamics.accelerations = realloc(world->dynamics.accelerations, sizeof(v3) * data->capacity);
-
-    world->dynamics.inv_masses = realloc(world->dynamics.inv_masses, sizeof(float) * data->capacity);
-    world->dynamics.velocities = realloc(world->dynamics.velocities, sizeof(v3) * data->capacity);
-    world->dynamics.angular_momenta = realloc(world->dynamics.angular_momenta, sizeof(v3) * data->capacity);
-    world->dynamics.inv_inertia_tensors = realloc(world->dynamics.inv_inertia_tensors, sizeof(m3) * data->capacity);
-    world->dynamics.inv_intertias = realloc(world->dynamics.inv_intertias, sizeof(m3) * data->capacity);
-    world->dynamics.motion_avgs = realloc(world->dynamics.motion_avgs, sizeof(float) * data->capacity);
+    realloc_dynamics(data);
   }
 
   count_t index = data->count++;
-  add_primitive_body_common(world, (common_data*) data, shape, index);
+  add_body_common(world, (common_data*) data, BRACKET_PRIMITIVE, &shape, 1, index);
+  add_body_dynamic(data, mass, index);
 
-  world->dynamics.inv_masses[index] = 1.0 / mass;
-  world->dynamics.velocities[index] = zero();
-  world->dynamics.angular_momenta[index] = zero();
-  world->dynamics.motion_avgs[index] = 0;
-  world->dynamics.forces[index] = zero();
-  world->dynamics.torques[index] = zero();
-  world->dynamics.impulses[index] = zero();
-  world->dynamics.angular_impulses[index] = zero();
-  world->dynamics.accelerations[index] = zero();
+  v3 inertia = inertia_vector(shape, mass);
 
-  v3 inertia_vector = one();
-  switch (shape.type) {
-    case SHAPE_BOX:
-      inertia_vector = box_inertia(shape.box.size, mass);
-      break;
-
-    case SHAPE_SPHERE:
-      inertia_vector = sphere_inertia(shape.sphere.radius, mass);
-      break;
-
-    case SHAPE_CYLINDER:
-      inertia_vector = cylinder_inertia(shape.cylinder.radius, shape.cylinder.height, mass);
-      break;
-
-    default:
-      break;
-  }
-
-  world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia_vector));
+  world->dynamics.inv_inertia_tensors[index] = matrix_initial_inertia(invert(inertia));
   world->generation += 1;
 
   return (body) {
     .position = &data->positions[index],
     .rotation = &data->rotations[index],
-    .velocity = &world->dynamics.velocities[index],
-    .angular_momentum = &world->dynamics.angular_momenta[index],
+    .velocity = &data->velocities[index],
+    .angular_momentum = &data->angular_momenta[index],
     .handle = make_body_handle(world, BODY_DYNAMIC, index),
   };
 }
@@ -256,6 +303,63 @@ body physics_add_cylinder_static(physics_world *world, float radius, float heigh
 
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height) {
   return add_primitive_body_dynamic(world, (body_shape) { .type = SHAPE_CYLINDER, .cylinder = { .radius = radius, .height = height }, .offset = zero(), .rotation = qidentity() }, mass);
+}
+
+body physics_add_compound_body_static(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count) {
+  shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
+
+  static_bodies *data = &world->statics;
+  if (data->capacity < data->count + 1) {
+    realloc_commons(data);
+  }
+
+  count_t index = data->count++;
+  add_body_common(world, (common_data*) &world->statics, bracket, shapes, shapes_count, index);
+
+  float mass;
+  body_shape* body_shapes = shapes_get(world, data->shapes[index]);
+  calculate_compound_shape_static(body_shapes, masses, shapes_count, &mass);
+
+  world->generation += 1;
+
+  return (body) {
+    .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = NULL,
+    .angular_momentum = NULL,
+    .handle = make_body_handle(world, BODY_STATIC, index)
+  };
+}
+
+body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count) {
+  shape_dimension_bracket bracket = get_shapes_bracket(shapes_count);
+
+  dynamic_bodies *data = &world->dynamics;
+  if (data->capacity < data->count + 1) {
+    realloc_commons((common_data*) data);
+    realloc_dynamics(data);
+  }
+
+  count_t index = data->count++;
+  add_body_common(world, (common_data*) data, bracket, shapes, shapes_count, index);
+
+  float mass;
+  m3 inertia;
+  body_shape *body_shapes = shapes_get(world, data->shapes[index]);
+  calculate_compound_shape_dynamic(body_shapes, masses, shapes_count, &mass, &inertia);
+  add_body_dynamic(data, mass, index);
+
+  data->inv_inertia_tensors[index] = matrix_inverse(inertia);
+
+  world->generation += 1;
+
+  return (body) {
+    .position = &data->positions[index],
+    .rotation = &data->rotations[index],
+    .velocity = &data->velocities[index],
+    .angular_momentum = &data->angular_momenta[index],
+    .handle = make_body_handle(world, BODY_DYNAMIC, index)
+  };
 }
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force) {

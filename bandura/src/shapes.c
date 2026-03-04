@@ -1,4 +1,5 @@
 #include "physics.h"
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,7 +62,6 @@ bool shapes_any_slot_available(const physics_world *world, shape_dimension_brack
 }
 
 void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket) {
-  physics_config *config = &world->config;
   count_t bracket_capacity = 1 << bracket;
 
   count_t current_capacity = world->shape_brackets[bracket].capacity;
@@ -111,6 +111,20 @@ bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket br
   }
 
   return false;
+}
+
+body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count) {
+  const count_t max_count = 1 << (BRACKET_COUNT - 1);
+  assert(count <= max_count);
+
+  if (!shapes_any_slot_available(world, bracket)) {
+    shapes_expand_bracket(world, bracket);
+  }
+
+  count_t shape_slot;
+  shapes_put_into_empty_slot(world, bracket, shapes, count, &shape_slot);
+
+  return (body_shapes) { .bracket = bracket, .offset = shape_slot, .count = count };
 }
 
 body_shape* shapes_get(const physics_world *world, body_shapes shapes) {

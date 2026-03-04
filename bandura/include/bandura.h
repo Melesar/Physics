@@ -68,6 +68,7 @@ m3 matrix_from_basis(v3 x, v3 y, v3 z);
 m3 matrix_skew_symmetric(v3 v);
 m3 matrix_initial_inertia(v3 inertia);
 m3 matrix_inertia(m3 initial_inertia, quat rotation);
+m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass);
 
 typedef uint32_t count_t;
 
@@ -171,6 +172,8 @@ body physics_add_box_static(physics_world *world, v3 size);
 body physics_add_sphere_dynamic(physics_world *world, float mass, float radius);
 body physics_add_cylinder_static(physics_world *world, float radius, float height);
 body physics_add_cylinder_dynamic(physics_world *world, float mass, float radius, float height);
+body physics_add_compound_body_static(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
+body physics_add_compound_body_dynamic(physics_world *world, body_shape *shapes, float *masses, count_t shapes_count);
 
 void physics_apply_force(physics_world *world, body_handle handle, v3 force);
 void physics_apply_force_at(physics_world *world, body_handle handle, v3 force, v3 position);

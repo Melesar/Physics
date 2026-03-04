@@ -186,6 +186,7 @@ void shapes_reset(physics_world *world);
 bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket);
 void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket);
 bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t shapes_count, count_t *slot_number);
+body_shapes shapes_write(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t count);
 body_shape* shapes_get(const physics_world *world, body_shapes shapes);
 
 #endif

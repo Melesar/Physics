@@ -111,6 +111,22 @@ m3 matrix_add(m3 a, m3 b) {
   };
 }
 
+m3 matrix_scale(m3 m, float s) {
+  return (m3) {
+    { m.m0[0] * s, m.m0[1] * s, m.m0[2] * s },
+    { m.m1[0] * s, m.m1[1] * s, m.m1[2] * s },
+    { m.m2[0] * s, m.m2[1] * s, m.m2[2] * s },
+  };
+}
+
+m3 matrix_sub(m3 a, m3 b) {
+  return (m3) {
+    { a.m0[0] - b.m0[0], a.m0[1] - b.m0[1], a.m0[2] - b.m0[2] },
+    { a.m1[0] - b.m1[0], a.m1[1] - b.m1[1], a.m1[2] - b.m1[2] },
+    { a.m2[0] - b.m2[0], a.m2[1] - b.m2[1], a.m2[2] - b.m2[2] }
+  };
+}
+
 m3 matrix_initial_inertia(v3 inertia) {
   return (m3) {
     {inertia.x, 0, 0},
@@ -145,4 +161,28 @@ m3 matrix_inertia(m3 initial_inertia, quat q) {
   rotation.m2[2] = 1 - 2*(a2 + b2);
 
   return matrix_multiply(matrix_multiply(rotation, initial_inertia), matrix_transpose(rotation));
+}
+
+m3 matrix_displacement_inertia(m3 i0, v3 offset, float mass) {
+  float r = dot(offset, offset);
+
+  m3 a = { 0 };
+  a.m0[0] = r;
+  a.m1[1] = r;
+  a.m2[2] = r;
+
+  m3 b;
+  b.m0[0] = offset.x * offset.x;
+  b.m0[1] = offset.x * offset.y;
+  b.m0[2] = offset.x * offset.z;
+
+  b.m1[0] = b.m0[1];
+  b.m1[1] = offset.y * offset.y;
+  b.m1[2] = offset.y * offset.z;
+
+  b.m2[0] = b.m0[2];
+  b.m2[1] = b.m1[2];
+  b.m2[2] = offset.z * offset.z;
+
+  return matrix_add(i0, matrix_scale(matrix_sub(a, b), mass));
 }
