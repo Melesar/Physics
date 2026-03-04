@@ -4,9 +4,15 @@
 #include <string.h>
 
 #define SHAPE_BRACKET_BLOCK_CAPACITY 64
+<<<<<<< HEAD
 
 const float min_velocity_threshold = 0.07f;
 const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
+||||||| d540963
+const float min_velocity_threshold = 0.07f;
+const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
+=======
+>>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -26,6 +32,14 @@ static v3 box_inertia(v3 size, float mass) {
 
   v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
+}
+
+static bool find_empty_shape_slot(const physics_world *world, shape_dimension_bracket bracket, count_t *index) {
+
+}
+
+static void expand_shapes_bracket(physics_world *world, shape_dimension_bracket bracket) {
+
 }
 
 
@@ -99,11 +113,25 @@ static void realloc_commons(common_data *data) {
   data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
 }
 
+<<<<<<< HEAD
 static void add_primitive_body_common(common_data *data, body_shape shape, count_t index) {
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->outer_lookup[index] = index;
   data->inner_lookup[index] = index;
+||||||| d540963
+=======
+static void add_primitive_body_common(physics_world *world, common_data *data, body_shape shape, count_t index) {
+  data->positions[index] = zero();
+  data->rotations[index] = qidentity();
+  data->outer_lookup[index] = index;
+  data->inner_lookup[index] = index;
+
+  count_t slot_index;
+  if (!find_empty_shape_slot(world, BRACKET_PRIMITIVE, &slot_index)) {
+    expand_shapes_bracket(world, BRACKET_PRIMITIVE);
+  }
+>>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
 
 }
@@ -148,7 +176,13 @@ static body add_primitive_body_static(physics_world* world, body_shape shape) {
   }
 
   count_t index = data->count++;
+<<<<<<< HEAD
   add_primitive_body_common(data, shape, index);
+||||||| d540963
+  init_commons(data, shape, index);
+=======
+  add_primitive_body_common(world, data, shape, index);
+>>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
   world->generation += 1;
 
@@ -180,7 +214,13 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
   }
 
   count_t index = data->count++;
+<<<<<<< HEAD
   add_primitive_body_common((common_data*) data, shape, index);
+||||||| d540963
+  init_commons((common_data*) data, shape, index);
+=======
+  add_primitive_body_common(world, (common_data*) data, shape, index);
+>>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
   world->dynamics.inv_masses[index] = 1.0 / mass;
   world->dynamics.velocities[index] = zero();
