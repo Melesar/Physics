@@ -1,18 +1,6 @@
 #include "physics.h"
-#include "bandura.h"
 #include <stdlib.h>
 #include <string.h>
-
-#define SHAPE_BRACKET_BLOCK_CAPACITY 64
-<<<<<<< HEAD
-
-const float min_velocity_threshold = 0.07f;
-const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
-||||||| d540963
-const float min_velocity_threshold = 0.07f;
-const float min_velocity_threshold_sqr = min_velocity_threshold * min_velocity_threshold;
-=======
->>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
 static v3 cylinder_inertia(float radius, float height, float mass) {
   float principal =  mass * (3 * radius * radius + height * height) / 12.0;
@@ -33,15 +21,6 @@ static v3 box_inertia(v3 size, float mass) {
   v3 i = { yy + zz, xx + zz, xx + yy };
   return scale(i, m);
 }
-
-static bool find_empty_shape_slot(const physics_world *world, shape_dimension_bracket bracket, count_t *index) {
-
-}
-
-static void expand_shapes_bracket(physics_world *world, shape_dimension_bracket bracket) {
-
-}
-
 
 common_data* as_common(physics_world *world, body_type type) {
   switch (type) {
@@ -113,27 +92,29 @@ static void realloc_commons(common_data *data) {
   data->inner_lookup = realloc(data->inner_lookup, sizeof(count_t) * data->capacity);
 }
 
-<<<<<<< HEAD
-static void add_primitive_body_common(common_data *data, body_shape shape, count_t index) {
-  data->positions[index] = zero();
-  data->rotations[index] = qidentity();
-  data->outer_lookup[index] = index;
-  data->inner_lookup[index] = index;
-||||||| d540963
-=======
+static void teardown_commons(common_data *data) {
+  free(data->positions);
+  free(data->rotations);
+  free(data->shapes);
+  free(data->outer_lookup);
+  free(data->inner_lookup);
+}
+
 static void add_primitive_body_common(physics_world *world, common_data *data, body_shape shape, count_t index) {
   data->positions[index] = zero();
   data->rotations[index] = qidentity();
   data->outer_lookup[index] = index;
   data->inner_lookup[index] = index;
 
-  count_t slot_index;
-  if (!find_empty_shape_slot(world, BRACKET_PRIMITIVE, &slot_index)) {
-    expand_shapes_bracket(world, BRACKET_PRIMITIVE);
+  const shape_dimension_bracket shapes_bracket = BRACKET_PRIMITIVE;
+  if (!shapes_any_slot_available(world, shapes_bracket)) {
+    shapes_expand_bracket(world, shapes_bracket);
   }
->>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
+  count_t shape_slot;
+  shapes_put_into_empty_slot(world, shapes_bracket, &shape, 1, &shape_slot);
 
+  data->shapes[index] = (body_shapes) { .bracket = shapes_bracket, .offset = shape_slot, .count = 1 };
 }
 
 physics_world* physics_init(const physics_config *config) {
@@ -160,6 +141,8 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.motion_avgs = malloc(floats);
   world->dynamics.awake_count = 0;
 
+  shapes_init(world);
+
   world->config = *config;
   world->collisions = collisions_init(config);
 
@@ -176,13 +159,7 @@ static body add_primitive_body_static(physics_world* world, body_shape shape) {
   }
 
   count_t index = data->count++;
-<<<<<<< HEAD
-  add_primitive_body_common(data, shape, index);
-||||||| d540963
-  init_commons(data, shape, index);
-=======
   add_primitive_body_common(world, data, shape, index);
->>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
   world->generation += 1;
 
@@ -214,13 +191,7 @@ static body add_primitive_body_dynamic(physics_world* world, body_shape shape, f
   }
 
   count_t index = data->count++;
-<<<<<<< HEAD
-  add_primitive_body_common((common_data*) data, shape, index);
-||||||| d540963
-  init_commons((common_data*) data, shape, index);
-=======
   add_primitive_body_common(world, (common_data*) data, shape, index);
->>>>>>> 0a6db1174e69ac340c0cfe4378cc202486624de3
 
   world->dynamics.inv_masses[index] = 1.0 / mass;
   world->dynamics.velocities[index] = zero();
@@ -364,7 +335,8 @@ quat physics_get_rotation(const physics_world *world, body_handle handle) {
 
 body_shape physics_get_shape(const physics_world *world, body_handle handle) {
   const common_data *data = as_common_const(world, handle.type);
-  return data->shapes[handle_to_inner_index(world, handle)];
+  body_shapes shapes = data->shapes[handle_to_inner_index(world, handle)];
+  return *shapes_get(world, shapes);
 }
 
 v3 physics_get_velocity(const physics_world *world, body_handle handle) {
@@ -593,17 +565,8 @@ void physics_reset(physics_world *world) {
 
 
 void physics_teardown(physics_world* world) {
-  #define TEARDOWN_COMMONS(type) \
-    free(world->type.positions); \
-    free(world->type.rotations); \
-    free(world->type.shapes); \
-    free(world->type.outer_lookup); \
-    free(world->type.inner_lookup);
-
-  TEARDOWN_COMMONS(dynamics);
-  TEARDOWN_COMMONS(statics);
-
-  #undef TEARDOWN_COMMONS
+  teardown_commons((common_data*) &world->dynamics);
+  teardown_commons((common_data*) &world->statics);
 
   free(world->dynamics.forces);
   free(world->dynamics.torques);
@@ -618,6 +581,7 @@ void physics_teardown(physics_world* world) {
   free(world->dynamics.inv_intertias);
   free(world->dynamics.motion_avgs);
 
+  shapes_teardown(world);
   collisions_teardown(world->collisions);
 
   free(world);
@@ -705,7 +669,7 @@ static void swap_bodies(physics_world *world, count_t index_a, count_t index_b) 
 
   SWAP(v3, positions)
   SWAP(quat, rotations)
-  SWAP(body_shape, shapes)
+  SWAP(body_shapes, shapes)
   SWAP(float, inv_masses)
   SWAP(v3, velocities)
   SWAP(v3, angular_momenta)
