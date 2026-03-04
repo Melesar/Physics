@@ -60,6 +60,11 @@ typedef struct {
 } body_shapes;
 
 typedef struct {
+  body_shape *bracket;
+  count_t capacity;
+} shapes_bracket;
+
+typedef struct {
   COMMON_FIELDS
 } common_data;
 
@@ -95,8 +100,7 @@ struct physics_world_t {
 
   collisions *collisions;
 
-  // TODO: wrap pointer in a struct, add count and capacity.
-  body_shape *shape_brackets[BRACKET_COUNT];
+  shapes_bracket shape_brackets[BRACKET_COUNT];
 
   physics_config config;
 
