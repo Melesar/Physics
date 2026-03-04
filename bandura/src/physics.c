@@ -561,6 +561,8 @@ void physics_reset(physics_world *world) {
   world->collisions->dynamic_collisions_count = 0;
   world->collisions->collisions_count = 0;
   world->collisions->contacts_count = 0;
+
+  shapes_reset(world);
 }
 
 

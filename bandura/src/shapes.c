@@ -39,6 +39,13 @@ void shapes_teardown(physics_world *world) {
   }
 }
 
+void shapes_reset(physics_world *world) {
+  for (count_t i = 0; i < BRACKET_COUNT; ++i) {
+    count_t blocks_count = bracket_block_count(world, i);
+    memset(world->shape_brackets[i], 0, blocks_count * sizeof(uint64_t));
+  }
+}
+
 bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket) {
   count_t blocks_count = bracket_block_count(world, bracket);
   uint64_t *header = (uint64_t*) world->shape_brackets[bracket];
@@ -60,7 +67,7 @@ void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket
   count_t current_block_count = bracket_block_count(world, bracket);
   body_shape *current_bracket = world->shape_brackets[bracket];
 
-  count_t new_capacity = current_capacity * 2;
+  count_t new_capacity = current_capacity + SHAPE_BRACKET_BLOCK_CAPACITY;
   count_t new_block_count = current_block_count + 1;
   count_t shapes_count = bracket_capacity * new_block_count * SHAPE_BRACKET_BLOCK_CAPACITY;
 

@@ -178,6 +178,7 @@ void update_awake_statuses(physics_world *world, float dt);
 
 void shapes_init(physics_world *world);
 void shapes_teardown(physics_world *world);
+void shapes_reset(physics_world *world);
 bool shapes_any_slot_available(const physics_world *world, shape_dimension_bracket bracket);
 void shapes_expand_bracket(physics_world *world, shape_dimension_bracket bracket);
 bool shapes_put_into_empty_slot(physics_world *world, shape_dimension_bracket bracket, body_shape *shapes, count_t shapes_count, count_t *slot_number);
