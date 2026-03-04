@@ -38,7 +38,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
   switch(state->phase) {
     case CDBG_IDLE:
       integrate_bodies(world, dt);
-      collisions_detect(world->collisions, (common_data*) &world->dynamics, &world->statics);
+      collisions_detect(world);
 
       if (world->collisions->dynamic_collisions_count == 0) {
         resolve_collisions(world, dt);

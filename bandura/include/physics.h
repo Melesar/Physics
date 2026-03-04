@@ -2,9 +2,7 @@
 #define PHYSICS_H
 
 #include "bandura.h"
-#include "stdbool.h"
 #include <stddef.h>
-#include <stdint.h>
 
 typedef struct {
   count_t index_a, index_b;
@@ -96,6 +94,8 @@ struct physics_world_t {
   static_bodies statics;
 
   collisions *collisions;
+
+  // TODO: wrap pointer in a struct, add count and capacity.
   body_shape *shape_brackets[BRACKET_COUNT];
 
   physics_config config;
@@ -173,7 +173,7 @@ bool find_worst_velocity(physics_world *world, count_t *out_collision_index, cou
 void update_awake_status_for_collision(physics_world *world, count_t collision_index);
 void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
 void resolve_collisions(physics_world *world, float dt);
-void collisions_detect(collisions* collisions, const common_data *dynamics, const common_data *statics);
+void collisions_detect(physics_world *world);
 void update_awake_statuses(physics_world *world, float dt);
 
 void shapes_init(physics_world *world);

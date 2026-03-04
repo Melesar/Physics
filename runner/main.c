@@ -40,7 +40,7 @@ static void draw_scene(Camera camera, struct nk_context* ctx, Shader shader);
 static void draw_physics_bodies();
 static void draw_body_axes(v3 position, quat rotation);
 static void draw_body_angular_momentum(v3 position, v3 angular_momentum);
-static void process_inputs(physics_world *world, Camera* camera);
+static void process_inputs(Camera* camera);
 static void reset();
 static void draw_ui_widget_controls(struct nk_context* ctx);
 static void draw_ui_widget_observe_body(struct nk_context* ctx);
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
     update_camera(&camera, GetFrameTime());
     UpdateNuklear(ctx);
 
-    process_inputs(world, &camera);
+    process_inputs(&camera);
 
     int sim_count = 0;
     if (!edit_mode) {
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-static void process_inputs(physics_world *world, Camera* camera) {
+static void process_inputs(Camera* camera) {
   if (IsKeyPressed(KEY_SPACE)) {
     simulation_running = !simulation_running;
   }
@@ -463,10 +463,10 @@ static void update_camera(Camera* camera, float deltaTime) {
   }
 }
 
-static Camera setup_camera(program_config config) {
+static Camera setup_camera(program_config program_config) {
   Camera3D camera = {0};
-  camera.position = config.camera_position;
-  camera.target = config.camera_target;
+  camera.position = program_config.camera_position;
+  camera.target = program_config.camera_target;
   camera.up = (Vector3){0.0f, 1.0f, 0.0f};
   camera.fovy = 45.0f;
   camera.projection = CAMERA_PERSPECTIVE;

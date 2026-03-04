@@ -141,10 +141,10 @@ physics_world* physics_init(const physics_config *config) {
   world->dynamics.motion_avgs = malloc(floats);
   world->dynamics.awake_count = 0;
 
-  shapes_init(world);
-
   world->config = *config;
   world->collisions = collisions_init(config);
+
+  shapes_init(world);
 
   world->generation = 0;
 
@@ -529,7 +529,7 @@ void integrate_bodies(physics_world *world, float dt) {
 
 void physics_step(physics_world* world, float dt) {
   integrate_bodies(world, dt);
-  collisions_detect(world->collisions, (common_data*) &world->dynamics, (common_data*)&world->statics);
+  collisions_detect(world);
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
   clear_forces(world);

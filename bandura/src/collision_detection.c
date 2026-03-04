@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdlib.h>
 
-typedef count_t(*collision_func)(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b);
+typedef count_t(*collision_func)(physics_world *world, count_t i, count_t j, const common_data *data_a, const common_data *data_b);
 
 #define ARRAY_INIT(base, type, capacity) \
   base->type##s_capacity = capacity; \
@@ -25,12 +25,12 @@ typedef struct {
   v3 axis[3];
 } collision_box;
 
-collision_box collision_box_make(const common_data *data, count_t index) {
+collision_box collision_box_make(const physics_world *world, const common_data *data, count_t index) {
   quat rotation = data->rotations[index];
 
   return (collision_box) {
     .center = data->positions[index],
-    .size = data->shapes[index].box.size,
+    .size = shapes_get(world, data->shapes[index])->box.size,
     .axis = { rotate(right(), rotation), rotate(up(), rotation), rotate(forward(), rotation) }
   };
 }
@@ -148,11 +148,11 @@ static bool try_axis(const collision_box *box_a, const collision_box *box_b, v3 
 #define CHECK_OVERLAP(axis, index) \
   if (!try_axis(&box_a, &box_b, (axis), (index), offset, &penetration, &best_axis)) return 0;
 
-static count_t box_box_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b, bool *switched_bodies) {
+static count_t box_box_collision(physics_world *world, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b, bool *switched_bodies) {
   *switched_bodies = false;
 
-  collision_box box_a = collision_box_make(data_a, index_a);
-  collision_box box_b = collision_box_make(data_b, index_b);
+  collision_box box_a = collision_box_make(world, data_a, index_a);
+  collision_box box_b = collision_box_make(world, data_b, index_b);
 
   v3 offset = sub(box_b.center, box_a.center);
 
@@ -183,6 +183,7 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
     return 0;
   }
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -252,9 +253,9 @@ static count_t box_box_collision(collisions* collisions, count_t index_a, count_
 
 #undef CHECK_OVERLAP
 
-static count_t box_plane_collision(collisions* collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
-  v3 extents = scale(data_a->shapes[index_a].box.size, 0.5);
-  v3 plane_normal = data_b->shapes[index_b].plane.normal;
+static count_t box_plane_collision(physics_world *world, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+  v3 extents = scale(shapes_get(world, data_a->shapes[index_a])->box.size, 0.5);
+  v3 plane_normal = shapes_get(world, data_b->shapes[index_b])->plane.normal;
 
   v3 corners[] = {
     { extents.x, extents.y, extents.z },
@@ -269,6 +270,7 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
 
   const count_t max_contacts = 4;
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + max_contacts, collisions->contacts_capacity, contact)
 
   count_t contact_count = 0;
@@ -298,13 +300,13 @@ static count_t box_plane_collision(collisions* collisions, count_t index_a, coun
   return 1;
 }
 
-count_t box_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+count_t box_sphere_collision(physics_world *world, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 box_center = data_a->positions[i];
   quat box_rotation = data_a->rotations[i];
-  v3 box_half_extents = scale(data_a->shapes[i].box.size, 0.5);
+  v3 box_half_extents = scale(shapes_get(world, data_a->shapes[i])->box.size, 0.5);
 
   v3 sphere_center = data_b->positions[j];
-  float sphere_radius = data_b->shapes[j].sphere.radius;
+  float sphere_radius = shapes_get(world, data_b->shapes[j])->sphere.radius;
 
   m4 box_transform = mul(as_matrix(box_rotation), MatrixTranslate(box_center.x, box_center.y, box_center.z));
   v3 relative_sphere_center = transform(sphere_center, inverse(box_transform));
@@ -337,6 +339,7 @@ count_t box_sphere_collision(collisions *collisions, count_t i, count_t j, const
 
   closest_point = transform(closest_point, box_transform);
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->contacts_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -430,14 +433,14 @@ static bool try_axis_box_cylinder(
   return true;
 }
 
-count_t cylinder_box_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+count_t cylinder_box_collision(physics_world *world, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 cylinder_center = data_a->positions[i];
   quat cylinder_rotation = data_a->rotations[i];
   v3 cylinder_axis = rotate(up(), cylinder_rotation);
-  float cylinder_radius = data_a->shapes[i].cylinder.radius;
-  float cylinder_half_height = data_a->shapes[i].cylinder.height * 0.5f;
+  float cylinder_radius = shapes_get(world, data_a->shapes[i])->cylinder.radius;
+  float cylinder_half_height = shapes_get(world, data_a->shapes[i])->cylinder.height * 0.5f;
 
-  collision_box box = collision_box_make(data_b, j);
+  collision_box box = collision_box_make(world, data_b, j);
 
   v3 point_on_cylinder = cylinder_center;
   v3 point_on_box = closest_point_on_box(&box, point_on_cylinder);
@@ -491,6 +494,7 @@ count_t cylinder_box_collision(collisions *collisions, count_t i, count_t j, con
     depth = penetration;
   }
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -508,14 +512,14 @@ count_t cylinder_box_collision(collisions *collisions, count_t i, count_t j, con
   return 1;
 }
 
-count_t cylinder_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+count_t cylinder_sphere_collision(physics_world *world, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 cylinder_center = data_a->positions[i];
   quat cylinder_rotation = data_a->rotations[i];
-  float cylinder_radius = data_a->shapes[i].cylinder.radius;
-  float cylinder_half_height = data_a->shapes[i].cylinder.height * 0.5f;
+  float cylinder_radius = shapes_get(world, data_a->shapes[i])->cylinder.radius;
+  float cylinder_half_height = shapes_get(world, data_a->shapes[i])->cylinder.height * 0.5f;
 
   v3 sphere_center = data_b->positions[j];
-  float sphere_radius = data_b->shapes[j].sphere.radius;
+  float sphere_radius = shapes_get(world, data_b->shapes[j])->sphere.radius;
 
   m4 cylinder_transform = mul(as_matrix(cylinder_rotation), MatrixTranslate(cylinder_center.x, cylinder_center.y, cylinder_center.z));
   v3 local_sphere_center = transform(sphere_center, inverse(cylinder_transform));
@@ -570,6 +574,7 @@ count_t cylinder_sphere_collision(collisions *collisions, count_t i, count_t j, 
     depth = sphere_radius - distance;
   }
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -587,12 +592,12 @@ count_t cylinder_sphere_collision(collisions *collisions, count_t i, count_t j, 
   return 1;
 }
 
-count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+count_t sphere_sphere_collision(physics_world *world, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
   v3 p1 = data_a->positions[i];
   v3 p2 = data_b->positions[j];
 
-  float r1 = data_a->shapes[i].sphere.radius;
-  float r2 = data_b->shapes[j].sphere.radius;
+  float r1 = shapes_get(world, data_a->shapes[i])->sphere.radius;
+  float r2 = shapes_get(world, data_b->shapes[j])->sphere.radius;
 
   v3 offset = sub(p1, p2);
   float distance = len(offset);
@@ -601,6 +606,7 @@ count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, co
     return 0;
   }
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -617,16 +623,17 @@ count_t sphere_sphere_collision(collisions *collisions, count_t i, count_t j, co
   return 1;
 }
 
-static count_t sphere_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+static count_t sphere_plane_collision(physics_world *world, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
   v3 plane_point = data_b->positions[index_b];
-  v3 plane_normal = data_b->shapes[index_b].plane.normal;
+  v3 plane_normal = shapes_get(world, data_b->shapes[index_b])->plane.normal;
   v3 sphere_center = data_a->positions[index_a];
-  float sphere_radius = data_a->shapes[index_a].sphere.radius;
+  float sphere_radius = shapes_get(world, data_a->shapes[index_a])->sphere.radius;
 
   float plane_sphere_distance = dot(sub(sphere_center, plane_point), plane_normal);
   if (plane_sphere_distance > sphere_radius)
     return 0;
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -647,14 +654,14 @@ static count_t sphere_plane_collision(collisions *collisions, count_t index_a, c
   return 1;
 }
 
-static count_t cylinder_plane_collision(collisions *collisions, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
+static count_t cylinder_plane_collision(physics_world *world, count_t index_a, count_t index_b, const common_data *data_a, const common_data *data_b) {
   v3 plane_point = data_b->positions[index_b];
-  v3 plane_normal = data_b->shapes[index_b].plane.normal;
+  v3 plane_normal = shapes_get(world, data_b->shapes[index_b])->plane.normal;
 
   v3 cylinder_center = data_a->positions[index_a];
   quat cylinder_rotation = data_a->rotations[index_a];
-  float cylinder_radius = data_a->shapes[index_a].cylinder.radius;
-  float cylinder_half_height = data_a->shapes[index_a].cylinder.height * 0.5f;
+  float cylinder_radius = shapes_get(world, data_a->shapes[index_a])->cylinder.radius;
+  float cylinder_half_height = shapes_get(world, data_a->shapes[index_a])->cylinder.height * 0.5f;
 
   v3 cylinder_axis = rotate(up(), cylinder_rotation);
   float axis_projection = dot(cylinder_axis, plane_normal);
@@ -668,6 +675,7 @@ static count_t cylinder_plane_collision(collisions *collisions, count_t index_a,
   if (min_distance > 0.0f)
     return 0;
 
+  collisions *collisions = world->collisions;
   ARRAY_RESIZE_IF_NEEDED(collisions->collisions, collisions->collisions_count + 1, collisions->collisions_capacity, collision);
   ARRAY_RESIZE_IF_NEEDED(collisions->contacts, collisions->contacts_count + 1, collisions->contacts_capacity, contact);
 
@@ -708,8 +716,9 @@ collisions* collisions_init(const physics_config *config) {
   return result;
 }
 
-static void invert_static_collision(collisions *collisions, collision_func func, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
-  if (func(collisions, j, i, data_b, data_a)) {
+static void invert_static_collision(physics_world *world, collision_func func, count_t i, count_t j, const common_data *data_a, const common_data *data_b) {
+  collisions *collisions = world->collisions;
+  if (func(world, j, i, data_b, data_a)) {
     collision *collision = &collisions->collisions[collisions->collisions_count - 1];
     collision->index_a = i;
 
@@ -718,22 +727,27 @@ static void invert_static_collision(collisions *collisions, collision_func func,
   }
 }
 
-void collisions_detect(collisions *collisions, const common_data *dynamics, const common_data *statics) {
+void collisions_detect(physics_world *world) {
+  collisions *collisions = world->collisions;
+
+  const common_data *dynamics =(common_data*) &world->dynamics;
+  const common_data *statics = (common_data*)&world->statics;
+
   collisions->collisions_count = 0;
   collisions->contacts_count = 0;
 
   count_t dyn_count = 0;
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < i; ++j) {
-      body_shape shape_a = dynamics->shapes[i];
-      body_shape shape_b = dynamics->shapes[j];
+      body_shape shape_a = *shapes_get(world, dynamics->shapes[i]);
+      body_shape shape_b = *shapes_get(world, dynamics->shapes[j]);
 
       switch(shape_a.type) {
         case SHAPE_BOX:
           switch(shape_b.type) {
             case SHAPE_BOX:
               bool did_switch_bodies;
-              dyn_count += box_box_collision(collisions, i, j, dynamics, dynamics, &did_switch_bodies);
+              dyn_count += box_box_collision(world, i, j, dynamics, dynamics, &did_switch_bodies);
               if (did_switch_bodies) {
                 collision *collision = &collisions->collisions[collisions->collisions_count - 1];
                 collision->index_a = j;
@@ -742,7 +756,7 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
               break;
 
             case SHAPE_SPHERE:
-              dyn_count += box_sphere_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += box_sphere_collision(world, i, j, dynamics, dynamics);
               break;
 
             default:
@@ -753,11 +767,11 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_SPHERE:
           switch(shape_b.type) {
             case SHAPE_BOX:
-              dyn_count += box_sphere_collision(collisions, j, i, dynamics, dynamics);
+              dyn_count += box_sphere_collision(world, j, i, dynamics, dynamics);
               break;
 
             case SHAPE_SPHERE:
-              dyn_count += sphere_sphere_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += sphere_sphere_collision(world, i, j, dynamics, dynamics);
               break;
 
             default:
@@ -768,11 +782,11 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_CYLINDER:
           switch (shape_b.type) {
             case SHAPE_SPHERE:
-              dyn_count += cylinder_sphere_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += cylinder_sphere_collision(world, i, j, dynamics, dynamics);
               break;
 
             case SHAPE_BOX:
-              dyn_count += cylinder_box_collision(collisions, i, j, dynamics, dynamics);
+              dyn_count += cylinder_box_collision(world, i, j, dynamics, dynamics);
               break;
 
             default:
@@ -790,22 +804,22 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
 
   for (count_t i = 0; i < dynamics->count; ++i) {
     for (count_t j = 0; j < statics->count; ++j) {
-      body_shape shape_a = dynamics->shapes[i];
-      body_shape shape_b = statics->shapes[j];
+      body_shape shape_a = *shapes_get(world, dynamics->shapes[i]);
+      body_shape shape_b = *shapes_get(world, statics->shapes[j]);
 
       switch(shape_b.type) {
         case SHAPE_PLANE:
           switch(shape_a.type) {
             case SHAPE_BOX:
-              box_plane_collision(collisions, i, j, dynamics, statics);
+              box_plane_collision(world, i, j, dynamics, statics);
               break;
 
             case SHAPE_SPHERE:
-              sphere_plane_collision(collisions, i, j, dynamics, statics);
+              sphere_plane_collision(world, i, j, dynamics, statics);
               break;
 
             case SHAPE_CYLINDER:
-              cylinder_plane_collision(collisions, i, j, dynamics, statics);
+              cylinder_plane_collision(world, i, j, dynamics, statics);
               break;
 
             default:
@@ -817,7 +831,7 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
           switch(shape_a.type) {
             case SHAPE_BOX:
               bool did_switch_bodies;
-              box_box_collision(collisions, i, j, dynamics, statics, &did_switch_bodies);
+              box_box_collision(world, i, j, dynamics, statics, &did_switch_bodies);
               if (did_switch_bodies) {
                 collision *collision = &collisions->collisions[collisions->collisions_count - 1];
                 contact *contact = &collisions->contacts[collision->contacts_offset];
@@ -826,7 +840,7 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
               break;
 
             case SHAPE_SPHERE:
-              invert_static_collision(collisions, &box_sphere_collision, i, j, dynamics, statics);
+              invert_static_collision(world, &box_sphere_collision, i, j, dynamics, statics);
               break;
 
             default:
@@ -837,11 +851,11 @@ void collisions_detect(collisions *collisions, const common_data *dynamics, cons
         case SHAPE_CYLINDER:
           switch (shape_a.type) {
             case SHAPE_SPHERE:
-              invert_static_collision(collisions, &cylinder_sphere_collision, i, j, dynamics, statics);
+              invert_static_collision(world, &cylinder_sphere_collision, i, j, dynamics, statics);
               break;
 
             case SHAPE_BOX:
-              invert_static_collision(collisions, &cylinder_box_collision, i, j, dynamics, statics);
+              invert_static_collision(world, &cylinder_box_collision, i, j, dynamics, statics);
               break;
 
             default:

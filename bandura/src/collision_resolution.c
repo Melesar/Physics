@@ -1,5 +1,5 @@
 #include "physics.h"
-#include "math.h"
+#include <math.h>
 
 void update_desired_velocity_delta(physics_world *world, count_t collision_index, contact *contact, float dt) {
   collision collision = world->collisions->collisions[collision_index];
@@ -265,7 +265,7 @@ void resolve_velocity_contact(physics_world *world, count_t worst_collision_inde
 
   for (count_t k = 0; k < body_count; ++k) {
     count_t body_index = body_ids[k];
-    float inv_mass = world->dynamics.inv_masses[body_index];
+    inv_mass = world->dynamics.inv_masses[body_index];
 
     v3 linear_impulse_delta = scale(world_space_impulse, inv_mass);
     v3 angular_impulse_delta = cross(contact->relative_position[k], world_space_impulse);

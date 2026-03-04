@@ -106,7 +106,7 @@ static count_t raycast_bodies(const physics_world *world, body_type type, v3 ori
   count_t num_hits = 0;
   const common_data *data = as_common_const(world, type);
   for(count_t i = 0; i < data->count; ++i) {
-    body_shape shape = data->shapes[i];
+    body_shape shape = *shapes_get(world, data->shapes[i]);
     raycast_hit *hit = hits + hit_count + num_hits;
     count_t prev_count = num_hits;
 
