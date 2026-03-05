@@ -1,5 +1,3 @@
-#include "raylib.h"
-#include "bandura.h"
 #include "core.h"
 #include "raymath.h"
 #include "string.h"
@@ -192,10 +190,11 @@ static void process_inputs(Camera* camera) {
     raycast_hit hit;
     count_t hit_count = physics_raycast(world, origin, direction, 1000.0f, 1, &hit);
     if (hit_count > 0) {
+      count_t c;
       observed_body.has_hit = true;
       observed_body.handle = hit.body;
       observed_body.is_dynamic = (hit.body.type == BODY_DYNAMIC);
-      observed_body.shape = physics_get_shape(world, hit.body);
+      observed_body.shape = *physics_get_shapes(world, hit.body, &c);
     } else {
       observed_body.has_hit = false;
     }
@@ -329,30 +328,38 @@ static void draw_physics_bodies_typed(body_type type) {
   while(physics_body_next_typed(world, &enumerator)) {
     v3 position = physics_get_position(world, enumerator.handle);
     quat rotation = physics_get_rotation(world, enumerator.handle);
-    body_shape shape = physics_get_shape(world, enumerator.handle);
+
+    count_t shapes_count;
+    body_shape* shapes = physics_get_shapes(world, enumerator.handle, &shapes_count);
 
     m4 scale;
     m4 transform = MatrixMultiply(QuaternionToMatrix(rotation), MatrixTranslate(position.x, position.y, position.z));
     Material material = materials[i++ % 20];
 
-    switch (shape.type) {
-      case SHAPE_BOX:
-        scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
-        DrawMesh(meshes[SHAPE_BOX], material, mul(scale, transform));
-        break;
+    for (count_t k = 0; k < shapes_count; ++k) {
+      body_shape shape = shapes[k];
+      m4 shape_transform = mul(as_matrix(shape.rotation), MatrixTranslate(shape.offset.x, shape.offset.y, shape.offset.z));
+      m4 full_transform = mul(shape_transform, transform);
 
-      case SHAPE_SPHERE:
-        scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
-        DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, transform));
-        break;
+      switch (shape.type) {
+        case SHAPE_BOX:
+          scale = MatrixScale(shape.box.size.x, shape.box.size.y, shape.box.size.z);
+          DrawMesh(meshes[SHAPE_BOX], material, mul(scale, full_transform));
+          break;
 
-      case SHAPE_CYLINDER:
-        scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
-        DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, transform));
-        break;
+        case SHAPE_SPHERE:
+          scale = MatrixScale(shape.sphere.radius, shape.sphere.radius, shape.sphere.radius);
+          DrawMesh(meshes[SHAPE_SPHERE], material, mul(scale, full_transform));
+          break;
 
-      default:
-        break;
+        case SHAPE_CYLINDER:
+          scale = MatrixScale(shape.cylinder.radius, shape.cylinder.height, shape.cylinder.radius);
+          DrawMesh(meshes[SHAPE_CYLINDER], material, mul(scale, full_transform));
+          break;
+
+        default:
+          break;
+      }
     }
   }
 }

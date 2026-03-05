@@ -437,10 +437,11 @@ quat physics_get_rotation(const physics_world *world, body_handle handle) {
   return data->rotations[handle_to_inner_index(world, handle)];
 }
 
-body_shape physics_get_shape(const physics_world *world, body_handle handle) {
+body_shape* physics_get_shapes(const physics_world *world, body_handle handle, count_t *count) {
   const common_data *data = as_common_const(world, handle.type);
   body_shapes shapes = data->shapes[handle_to_inner_index(world, handle)];
-  return *shapes_get(world, shapes);
+  *count = shapes.count;
+  return shapes_get(world, shapes);
 }
 
 v3 physics_get_velocity(const physics_world *world, body_handle handle) {
@@ -633,7 +634,7 @@ void integrate_bodies(physics_world *world, float dt) {
 
 void physics_step(physics_world* world, float dt) {
   integrate_bodies(world, dt);
-  collisions_detect(world);
+  // collisions_detect(world);
   resolve_collisions(world, dt);
   update_awake_statuses(world, dt);
   clear_forces(world);

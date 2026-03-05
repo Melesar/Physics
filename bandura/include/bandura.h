@@ -188,7 +188,7 @@ physics_config* physics_edit_config(physics_world *world);
 
 v3 physics_get_position(const physics_world *world, body_handle handle);
 quat physics_get_rotation(const physics_world *world, body_handle handle);
-body_shape physics_get_shape(const physics_world *world, body_handle handle);
+body_shape* physics_get_shapes(const physics_world *world, body_handle handle, count_t *count);
 v3 physics_get_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
