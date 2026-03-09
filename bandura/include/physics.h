@@ -5,14 +5,10 @@
 #include <stddef.h>
 
 typedef struct {
-  count_t index_a, index_b;
-  count_t contacts_offset, contacts_count;
-} collision;
-
-typedef struct {
   v3 point;
   v3 normal;
   float depth;
+  count_t index_a, index_b;
 
   m3 basis;
   v3 relative_position[2];
@@ -20,19 +16,13 @@ typedef struct {
   float desired_delta_velocity;
 } contact;
 
-#define ARRAY(type) \
-  count_t type##s_capacity; \
-  count_t type##s_count; \
-  type* type##s;
-
 typedef struct {
-  ARRAY(collision)
-  ARRAY(contact)
+  count_t capacity;
+  count_t count;
+  contact *contacts;
 
-  count_t dynamic_collisions_count;
+  count_t dynamic_contacts_count;
 } collisions;
-
-#undef ARRAY
 
 #define COMMON_FIELDS \
   count_t capacity; \
@@ -169,11 +159,11 @@ void collisions_teardown(collisions *collisions);
 void clear_forces(physics_world *world);
 void integrate_bodies(physics_world *world, float dt);
 void prepare_contacts(physics_world *world, float dt);
-void resolve_interpenetration_contact(physics_world *world, count_t collision_index, const contact *contact, v3 *deltas);
-void update_penetration_depths_ex(physics_world *world, count_t collision_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
-void resolve_velocity_contact(physics_world *world, count_t worst_collision_index, contact *contact, v3 *deltas);
-bool find_worst_penetration(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
-bool find_worst_velocity(physics_world *world, count_t *out_collision_index, count_t *out_contact_index);
+void resolve_interpenetration_contact(physics_world *world, count_t contact_index, v3 *deltas);
+void update_penetration_depths_ex(physics_world *world, count_t contact_index, const v3 *deltas, depth_update_record *records, count_t *record_count);
+void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *deltas);
+bool find_worst_penetration(physics_world *world, count_t *out_contact_index);
+bool find_worst_velocity(physics_world *world, count_t *out_contact_index);
 void update_awake_status_for_collision(physics_world *world, count_t collision_index);
 void update_velocity_deltas_ex(physics_world *world, count_t worst_collision_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count);
 void resolve_collisions(physics_world *world, float dt);
