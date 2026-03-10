@@ -29,6 +29,8 @@ void scenario_setup_scene(physics_world *world) {
   shapes[1] = (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = 0.7 }, .offset = (v3) { .x = 0, .y = 0, .z = 1.5 }, .rotation = qidentity() };
   shapes[2] = (body_shape) { .type = SHAPE_SPHERE, .sphere = { .radius = 0.7 }, .offset = (v3) { .x = 0, .y = 0, .z = -1.5 }, .rotation = qidentity() };
 
+  masses[0] = 3;
+  masses[1] = 5;
   masses[2] = 5;
 
   b = physics_add_compound_body_dynamic(world, shapes, masses, 3);

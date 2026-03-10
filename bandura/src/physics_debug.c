@@ -23,7 +23,7 @@ void physics_debug_state_reset(collision_debug_state *state) {
 
 bool physics_debug_current_contact(const physics_world *world, const collision_debug_state *state, contact_t *out_contact) {
   if (state->active && state->prev_phase != CDBG_IDLE && state->prev_phase != CDBG_DONE) {
-    contact world_contact = world->collisions->contacts[state->current_contact_index];
+    contact world_contact = world->collisions.contacts[state->current_contact_index];
     out_contact->point = world_contact.point;
     out_contact->normal = world_contact.normal;
     out_contact->depth = world_contact.depth;
@@ -40,7 +40,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
       integrate_bodies(world, dt);
       collisions_detect(world);
 
-      if (world->collisions->dynamic_contacts_count == 0) {
+      if (world->collisions.dynamic_contacts_count == 0) {
         resolve_collisions(world, dt);
         update_awake_statuses(world, dt);
         clear_forces(world);
@@ -63,7 +63,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
       if (state->iteration < world->config.max_penentration_iterations) {
         count_t worst_contact;
         if (find_worst_penetration(world, &worst_contact)) {
-          state->is_dynamic = worst_contact < world->collisions->dynamic_contacts_count;
+          state->is_dynamic = worst_contact < world->collisions.dynamic_contacts_count;
           state->current_contact_index = worst_contact;
           state->prev_phase = CDBG_PENETRATION_RESOLVE;
           state->phase = CDBG_DEPTH_UPDATE;
@@ -93,7 +93,7 @@ void physics_step_debug(physics_world *world, float dt, collision_debug_state *s
       if (state->iteration < world->config.max_velocity_iterations) {
         count_t worst_contact;
         if (find_worst_velocity(world, &worst_contact)) {
-          state->is_dynamic = worst_contact < world->collisions->dynamic_contacts_count;
+          state->is_dynamic = worst_contact < world->collisions.dynamic_contacts_count;
           state->current_contact_index = worst_contact;
           state->phase = CDBG_VELOCITY_UPDATE;
           state->prev_phase = CDBG_VELOCITY_RESOLVE;

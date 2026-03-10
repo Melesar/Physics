@@ -88,7 +88,7 @@ struct physics_world_t {
   dynamic_bodies dynamics;
   static_bodies statics;
 
-  collisions *collisions;
+  collisions collisions;
 
   shapes_bracket shape_brackets[BRACKET_COUNT];
 
@@ -153,8 +153,8 @@ count_t handle_to_inner_index(const physics_world *world, body_handle handle);
 common_data* as_common(physics_world *world, body_type type);
 const common_data* as_common_const(const physics_world *world, body_type type);
 
-collisions* collisions_init(const physics_config *config);
-void collisions_teardown(collisions *collisions);
+collisions collisions_init(const physics_config *config);
+void collisions_teardown(collisions collisions);
 
 void clear_forces(physics_world *world);
 void integrate_bodies(physics_world *world, float dt);

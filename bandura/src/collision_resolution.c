@@ -3,8 +3,8 @@
 
 void update_desired_velocity_delta(physics_world *world, count_t contact_index, float dt) {
   count_t awake_count = world->dynamics.awake_count;
-  contact *contact = &world->collisions->contacts[contact_index];
-  count_t body_count = contact_index < world->collisions->dynamic_contacts_count ? 2 : 1;
+  contact *contact = &world->collisions.contacts[contact_index];
+  count_t body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
   count_t body_ids[2] = { contact->index_a, contact->index_b };
 
   v3 accelerations[2] = { 0 };
@@ -54,10 +54,10 @@ static m3 contact_space_transform(const contact *contact) {
 void prepare_contacts(physics_world *world, float dt) {
   dynamic_bodies *dynamics = &world->dynamics;
 
-  for (count_t i = 0; i < world->collisions->count; ++i) {
-    contact *contact = &world->collisions->contacts[i];
+  for (count_t i = 0; i < world->collisions.count; ++i) {
+    contact *contact = &world->collisions.contacts[i];
     count_t body_ids[] = { contact->index_a, contact->index_b };
-    count_t body_count = i < world->collisions->dynamic_contacts_count ? 2 : 1;
+    count_t body_count = i < world->collisions.dynamic_contacts_count ? 2 : 1;
     v3 angular_velocity[2];
 
     for (count_t k = 0; k < body_count; ++k) {
@@ -92,8 +92,8 @@ void prepare_contacts(physics_world *world, float dt) {
 }
 
 void resolve_interpenetration_contact(physics_world *world, count_t contact_index, v3 *deltas) {
-  const contact *contact = &world->collisions->contacts[contact_index];
-  count_t body_count = contact_index < world->collisions->dynamic_contacts_count ? 2 : 1;
+  const contact *contact = &world->collisions.contacts[contact_index];
+  count_t body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
   count_t body_ids[] = { contact->index_a, contact->index_b };
 
   float total_inertia = 0;
@@ -168,17 +168,17 @@ void resolve_interpenetration_contact(physics_world *world, count_t contact_inde
 }
 
 void update_penetration_depths_ex(physics_world *world, count_t contact_index, const v3 *deltas, depth_update_record *records, count_t *record_count) {
-  contact *worst_contact = &world->collisions->contacts[contact_index];
+  contact *worst_contact = &world->collisions.contacts[contact_index];
 
   count_t worst_body_ids[] = { worst_contact->index_a, worst_contact->index_b };
-  count_t worst_body_count = contact_index < world->collisions->dynamic_contacts_count ? 2 : 1;
+  count_t worst_body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
 
   if (record_count) *record_count = 0;
 
-  count_t count = world->collisions->count;
+  count_t count = world->collisions.count;
   for (count_t i = 0; i < count; ++i) {
-    contact *contact = &world->collisions->contacts[i];
-    count_t body_count = i < world->collisions->dynamic_contacts_count ? 2 : 1;
+    contact *contact = &world->collisions.contacts[i];
+    count_t body_count = i < world->collisions.dynamic_contacts_count ? 2 : 1;
     count_t body_ids[] = { contact->index_a, contact->index_b };
 
     float depth_before = contact->depth;
@@ -208,8 +208,8 @@ static void update_penetration_depths(physics_world *world, count_t collision_in
 }
 
 void resolve_velocity_contact(physics_world *world, count_t contact_index, v3 *deltas) {
-  contact *contact = &world->collisions->contacts[contact_index];
-  count_t body_count = contact_index < world->collisions->dynamic_contacts_count ? 2 : 1;
+  contact *contact = &world->collisions.contacts[contact_index];
+  count_t body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
   count_t body_ids[] = { contact->index_a, contact->index_b };
 
   m3 contact_to_world = contact->basis;
@@ -281,8 +281,8 @@ bool find_worst_penetration(physics_world *world, count_t *out_contact_index) {
   float max_penetration = world->config.penetration_epsilon;
   count_t best_contact = (count_t)-1;
 
-  for (count_t i = 0; i < world->collisions->count; ++i) {
-    contact *contact = &world->collisions->contacts[i];
+  for (count_t i = 0; i < world->collisions.count; ++i) {
+    contact *contact = &world->collisions.contacts[i];
 
     if (contact->depth > max_penetration) {
       max_penetration = contact->depth;
@@ -302,8 +302,8 @@ bool find_worst_velocity(physics_world *world, count_t *out_contact_index) {
   float max_velocity = world->config.velocity_epsilon;
   count_t best_contact = (count_t)-1;
 
-  for (count_t i = 0; i < world->collisions->count; ++i) {
-    contact *contact = &world->collisions->contacts[i];
+  for (count_t i = 0; i < world->collisions.count; ++i) {
+    contact *contact = &world->collisions.contacts[i];
 
     if (contact->desired_delta_velocity > max_velocity) {
       max_velocity = contact->desired_delta_velocity;
@@ -319,10 +319,10 @@ bool find_worst_velocity(physics_world *world, count_t *out_contact_index) {
 }
 
 void update_awake_status_for_collision(physics_world *world, count_t contact_index) {
-  if (contact_index >= world->collisions->dynamic_contacts_count)
+  if (contact_index >= world->collisions.dynamic_contacts_count)
     return;
 
-  contact *contact = &world->collisions->contacts[contact_index];
+  contact *contact = &world->collisions.contacts[contact_index];
 
   bool body_a_awake = contact->index_a < world->dynamics.awake_count;
   bool body_b_awake = contact->index_b < world->dynamics.awake_count;
@@ -338,7 +338,7 @@ void update_awake_status_for_collision(physics_world *world, count_t contact_ind
 }
 
 void resolve_interpenetrations(physics_world *world) {
-  const count_t count = world->collisions->count;
+  const count_t count = world->collisions.count;
 
   if (count == 0)
     return;
@@ -360,17 +360,17 @@ void resolve_interpenetrations(physics_world *world) {
 }
 
 void update_velocity_deltas_ex(physics_world *world, count_t contact_index, const v3 *deltas, float dt, velocity_update_record *records, count_t *record_count) {
-  contact *worst_contact = &world->collisions->contacts[contact_index];
+  contact *worst_contact = &world->collisions.contacts[contact_index];
   count_t worst_body_ids[] = { worst_contact->index_a, worst_contact->index_b };
-  count_t worst_body_count = contact_index < world->collisions->dynamic_contacts_count ? 2 : 1;
+  count_t worst_body_count = contact_index < world->collisions.dynamic_contacts_count ? 2 : 1;
 
   if (record_count) *record_count = 0;
 
-  count_t count = world->collisions->count;
+  count_t count = world->collisions.count;
   for (count_t i = 0; i < count; ++i) {
-    contact *contact = &world->collisions->contacts[i];
+    contact *contact = &world->collisions.contacts[i];
     count_t body_ids[] = { contact->index_a, contact->index_b };
-    count_t body_count = i < world->collisions->dynamic_contacts_count ? 2 : 1;
+    count_t body_count = i < world->collisions.dynamic_contacts_count ? 2 : 1;
 
     v3 local_vel_before = contact->local_velocity;
     float ddv_before = contact->desired_delta_velocity;
@@ -414,7 +414,7 @@ static void update_velocity_deltas(physics_world *world, count_t worst_collision
 }
 
 void resolve_velocities(physics_world *world, float dt) {
-  const count_t count = world->collisions->count;
+  const count_t count = world->collisions.count;
   if (count == 0)
     return;
 

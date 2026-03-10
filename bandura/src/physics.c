@@ -423,7 +423,7 @@ count_t physics_awake_count(const physics_world *world) {
 }
 
 count_t physics_collisions_count(const physics_world *world) {
-  return world->collisions->count;
+  return world->collisions.count;
 }
 
 
@@ -663,8 +663,8 @@ void physics_reset(physics_world *world) {
 
   world->statics.count = 0;
 
-  world->collisions->dynamic_contacts_count = 0;
-  world->collisions->count = 0;
+  world->collisions.dynamic_contacts_count = 0;
+  world->collisions.count = 0;
 
   shapes_reset(world);
 }
