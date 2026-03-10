@@ -542,8 +542,8 @@ static void init_physics() {
 }
 
 static Shader setup_lighting() {
-  char *vs_shader_path = "runner/shaders/lighting_fog.vs";
-  char *fs_shader_path = "runner/shaders/lighting_fog.fs";
+  char *vs_shader_path = "demos/shaders/lighting_fog.vs";
+  char *fs_shader_path = "demos/shaders/lighting_fog.fs";
 
   Shader shader = LoadShader(vs_shader_path, fs_shader_path);
 

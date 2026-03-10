@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) !void {
     const libFlags = try libraryFlags(b, options, target.result, optimize);
     defer b.allocator.free(libFlags);
 
-    const banduraSources = try collectSources(b, "bandura/src");
+    const banduraSources = try collectSources(b, "src");
     defer b.allocator.free(banduraSources);
 
     banduraModule.addCSourceFiles(.{
@@ -40,12 +40,12 @@ pub fn build(b: *std.Build) !void {
         .root_module = banduraModule,
     });
 
-    banduraLib.addIncludePath(b.path("bandura/include"));
-    banduraLib.installHeader(b.path("bandura/include/bandura.h"), "bandura.h");
+    banduraLib.addIncludePath(b.path("include"));
+    banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
 
     b.installArtifact(banduraLib);
 
-    const scenarioSources = try collectSources(b, "runner/scenarios");
+    const scenarioSources = try collectSources(b, "demos/scenarios");
     defer b.allocator.free(scenarioSources);
 
     var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, scenarioSources.len + 2);
@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) !void {
 
     targets.appendAssumeCapacity(banduraLib);
 
-    const binarySources = try collectSources(b, "runner");
+    const binarySources = try collectSources(b, "demos");
     defer b.allocator.free(binarySources);
 
     for (scenarioSources) |scenarioFile| {
@@ -75,7 +75,7 @@ pub fn build(b: *std.Build) !void {
 
         scenario.addIncludePath(raylib.path("src"));
         scenario.addIncludePath(raylib.path("examples"));
-        scenario.addIncludePath(b.path("runner/include"));
+        scenario.addIncludePath(b.path("demos/include"));
 
         linkLibraries(scenario, target);
 
