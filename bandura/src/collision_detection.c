@@ -1,3 +1,4 @@
+#include "bandura.h"
 #include "physics.h"
 #include <math.h>
 #include <stdlib.h>
@@ -29,9 +30,9 @@ typedef count_t(*collision_func)(physics_world *world, const collision_detection
 
 static m4 body_transform(v3 shape_offset, quat shape_rotation, v3 body_position, quat body_rotation) {
   m4 transform = as_matrix(shape_rotation);
-  transform = mul(translate(shape_offset), transform);
-  transform = mul(as_matrix(body_rotation), transform);
-  transform = mul(translate(body_position), transform);
+  transform = mul(transform, translate(shape_offset));
+  transform = mul(transform, as_matrix(body_rotation));
+  transform = mul(transform, translate(body_position));
 
   return transform;
 }

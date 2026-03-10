@@ -39,6 +39,15 @@ void scenario_setup_scene(physics_world *world) {
 
 void scenario_handle_input(physics_world *world, Camera *camera) {
 
+  if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+    v3 direction = normalize(sub(camera->target, camera->position));
+
+    body ball = physics_add_sphere_dynamic(world, 3, 0.7);
+    *ball.position = add(camera->position, direction);
+
+    physics_apply_impulse(world, ball.handle, scale(direction, 70));
+    physics_awaken_body(world, ball.handle);
+  }
 }
 
 void scenario_simulate(physics_world *world, float dt) {

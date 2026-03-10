@@ -23,14 +23,6 @@ void scenario_setup_scene(physics_world *world) {
 
   big_box = physics_add_cylinder_static(world, 1, 3);
   *big_box.position = (v3) { 0, 1.5, 0 };
-
-  big_box = physics_add_box_dynamic(world, 10, (v3) { 1, 1, 1 });
-  *big_box.position = (v3) { 10, 0.5, 0 };
-  physics_awaken_body(world, big_box.handle);
-
-  big_box = physics_add_sphere_dynamic(world, 10, 1);
-  *big_box.position = (v3) { 10, 2, 0 };
-  physics_awaken_body(world, big_box.handle);
 }
 
 void scenario_simulate(physics_world *world, float dt) {
