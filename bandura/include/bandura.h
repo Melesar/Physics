@@ -194,10 +194,7 @@ v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
 float physics_get_motion_avg(const physics_world *world, body_handle handle);
 
-void physics_enumerate_bodies(const physics_world *world, body_enumerator *enumerator);
 void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
-
-bool physics_body_next(const physics_world *world, body_enumerator *enumerator);
 bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);
 
 void physics_step(physics_world* world, float dt);

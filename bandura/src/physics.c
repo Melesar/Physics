@@ -486,65 +486,9 @@ float physics_get_motion_avg(const physics_world *world, body_handle handle) {
 
 const count_t sentinel_index = (count_t)~0 >> 1;
 
-void physics_enumerate_bodies(const physics_world *world, body_enumerator *enumerator) {
-  enumerator->handle = (body_handle) { .type = BODY_DYNAMIC, .index = sentinel_index & 0x7FFFFFFF };
-  enumerator->generation = world->generation;
-}
-
 void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator *enumerator) {
   enumerator->handle = (body_handle) { .type = type, .index = sentinel_index & 0x7FFFFFFF };
   enumerator->generation = world->generation;
-}
-
-bool physics_body_next(const physics_world *world, body_enumerator *enumerator) {
-  if (enumerator->generation != world->generation) {
-    return false;
-  }
-
-  // Initial case. We assume that nobody messes with the enumerator after its initialization.
-  if (enumerator->handle.index == sentinel_index) {
-    if (world->dynamics.count > 0) {
-      enumerator->handle.index = world->dynamics.outer_lookup[0];
-      return true;
-    }
-
-    if (world->statics.count > 0) {
-      enumerator->handle = (body_handle) { .type = BODY_STATIC, .index = 0 };
-      return true;
-    }
-
-    return false;
-  }
-
-  count_t index;
-  body_type type = enumerator->handle.type;
-
-  switch (type) {
-    case BODY_DYNAMIC:
-      index = world->dynamics.inner_lookup[enumerator->handle.index];
-      if (index < world->dynamics.count - 1) {
-        index += 1;
-        enumerator->handle.index = world->dynamics.outer_lookup[index];
-        return true;
-      }
-
-      if (world->statics.count > 0) {
-        enumerator->handle = (body_handle) { .type = BODY_STATIC, .index = 0 };
-        return true;
-      }
-
-      return false;
-
-    case BODY_STATIC:
-      index = enumerator->handle.index;
-      if (index < world->statics.count - 1) {
-        index += 1;
-        enumerator->handle.index = index;
-        return true;
-      }
-
-      return false;
-  }
 }
 
 bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator) {
@@ -558,31 +502,14 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
       return false;
     }
 
-    enumerator->handle.index = enumerator->handle.type == BODY_DYNAMIC ? world->dynamics.outer_lookup[0] : 0;
+    enumerator->handle.index = 0;
     return true;
   }
 
-  count_t index;
-  switch(enumerator->handle.type) {
-    case BODY_DYNAMIC:
-      index = world->dynamics.inner_lookup[enumerator->handle.index];
-      if (index < data->count - 1) {
-        index += 1;
-        enumerator->handle.index = world->dynamics.outer_lookup[index];
-        return true;
-      }
-
-      return false;
-
-    case BODY_STATIC:
-      index = enumerator->handle.index;
-      if (index < data->count - 1) {
-        index += 1;
-        enumerator->handle.index = world->statics.outer_lookup[index];
-        return true;
-      }
-
-      return false;
+  count_t index = enumerator->handle.index;
+  if (index < data->count - 1) {
+    enumerator->handle.index = ++index;
+    return true;
   }
 
   return false;
