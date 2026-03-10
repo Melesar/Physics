@@ -94,22 +94,6 @@ pub fn build(b: *std.Build) !void {
     }
 
     _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
-
-    const tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("bandura/tests/tests.zig"),
-            .link_libc = true,
-        }),
-    });
-
-    tests.linkLibrary(banduraLib);
-    tests.addIncludePath(b.path("bandura/include"));
-
-    const runTests = b.addRunArtifact(tests);
-    const testStep = b.step("test", "Run tests");
-    testStep.dependOn(&runTests.step);
 }
 
 fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void {

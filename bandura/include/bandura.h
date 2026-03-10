@@ -37,7 +37,7 @@
 
 #define mul(x, y) MatrixMultiply(x, y)
 #define transpose(x) MatrixTranspose(x)
-#define translate(x, y, z) MatrixTranslate(x, y, z)
+#define translate(v) MatrixTranslate(v.x, v.y, v.z)
 #define inverse(x) MatrixInvert(x)
 #define m4identity(x) MatrixIdentity(x)
 

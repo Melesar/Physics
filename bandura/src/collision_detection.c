@@ -1,4 +1,3 @@
-#include "bandura.h"
 #include "physics.h"
 #include <math.h>
 #include <stdlib.h>
@@ -28,11 +27,44 @@ typedef struct {
 
 typedef count_t(*collision_func)(physics_world *world, const collision_detection_context *ctx);
 
+static m4 body_transform(v3 shape_offset, quat shape_rotation, v3 body_position, quat body_rotation) {
+  m4 transform = as_matrix(shape_rotation);
+  transform = mul(translate(shape_offset), transform);
+  transform = mul(as_matrix(body_rotation), transform);
+  transform = mul(translate(body_position), transform);
+
+  return transform;
+}
+
+static v3 body_center(v3 shape_offset, quat global_rotation, v3 body_position) {
+  v3 center = shape_offset;
+  center = rotate(center, global_rotation);
+  center = add(center, body_position);
+
+  return center;
+}
+
+static v3 body_a_center(const collision_detection_context *ctx) {
+  return body_center(ctx->shape_a.offset, ctx->data_a->rotations[ctx->body_a], ctx->data_a->positions[ctx->body_a]);
+}
+
+static v3 body_b_center(const collision_detection_context *ctx) {
+  return body_center(ctx->shape_b.offset, ctx->data_b->rotations[ctx->body_b], ctx->data_b->positions[ctx->body_b]);
+}
+
+static m4 body_a_transform(const collision_detection_context *ctx) {
+  return body_transform(ctx->shape_a.offset, ctx->shape_a.rotation, ctx->data_a->positions[ctx->body_a], ctx->data_a->rotations[ctx->body_a]);
+}
+
+static m4 body_b_transform(const collision_detection_context *ctx) {
+  return body_transform(ctx->shape_b.offset, ctx->shape_b.rotation, ctx->data_b->positions[ctx->body_b], ctx->data_b->rotations[ctx->body_b]);
+}
+
 collision_box collision_box_make(const physics_world *world, const common_data *data, count_t index, body_shape shape) {
-  quat rotation = data->rotations[index];
+  quat rotation = qmul(data->rotations[index], shape.rotation);
 
   return (collision_box) {
-    .center = data->positions[index],
+    .center = body_center(shape.offset, data->rotations[index], data->positions[index]),
     .size = shape.box.size,
     .axis = { rotate(right(), rotation), rotate(up(), rotation), rotate(forward(), rotation) }
   };
@@ -252,9 +284,14 @@ static count_t box_box_collision(physics_world *world, const collision_detection
 #undef CHECK_OVERLAP
 
 static count_t box_plane_collision(physics_world *world, const collision_detection_context *ctx) {
+  quat box_rotation = ctx->data_a->rotations[ctx->body_a];
+  quat shape_rotation = ctx->shape_a.rotation;
 
+  v3 box_center = body_a_center(ctx);
   v3 extents = scale(ctx->shape_a.box.size, 0.5);
+
   v3 plane_normal = ctx->shape_b.plane.normal;
+  v3 plane_point = ctx->data_b->positions[ctx->body_b];
 
   v3 corners[] = {
     { extents.x, extents.y, extents.z },
@@ -275,8 +312,8 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
   count_t contact_count = 0;
   contact *contacts = collisions->contacts + collisions->count;
   for (count_t i = 0; i < 8 && contact_count < max_contacts; ++i) {
-    v3 corner = add(ctx->data_a->positions[ctx->body_a], rotate(corners[i], ctx->data_a->rotations[ctx->body_a]));
-    float distance = dot(sub(corner, ctx->data_b->positions[ctx->body_b]), plane_normal);
+    v3 corner = add(box_center, rotate(rotate(corners[i], shape_rotation), box_rotation));
+    float distance = dot(sub(corner, plane_point), plane_normal);
     if (distance > 0)
       continue;
 
@@ -298,14 +335,11 @@ static count_t box_plane_collision(physics_world *world, const collision_detecti
 }
 
 count_t box_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
-  v3 box_center = ctx->data_a->positions[ctx->body_a];
-  quat box_rotation = ctx->data_a->rotations[ctx->body_a];
-  v3 box_half_extents = scale(ctx->shape_a.box.size, 0.5);
-
-  v3 sphere_center = ctx->data_b->positions[ctx->body_b];
+  v3 sphere_center = body_b_center(ctx);
   float sphere_radius = ctx->shape_b.sphere.radius;
 
-  m4 box_transform = mul(as_matrix(box_rotation), MatrixTranslate(box_center.x, box_center.y, box_center.z));
+  v3 box_half_extents = scale(ctx->shape_a.box.size, 0.5);
+  m4 box_transform = body_a_transform(ctx);
   v3 relative_sphere_center = transform(sphere_center, inverse(box_transform));
 
   if (fabsf(relative_sphere_center.x) > box_half_extents.x + sphere_radius ||
@@ -426,9 +460,10 @@ static bool try_axis_box_cylinder(
 }
 
 count_t cylinder_box_collision(physics_world *world, const collision_detection_context *ctx) {
-  v3 cylinder_center = ctx->data_a->positions[ctx->body_a];
+  v3 cylinder_center = body_a_center(ctx);
   quat cylinder_rotation = ctx->data_a->rotations[ctx->body_a];
-  v3 cylinder_axis = rotate(up(), cylinder_rotation);
+  quat shape_rotation = ctx->shape_a.rotation;
+  v3 cylinder_axis = rotate(up(), qmul(cylinder_rotation, shape_rotation));
   float cylinder_radius = ctx->shape_a.cylinder.radius;
   float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
 
@@ -500,15 +535,14 @@ count_t cylinder_box_collision(physics_world *world, const collision_detection_c
 }
 
 count_t cylinder_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
-  v3 cylinder_center = ctx->data_a->positions[ctx->body_a];
-  quat cylinder_rotation = ctx->data_a->rotations[ctx->body_a];
+  quat cylinder_rotation = qmul(ctx->data_a->rotations[ctx->body_a], ctx->shape_a.rotation);
   float cylinder_radius = ctx->shape_a.cylinder.radius;
   float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
 
-  v3 sphere_center = ctx->data_b->positions[ctx->body_b];
+  v3 sphere_center = body_b_center(ctx);
   float sphere_radius = ctx->shape_b.sphere.radius;
 
-  m4 cylinder_transform = mul(as_matrix(cylinder_rotation), MatrixTranslate(cylinder_center.x, cylinder_center.y, cylinder_center.z));
+  m4 cylinder_transform = body_a_transform(ctx);
   v3 local_sphere_center = transform(sphere_center, inverse(cylinder_transform));
 
   float clamped_y = local_sphere_center.y;
@@ -575,8 +609,8 @@ count_t cylinder_sphere_collision(physics_world *world, const collision_detectio
 }
 
 count_t sphere_sphere_collision(physics_world *world, const collision_detection_context *ctx) {
-  v3 p1 = ctx->data_a->positions[ctx->body_a];
-  v3 p2 = ctx->data_b->positions[ctx->body_b];
+  v3 p1 = body_a_center(ctx);
+  v3 p2 = body_b_center(ctx);
 
   float r1 = ctx->shape_a.sphere.radius;
   float r2 = ctx->shape_b.sphere.radius;
@@ -605,7 +639,7 @@ count_t sphere_sphere_collision(physics_world *world, const collision_detection_
 }
 
 static count_t sphere_plane_collision(physics_world *world, const collision_detection_context *ctx) {
-  v3 sphere_center = ctx->data_a->positions[ctx->body_a];
+  v3 sphere_center = body_a_center(ctx);
   float sphere_radius = ctx->shape_a.sphere.radius;
 
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
@@ -634,12 +668,14 @@ static count_t cylinder_plane_collision(physics_world *world, const collision_de
   v3 plane_point = ctx->data_b->positions[ctx->body_b];
   v3 plane_normal = ctx->shape_b.plane.normal;
 
-  v3 cylinder_center = ctx->data_a->positions[ctx->body_a];
-  quat cylinder_rotation = ctx->data_a->rotations[ctx->body_a];
+  quat global_rotation = ctx->data_a->rotations[ctx->body_a];
+  quat shape_rotation = ctx->shape_a.rotation;
+
+  v3 cylinder_center = body_a_center(ctx);
   float cylinder_radius = ctx->shape_a.cylinder.radius;
   float cylinder_half_height = ctx->shape_a.cylinder.height * 0.5f;
 
-  v3 cylinder_axis = rotate(up(), cylinder_rotation);
+  v3 cylinder_axis = rotate(up(), qmul(global_rotation, shape_rotation));
   float axis_projection = dot(cylinder_axis, plane_normal);
   float radial_projection_sq = 1.0f - axis_projection * axis_projection;
   if (radial_projection_sq < 0.0f)
