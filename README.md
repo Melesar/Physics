@@ -69,3 +69,7 @@ int main(void) {
 
 The `runner/scenarios` folder contains ready-to-run examples and is a good starting
 point for writing your own scenes.
+
+## License
+
+This project is licensed under the Zlib License. See [`LICENSE`](LICENSE).
