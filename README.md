@@ -4,8 +4,10 @@ Bandura is a small C physics engine for rigid-body simulation. It provides a
 minimal API for dynamic and static bodies, simple collision handling, impulses,
 and ray casts, with demo scenes built on top of raylib.
 
-It ships as a C library with a compact interface in `bandura/include/bandura.h`
-and a Zig build that also assembles interactive demos in `runner/scenarios`.
+It ships as a C library with a compact interface in `include/bandura.h`
+and a Zig build that also assembles interactive demos in `demos/scenarios`.
+
+The engine is built on top of [Cyclone Engine](https://github.com/idmillington/cyclone-physics) and with the help of "Game Physics Engine Development" book by Ian Millington. 
 
 ## Install and Build
 
