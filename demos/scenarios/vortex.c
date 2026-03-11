@@ -1,9 +1,11 @@
 #include "core.h"
+#include "raylib.h"
 #include <assert.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
 
+#define SEED 100
 #define VORTEX_COUNT 3
 
 #define MAX_CONTACTS 512
@@ -130,6 +132,8 @@ void scenario_initialize(program_config* config, physics_config *physics_config)
   config->window_title = "Vortex";
   config->camera_position = (v3) { 22.542, 11.645, 20.752 };
   config->camera_target = (v3) { 0, 0, 0 };
+
+  physics_config->friction = 0.3;
 
   SetRandomSeed((unsigned int)time(NULL));
 }

@@ -726,6 +726,7 @@ static void invert_static_collision(physics_world *world, collision_func func, c
   if (func(world, ctx)) {
     contact *contact = &collisions->contacts[collisions->count - 1];
     contact->index_a = ctx->body_b;
+    contact->index_b = ctx->body_a;
     contact->normal = negate(contact->normal);
   }
 }
