@@ -6,11 +6,11 @@
 #include <time.h>
 
 #define SEED 100
-#define VORTEX_COUNT 3
+#define VORTEX_COUNT 6
 
 #define MAX_CONTACTS 512
 #define GROUNDED_BODIES_BUFFER_SIZE 10
-#define SCATTER_RADIUS 15.0f
+#define SCATTER_RADIUS 50.0f
 
 #define FORCE_FALLOFF_DISTANCE 3
 #define FORCE_ROLLOFF_FACTOR 2
@@ -115,7 +115,7 @@ static void collect_grounded_bodies(const physics_world *world) {
     assert(grounded_body_index < GROUNDED_BODIES_BUFFER_SIZE * 64);
 
     count_t element_index = grounded_body_index / 64;
-    count_t bit_mask = 1 << (grounded_body_index % 64);
+    uint64_t bit_mask = (uint64_t)1 << (grounded_body_index % 64);
 
     grounded_bodies_lookup[element_index] |= bit_mask;
   }
@@ -123,7 +123,7 @@ static void collect_grounded_bodies(const physics_world *world) {
 
 static bool is_grounded(body_handle handle) {
   count_t element_index = handle.index / 64;
-  count_t bit_mask = 1 << (handle.index % 64);
+  uint64_t bit_mask = (uint64_t)1 << (handle.index % 64);
 
   return (grounded_bodies_lookup[element_index] & bit_mask) != 0;
 }
@@ -164,8 +164,10 @@ void scenario_setup_scene(physics_world *world) {
     };
     float hammer_masses[] = { 2.0f, 3.2f };
 
-    body hammer = physics_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2);
-    scatter_dynamic_body(world, hammer, 2.0f, 6.0f);
+    for(int i = 0; i < 10; ++i) {
+      body hammer = physics_add_compound_body_dynamic(world, hammer_shapes, hammer_masses, 2);
+      scatter_dynamic_body(world, hammer, 2.0f, 6.0f);
+    }
   }
 
   {
@@ -192,16 +194,21 @@ void scenario_setup_scene(physics_world *world) {
     };
     float stickman_masses[] = { 2.1f, 1.2f, 1.0f, 0.8f, 0.8f, 0.25f, 0.25f };
 
-    body stickman = physics_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7);
-    scatter_dynamic_body(world, stickman, 2.0f, 6.0f);
+    for(int i = 0; i < 5; i++) {
+      body stickman = physics_add_compound_body_dynamic(world, stickman_shapes, stickman_masses, 7);
+      scatter_dynamic_body(world, stickman, 2.0f, 6.0f);
+    }
   }
 
   body cylinder = physics_add_cylinder_static(world, 2, 5);
   *cylinder.position = (v3) { 0, 2.5, 0 };
 
-  vorticies[0] = vortex_create((v3) { 0, 0, -8 }, 5, 1);
-  vorticies[1] = vortex_create((v3) { 8, 0, 5 }, 30, 1.5);
-  vorticies[2] = vortex_create((v3) { -8, 0, 5 }, 7, 1);
+  vorticies[0] = vortex_create((v3) { 0, 0, -8 }, 20, 1);
+  vorticies[1] = vortex_create((v3) { 8, 0, 5 }, 10, 1.5);
+  vorticies[2] = vortex_create((v3) { -8, 0, 5 }, 35, 1);
+  vorticies[3] = vortex_create((v3) { 10, 0, 10 }, 20, 1);
+  vorticies[4] = vortex_create((v3) { 10, 0, -18 }, 10, 1.5);
+  vorticies[5] = vortex_create((v3) { -10, 0, 18 }, 35, 1);
 }
 
 void scenario_simulate(physics_world *world, float dt) {
