@@ -150,6 +150,7 @@ typedef struct {
   v3 point;
   v3 normal;
   float depth;
+  body_handle body_a, body_b;
 } contact_t;
 
 typedef struct physics_world_t physics_world;
@@ -193,6 +194,7 @@ v3 physics_get_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_velocity(const physics_world *world, body_handle handle);
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle);
 float physics_get_motion_avg(const physics_world *world, body_handle handle);
+count_t physics_get_collisions(const physics_world *world, contact_t *contacts, count_t max_contacts);
 
 void physics_enumerate_bodies_typed(const physics_world *world, body_type type, body_enumerator_typed *enumerator);
 bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *enumerator);

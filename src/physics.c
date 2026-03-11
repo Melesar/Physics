@@ -1,4 +1,5 @@
 #include "physics.h"
+#include "bandura.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -482,6 +483,24 @@ float physics_get_motion_avg(const physics_world *world, body_handle handle) {
   }
 
   return world->dynamics.motion_avgs[handle_to_inner_index(world, handle)];
+}
+
+count_t physics_get_collisions(const physics_world *world, contact_t *contacts, count_t max_contacts) {
+  count_t count = world->collisions.count < max_contacts ? world->collisions.count : max_contacts;
+  for(count_t i = 0; i < count; ++i) {
+    contact full_contact = world->collisions.contacts[i];
+    body_type type = i < world->collisions.dynamic_contacts_count ? BODY_DYNAMIC : BODY_STATIC;
+
+    contacts[i] = (contact_t) {
+      .point = full_contact.point,
+      .normal = full_contact.normal,
+      .depth = full_contact.depth,
+      .body_a = make_body_handle(world, BODY_DYNAMIC, full_contact.index_a),
+      .body_b = make_body_handle(world, type, full_contact.index_b)
+    };
+  }
+
+  return count;
 }
 
 const count_t sentinel_index = (count_t)~0 >> 1;
