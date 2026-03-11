@@ -57,10 +57,6 @@ static m4 body_a_transform(const collision_detection_context *ctx) {
   return body_transform(ctx->shape_a.offset, ctx->shape_a.rotation, ctx->data_a->positions[ctx->body_a], ctx->data_a->rotations[ctx->body_a]);
 }
 
-static m4 body_b_transform(const collision_detection_context *ctx) {
-  return body_transform(ctx->shape_b.offset, ctx->shape_b.rotation, ctx->data_b->positions[ctx->body_b], ctx->data_b->rotations[ctx->body_b]);
-}
-
 collision_box collision_box_make(const physics_world *world, const common_data *data, count_t index, body_shape shape) {
   quat rotation = qmul(data->rotations[index], shape.rotation);
 

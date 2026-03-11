@@ -15,13 +15,13 @@
     "adapter": "CodeLLDB",
   },
   {
-    "label": "Debug body rain",
+    "label": "Debug vortex",
     "build": {
       "command": "zig",
       "args": ["build"],
       "cwd": "$ZED_WORKTREE_ROOT",
     },
-    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/body_rain",
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/vortex",
     "request": "launch",
     "adapter": "CodeLLDB",
   },

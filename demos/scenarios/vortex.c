@@ -195,9 +195,9 @@ void scenario_setup_scene(physics_world *world) {
   body cylinder = physics_add_cylinder_static(world, 2, 5);
   *cylinder.position = (v3) { 0, 2.5, 0 };
 
-  vorticies[0] = vortex_create((v3) { 0, 0, -5 }, 5, 1);
-  vorticies[1] = vortex_create((v3) { 5, 0, 3 }, 30, 1.5);
-  vorticies[2] = vortex_create((v3) { -5, 0, 3 }, 7, 1);
+  vorticies[0] = vortex_create((v3) { 0, 0, -8 }, 5, 1);
+  vorticies[1] = vortex_create((v3) { 8, 0, 5 }, 30, 1.5);
+  vorticies[2] = vortex_create((v3) { -8, 0, 5 }, 7, 1);
 }
 
 void scenario_simulate(physics_world *world, float dt) {
