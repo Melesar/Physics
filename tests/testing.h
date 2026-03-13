@@ -16,6 +16,7 @@ struct test {
 struct test tests[] = {\
 
 #define TEST(func) { #func, &func },
+
 #define TESTS_END  { NULL, NULL }\
 };\
 int test_index = 0;\

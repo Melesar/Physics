@@ -42,14 +42,13 @@ static char *labels_get(labels self, uint32_t id) {
   return "Hello";
 }
 
-static void lables_teardown(labels self) {
+static void labels_teardown(labels self) {
   free(self.storage);
   free(self.slots);
 }
 
 // ========= TESTS ============
 
-// #define BND_TESTS
 #ifdef BND_TESTS
 #include "testing.h"
 #include <string.h>
@@ -60,11 +59,57 @@ static void storing_label_allows_to_retreive_it() {
   char *label = labels_get(l, id);
 
   assert(strcmp(label, "Hello") == 0);
+
+  labels_teardown(l);
+}
+
+static void requesting_invalid_id_gives_null_pointer() {
+  labels l = labels_init(32, 32);
+  char *label = labels_get(l, 200);
+
+  assert(label == NULL);
+
+  labels_teardown(l);
+}
+
+static void storing_same_label_multiple_times_gives_the_same_id() {
+  labels l = labels_init(32, 32);
+  uint32_t id = labels_store(l, "Hello");
+
+  for(int i = 0; i < 10; ++i) {
+    uint32_t another_id = labels_store(l, "Hello");
+    assert(id == another_id);
+  }
+
+  labels_teardown(l);
+}
+
+static void different_labels_produce_different_ids() {
+  labels l = labels_init(1000, 32);
+  uint32_t ids[] = {
+    labels_store(l, "Hello"),
+    labels_store(l, "foo"),
+    labels_store(l, "bas"),
+    labels_store(l, "42"),
+    labels_store(l, "Starship Millenium Falcon"),
+  }
+
+  for(int i = 0; i < 5; ++i) {
+    for(int j = 0; j < 5; ++j) {
+      if (i != j)
+        assert(ids[i] != ids[j]);
+    }
+  }
+
+  labels_teardown(l);
 }
 
 extern void labels_tests() {
 TESTS_BEGIN("Profiling labels")
   TEST(storing_label_allows_to_retreive_it)
+  TEST(requesting_invalid_id_gives_null_pointer)
+  TEST(storing_same_label_multiple_times_gives_the_same_id)
+  TEST(different_labels_produce_different_ids)
 TESTS_END
 }
 
