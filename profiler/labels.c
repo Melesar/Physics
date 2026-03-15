@@ -17,8 +17,7 @@ typedef struct {
 } label;
 
 typedef struct {
-  uint32_t storage_ptr;
-  uint32_t storage_len;
+  uint64_t value;
 } labels_slot;
 
 typedef struct {
@@ -27,7 +26,6 @@ typedef struct {
   uint32_t capacity;
   uint32_t mask;
   uint32_t storage_ptr;
-  uint8_t lock;
 } labels;
 
 static inline uint32_t hash(label l) {
@@ -41,28 +39,37 @@ static inline uint32_t hash(label l) {
 
 static bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
 
+static inline uint64_t slot_pack(uint32_t offset, uint32_t length) {
+  return ((uint64_t) offset << 32) | length;
+}
+
+static inline void slot_unpack(uint64_t value, uint32_t *offset, uint32_t *length) {
+  *offset = (uint32_t)(value >> 32);
+  *length = (uint32_t)(value & 0xFFFFFFFF);
+}
+
 static inline bool slot_free(labels_slot slot) {
-  return slot.storage_ptr == (uint32_t)~0;
+  return slot.value == (uint64_t)~0;
 }
 
 static void slot_write(labels* labels, labels_slot *slot, label l) {
-  uint8_t no_lock = 0;
-  while (!__atomic_compare_exchange_n(&labels->lock, &no_lock, LOCK_WRITE, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
-    no_lock = 0;
-  }
-
-  slot->storage_ptr = labels->storage_ptr;
-  slot->storage_len = l.len;
+  uint64_t new_value = slot_pack(labels->storage_ptr, l.len);
 
   memcpy(labels->storage + labels->storage_ptr, l.s, l.len);
   labels->storage_ptr += l.len;
 
-  __atomic_exchange_n(&labels->lock, 0, __ATOMIC_RELEASE);
-
+  __atomic_store_n(&slot->value, new_value, __ATOMIC_RELEASE);
 }
 
 static label slot_read(const labels *labels, labels_slot slot) {
-  return !slot_free(slot) ? (label) { labels->storage + slot.storage_ptr, slot.storage_len } : INVALID_LABEL;
+  if (slot_free(slot)) {
+    return INVALID_LABEL;
+  }
+
+  uint32_t offset, len;
+  slot_unpack(slot.value, &offset, &len);
+
+  return (label) { labels->storage + offset, (uint8_t)len };
 }
 
 
@@ -113,25 +120,12 @@ static uint32_t labels_store(labels *self, label l) {
   return index;
 }
 
-static label labels_get(labels *self, uint32_t id, uint8_t reader_id) {
-  if (id >= self->capacity || reader_id >= 7) {
+static label labels_get(labels *self, uint32_t id) {
+  if (id >= self->capacity) {
     return INVALID_LABEL;
   }
 
-  uint8_t mask = 1 << reader_id;
-  uint8_t current_lock = __atomic_load_n(&self->lock, __ATOMIC_ACQUIRE);
-  do {
-    while(current_lock & LOCK_WRITE) {
-      current_lock = __atomic_load_n(&self->lock, __ATOMIC_RELAXED);
-    }
-
-  } while(!__atomic_compare_exchange_n(&self->lock, &current_lock, current_lock | mask, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED));
-
-  label l = slot_read(self, self->slots[id]);
-
-  __atomic_fetch_and(&self->lock, ~mask, __ATOMIC_RELAXED);
-
-  return l;
+  return slot_read(self, self->slots[id]);
 }
 
 static void labels_teardown(labels self) {
@@ -153,7 +147,7 @@ static bool label_equal(const label l, char *s) {
 static void storing_label_allows_to_retreive_it() {
   labels ls = labels_init(32, 32);
   uint32_t id = labels_store(&ls, LABEL("Hello"));
-  label l = labels_get(&ls, id, 0);
+  label l = labels_get(&ls, id);
 
   assert(label_equal(l, "Hello"));
 
@@ -162,7 +156,7 @@ static void storing_label_allows_to_retreive_it() {
 
 static void requesting_invalid_id_gives_null_pointer() {
   labels ls = labels_init(32, 32);
-  label l = labels_get(&ls, 200, 0);
+  label l = labels_get(&ls, 200);
 
   assert(!label_is_valid(l));
 

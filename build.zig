@@ -148,7 +148,7 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     errdefer testSources.deinit(b.allocator);
 
     try testSources.appendSlice(b.allocator, try collectSources(b, "tests"));
-    try testSources.append(b.allocator, "profiler/profiler.c");
+    try testSources.append(b.allocator, "profiler/labels.c");
 
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
