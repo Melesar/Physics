@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LOCK_WRITE 0x80
 #define LABELS_STORAGE_FULL 0xFFFFFFFF
 #define INVALID_LABEL (label) { NULL, 0 }
 
@@ -73,7 +72,7 @@ static label slot_read(const labels *labels, labels_slot slot) {
 }
 
 
-static labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
+labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
   labels self = { 0 };
   self.storage = malloc(storage_capacity);
 
@@ -92,7 +91,7 @@ static labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
   return self;
 }
 
-static uint32_t labels_store(labels *self, label l) {
+uint32_t labels_store(labels *self, label l) {
   uint32_t h = hash(l);
   uint32_t index = h & self->mask;
   uint32_t initial_index = index;
@@ -120,7 +119,7 @@ static uint32_t labels_store(labels *self, label l) {
   return index;
 }
 
-static label labels_get(labels *self, uint32_t id) {
+label labels_get(labels *self, uint32_t id) {
   if (id >= self->capacity) {
     return INVALID_LABEL;
   }
@@ -128,7 +127,7 @@ static label labels_get(labels *self, uint32_t id) {
   return slot_read(self, self->slots[id]);
 }
 
-static void labels_teardown(labels self) {
+void labels_teardown(labels self) {
   free(self.storage);
   free(self.slots);
 }

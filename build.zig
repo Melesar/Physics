@@ -121,11 +121,12 @@ fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTar
     var flags = try compilerFlags(b, options, target.result, optimize);
     errdefer flags.deinit(b.allocator);
 
-    module.addIncludePath(b.path("include"));
     module.addCSourceFiles(.{
         .files = try collectSources(b, "profiler"),
         .flags = try flags.toOwnedSlice(b.allocator),
     });
+    module.addIncludePath(b.path("include"));
+    module.addCMacro("BND_PROFILING", "");
 
     const lib = b.addLibrary(.{
         .linkage = .static,

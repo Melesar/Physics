@@ -1,5 +1,6 @@
 #include "physics.h"
 #include "bandura.h"
+#include "profiler.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -231,6 +232,8 @@ physics_world* physics_init(const physics_config *config) {
   shapes_init(world);
 
   world->generation = 0;
+
+  profiler_init((profiler_config){ });
 
   return world;
 }
@@ -467,8 +470,6 @@ v3 physics_get_angular_velocity(const physics_world *world, body_handle handle) 
   return matrix_rotate(momentum, matrix_inertia(inv_inertia, rotation));
 }
 
-
-
 v3 physics_get_angular_momentum(const physics_world *world, body_handle handle) {
   if (handle.type != BODY_DYNAMIC) {
     return zero();
@@ -579,6 +580,8 @@ void integrate_bodies(physics_world *world, float dt) {
 }
 
 void physics_step(physics_world* world, float dt) {
+  PROFILE_FUNCTION
+
   integrate_bodies(world, dt);
   collisions_detect(world);
   resolve_collisions(world, dt);
@@ -637,6 +640,8 @@ void physics_teardown(physics_world* world) {
   collisions_teardown(world->collisions);
 
   free(world);
+
+  profiler_teardown();
 }
 
 void clear_forces(physics_world *world) {
