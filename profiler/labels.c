@@ -2,30 +2,11 @@
   #pragma message ("Profiling is not supported with MSVC")
 #endif
 
+#include "profiler.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define LABELS_STORAGE_FULL 0xFFFFFFFF
-#define INVALID_LABEL (label) { NULL, 0 }
-
-typedef struct {
-  char *s;
-  uint8_t len;
-} label;
-
-typedef struct {
-  uint64_t value;
-} labels_slot;
-
-typedef struct {
-  char *storage;
-  labels_slot *slots;
-  uint32_t capacity;
-  uint32_t mask;
-  uint32_t storage_ptr;
-} labels;
 
 static inline uint32_t hash(label l) {
   uint32_t h = 2166136261u;
