@@ -114,7 +114,7 @@ static uint32_t labels_store(labels *self, label l) {
 }
 
 static label labels_get(labels *self, uint32_t id, uint8_t reader_id) {
-  if (id >= self->capacity || reader_id > 7) {
+  if (id >= self->capacity || reader_id >= 7) {
     return INVALID_LABEL;
   }
 
