@@ -7,10 +7,12 @@ const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror=shadow", "-Wer
 
 const Options = struct {
     diagnostic: bool,
+    profiling: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
             .diagnostic = b.option(bool, "diagnostic", "Enable diagnostics") orelse true,
+            .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
         };
     }
 };
@@ -20,37 +22,22 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const options = Options.getOptions(b);
 
-    const banduraModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+    var build_targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, 16);
+    defer build_targets.deinit(b.allocator);
 
-    const libFlags = try libraryFlags(b, options, target.result, optimize);
-    defer b.allocator.free(libFlags);
+    const banduraLib = try build_bandura(b, options, target, optimize);
 
-    const banduraSources = try collectSources(b, "src");
-    defer b.allocator.free(banduraSources);
-
-    banduraModule.addCSourceFiles(.{
-        .files = banduraSources,
-        .flags = libFlags,
-    });
-
-    const banduraLib = b.addLibrary(.{
-        .name = "bandura",
-        .linkage = .dynamic,
-        .root_module = banduraModule,
-    });
-
-    banduraLib.addIncludePath(b.path("include"));
-    banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
+    if (options.profiling) {
+        const profiler = try build_profiler(b, options, target, optimize);
+        try build_targets.append(b.allocator, profiler);
+        banduraLib.linkLibrary(profiler);
+    }
 
     b.installArtifact(banduraLib);
+    try build_targets.append(b.allocator, banduraLib);
 
     const scenarioSources = try collectSources(b, "demos/scenarios");
     defer b.allocator.free(scenarioSources);
-
-    var targets = try std.ArrayList(*std.Build.Step.Compile).initCapacity(b.allocator, scenarioSources.len + 4);
-    defer targets.deinit(b.allocator);
-
-    targets.appendAssumeCapacity(banduraLib);
 
     const binarySources = try collectSources(b, "demos");
     defer b.allocator.free(binarySources);
@@ -65,7 +52,7 @@ pub fn build(b: *std.Build) !void {
             .files = binarySources,
             .flags = binFlags,
         });
-        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = libFlags });
+        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = binFlags });
 
         const scenarioName = std.fs.path.stem(scenarioFile);
         const scenario = b.addExecutable(.{
@@ -90,13 +77,63 @@ pub fn build(b: *std.Build) !void {
         const runStep = b.step(b.fmt("run-{s}", .{scenarioName}), b.fmt("Run {s} scenario", .{scenarioName}));
         runStep.dependOn(&runScenario.step);
 
-        targets.appendAssumeCapacity(scenario);
+        try build_targets.append(b.allocator, scenario);
     }
 
     const tests = try build_tests(b, target, optimize);
-    targets.appendAssumeCapacity(tests);
+    try build_targets.append(b.allocator, tests);
 
-    _ = zcc.createStep(b, "cdb", try targets.toOwnedSlice(b.allocator));
+    _ = zcc.createStep(b, "cdb", try build_targets.toOwnedSlice(b.allocator));
+}
+
+fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    const banduraModule = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
+    const libFlags = try libraryFlags(b, options, target.result, optimize);
+    defer b.allocator.free(libFlags);
+
+    const banduraSources = try collectSources(b, "src");
+    defer b.allocator.free(banduraSources);
+
+    banduraModule.addCSourceFiles(.{
+        .files = banduraSources,
+        .flags = libFlags,
+    });
+
+    const banduraLib = b.addLibrary(.{
+        .name = "bandura",
+        .linkage = .dynamic,
+        .root_module = banduraModule,
+    });
+
+    banduraLib.addIncludePath(b.path("include"));
+    banduraLib.installHeader(b.path("include/bandura.h"), "bandura.h");
+
+    return banduraLib;
+}
+
+fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    const module = b.createModule(.{ .link_libc = true, .target = target, .optimize = optimize });
+    var flags = try compilerFlags(b, options, target.result, optimize);
+    errdefer flags.deinit(b.allocator);
+
+    module.addIncludePath(b.path("include"));
+    module.addCSourceFiles(.{
+        .files = try collectSources(b, "profiler"),
+        .flags = try flags.toOwnedSlice(b.allocator),
+    });
+
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "bnd_profiler",
+        .root_module = module,
+    });
+
+    return lib;
 }
 
 fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
@@ -111,7 +148,7 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     errdefer testSources.deinit(b.allocator);
 
     try testSources.appendSlice(b.allocator, try collectSources(b, "tests"));
-    try testSources.append(b.allocator, "src/profiler.c");
+    try testSources.append(b.allocator, "profiler/profiler.c");
 
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
@@ -162,6 +199,8 @@ fn linkLibraries(compile: *std.Build.Step.Compile, target: ResolvedTarget) void 
 
 fn libraryFlags(b: *std.Build, options: Options, target: std.Target, optimize: std.builtin.OptimizeMode) ![]const []const u8 {
     var flags = try compilerFlags(b, options, target, optimize);
+    if (options.profiling)
+        try flags.append(b.allocator, "-DBND_PROFILING");
 
     return flags.toOwnedSlice(b.allocator);
 }
