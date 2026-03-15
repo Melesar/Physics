@@ -27,10 +27,10 @@ pub fn build(b: *std.Build) !void {
 
     const banduraLib = try build_bandura(b, options, target, optimize);
 
+    const profiler = try build_profiler(b, options, target, optimize);
+    try build_targets.append(b.allocator, profiler);
     if (options.profiling) {
-        const profiler = try build_profiler(b, options, target, optimize);
-        try build_targets.append(b.allocator, profiler);
-        banduraLib.linkLibrary(profiler);
+        banduraLib.root_module.linkLibrary(profiler);
     }
 
     b.installArtifact(banduraLib);
@@ -121,12 +121,13 @@ fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTar
     var flags = try compilerFlags(b, options, target.result, optimize);
     errdefer flags.deinit(b.allocator);
 
+    try flags.append(b.allocator, "-DBND_PROFILING");
+
     module.addCSourceFiles(.{
         .files = try collectSources(b, "profiler"),
         .flags = try flags.toOwnedSlice(b.allocator),
     });
     module.addIncludePath(b.path("include"));
-    module.addCMacro("BND_PROFILING", "");
 
     const lib = b.addLibrary(.{
         .linkage = .static,
