@@ -145,6 +145,7 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         .optimize = optimize,
     });
     testsModule.addIncludePath(b.path("tests"));
+    testsModule.addIncludePath(b.path("include"));
 
     var testSources = try std.ArrayList([]const u8).initCapacity(b.allocator, 16);
     errdefer testSources.deinit(b.allocator);
@@ -156,7 +157,7 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     errdefer flags.deinit(b.allocator);
 
     try flags.appendSlice(b.allocator, COMMON_FLAGS);
-    try flags.append(b.allocator, "-DBND_TESTS");
+    try flags.appendSlice(b.allocator, &.{ "-DBND_PROFILING", "-DBND_TESTS" });
 
     testsModule.addCSourceFiles(.{
         .files = try testSources.toOwnedSlice(b.allocator),
