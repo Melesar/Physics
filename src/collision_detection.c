@@ -1,4 +1,4 @@
-#include "bandura.h"
+#include "profiler.h"
 #include "physics.h"
 #include <math.h>
 #include <stdlib.h>
@@ -732,6 +732,8 @@ static void invert_static_collision(physics_world *world, collision_func func, c
 }
 
 void collisions_detect(physics_world *world) {
+  PROFILE_FUNCTION
+
   collisions *collisions = &world->collisions;
 
   const common_data *dynamics =(common_data*) &world->dynamics;

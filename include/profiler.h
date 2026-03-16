@@ -7,6 +7,7 @@ typedef struct {
   uint32_t labels_storage_capacity;
   uint32_t labels_slots_capacity;
   uint32_t stack_capacity;
+  uint32_t samples_memory_size;
 } profiler_config;
 
 #ifndef BND_PROFILING
@@ -14,6 +15,7 @@ typedef struct {
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
 
+void profiler_init_default() {}
 void profiler_init(profiler_config config) {}
 void profiler_teardown() {}
 
@@ -25,7 +27,14 @@ void profiler_end_frame() {}
 typedef struct {
   char *label;
   uint64_t start_time;
+  uint32_t sample_index;
 } profiler_marker;
+
+typedef struct {
+  uint32_t label_id;
+  uint32_t parent_index;
+  uint64_t time;
+} profiler_sample;
 
 typedef struct {
   char *s;
@@ -51,11 +60,12 @@ typedef struct {
 #define MARKER_NAME(a,b) CONCAT(a,b)
 
 #define PROFILE_BLOCK(name)\
-profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block))\
+profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block)))\
   = profiler_start_block(name);
 
 #define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
 
+void profiler_init_default();
 void profiler_init(profiler_config config);
 void profiler_teardown();
 

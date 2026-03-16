@@ -233,7 +233,7 @@ physics_world* physics_init(const physics_config *config) {
 
   world->generation = 0;
 
-  profiler_init((profiler_config){ });
+  profiler_init_default();
 
   return world;
 }
@@ -536,6 +536,8 @@ bool physics_body_next_typed(const physics_world *world, body_enumerator_typed *
 }
 
 void integrate_bodies(physics_world *world, float dt) {
+  PROFILE_FUNCTION
+
   v3 gravity_acc = world->config.gravity;
   float linear_damping = powf(world->config.linear_damping, dt);
   float angular_damping = powf(world->config.angular_damping, dt);

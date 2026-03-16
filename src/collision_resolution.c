@@ -1,3 +1,4 @@
+#include "profiler.h"
 #include "physics.h"
 #include <math.h>
 
@@ -435,6 +436,8 @@ void resolve_velocities(physics_world *world, float dt) {
 }
 
 void resolve_collisions(physics_world *world, float dt) {
+  PROFILE_FUNCTION
+
   prepare_contacts(world, dt);
   resolve_interpenetrations(world);
   resolve_velocities(world, dt);
