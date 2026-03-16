@@ -580,13 +580,17 @@ void integrate_bodies(physics_world *world, float dt) {
 }
 
 void physics_step(physics_world* world, float dt) {
-  PROFILE_FUNCTION
+  profiler_start_frame();
+  {
+    PROFILE_FUNCTION
 
-  integrate_bodies(world, dt);
-  collisions_detect(world);
-  resolve_collisions(world, dt);
-  update_awake_statuses(world, dt);
-  clear_forces(world);
+    integrate_bodies(world, dt);
+    collisions_detect(world);
+    resolve_collisions(world, dt);
+    update_awake_statuses(world, dt);
+    clear_forces(world);
+  }
+  profiler_end_frame();
  }
 
 void physics_awaken_body(physics_world* world, body_handle handle) {

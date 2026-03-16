@@ -16,6 +16,10 @@ typedef struct {
 
 void profiler_init(profiler_config config) {}
 void profiler_teardown() {}
+
+void profiler_start_frame() {}
+void profiler_end_frame() {}
+
 #else
 
 typedef struct {
@@ -47,7 +51,7 @@ typedef struct {
 #define MARKER_NAME(a,b) CONCAT(a,b)
 
 #define PROFILE_BLOCK(name)\
-profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_clean_up)))\
+profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profiler_end_block))\
   = profiler_start_block(name);
 
 #define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
@@ -55,14 +59,17 @@ profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profil
 void profiler_init(profiler_config config);
 void profiler_teardown();
 
+void profiler_start_frame();
+void profiler_end_frame();
+
 profiler_marker profiler_start_block(const char *name);
-void profiler_end_block();
-void profiler_clean_up(profiler_marker *marker);
+void profiler_end_block(profiler_marker *marker);
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
+void labels_teardown(labels self);
+
 uint32_t labels_store(labels *self, label l);
 label labels_get(labels *self, uint32_t id);
-void labels_teardown(labels self);
 
 #endif
 

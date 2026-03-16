@@ -22,6 +22,13 @@ static uint64_t get_time() {
   return time.tv_nsec;
 }
 
+static void end_block() {
+  profiler_marker last_marker = markers_stack[--markers_count];
+
+  uint64_t elapsed_ns = get_time() - last_marker.start_time;
+  uint32_t marker_id = labels_store(&labels_storage, marker_label(last_marker));
+}
+
 void profiler_init(profiler_config config) {
   labels_storage = labels_init(config.labels_storage_capacity, config.labels_slots_capacity);
   markers_stack = calloc(config.stack_capacity, sizeof(profiler_marker));
@@ -33,6 +40,15 @@ void profiler_teardown() {
   labels_teardown(labels_storage);
 }
 
+void profiler_start_frame() {
+
+
+}
+
+void profiler_end_frame() {
+
+}
+
 profiler_marker profiler_start_block(const char *name) {
   assert(markers_count < markers_capacity);
 
@@ -42,13 +58,6 @@ profiler_marker profiler_start_block(const char *name) {
   return marker;
 }
 
-void profiler_end_block() {
-  profiler_marker last_marker = markers_stack[--markers_count];
-
-  uint64_t elapsed_ns = get_time() - last_marker.start_time;
-  uint32_t marker_id = labels_store(&labels_storage, marker_label(last_marker));
-}
-
-void profiler_clean_up(profiler_marker *marker) {
-  profiler_end_block();
+void profiler_end_block(profiler_marker *marker) {
+  end_block();
 }
