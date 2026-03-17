@@ -2,12 +2,14 @@
 #define PROFILER_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
   uint32_t labels_storage_capacity;
   uint32_t labels_slots_capacity;
   uint32_t stack_capacity;
   uint32_t samples_memory_size;
+  uint32_t frame_headers_capacity;
 } profiler_config;
 
 #ifndef BND_PROFILING
@@ -35,6 +37,17 @@ typedef struct {
   uint32_t parent_index;
   uint64_t time;
 } profiler_sample;
+
+typedef struct {
+  uint32_t offset;
+  uint16_t count;
+  uint8_t mask;
+} profiler_frame_header;
+
+typedef struct {
+  uint32_t frame_index;
+  uint8_t id;
+} profiler_monitor;
 
 typedef struct {
   char *s;
@@ -74,6 +87,8 @@ void profiler_end_frame();
 
 profiler_marker profiler_start_block(const char *name);
 void profiler_end_block(profiler_marker *marker);
+
+bool profiler_monitor_start(profiler_monitor *monitor);
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
 void labels_teardown(labels self);
