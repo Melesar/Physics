@@ -1,5 +1,7 @@
 #include "profiler.h"
 #include <assert.h>
+#include <cstring>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +9,7 @@
 
 #define  __USE_POSIX199309 // What??
 #include <time.h>
+
 
 labels labels_storage;
 
@@ -25,19 +28,32 @@ uint32_t frame_header_index;
 uint32_t frame_headers_capacity;
 uint32_t frame_headers_mask;
 
-const uint8_t max_monitors_count = 8;
+const uint8_t max_monitors_count = 1;
+const uint32_t monitors_framebuffer_capacity = 256;
 
-pthread_t monitor_threads[3];
+pthread_t monitor_threads[max_monitors_count];
 
-union monitors_t {
-  struct {
-    uint8_t count;
-    uint8_t mask;
-  };
-  uint16_t data;
+struct monitors_t {
+  uint8_t count;
+  uint8_t mask;
+  bool running;
 } monitors;
 
 void* text_file_monitor_run();
+
+static void update_header_atomic(uint32_t offset, uint16_t count) {
+  profiler_frame_header updated_header = {
+    .offset = offset,
+    .count = count,
+    .mask = monitors.mask,
+  };
+
+  uint64_t new_header;
+  memcpy(&new_header, &updated_header, sizeof(uint64_t));
+
+  uint64_t *current_header = (uint64_t*)&frame_headers[frame_header_index];
+  __atomic_store_n(current_header, new_header, __ATOMIC_RELAXED);
+}
 
 static label marker_label(profiler_marker marker) {
   return (label) { marker.label, strlen(marker.label) };
@@ -91,11 +107,20 @@ void profiler_init(profiler_config config) {
   frame_headers_mask = frame_headers_capacity - 1;
   frame_headers = calloc(frame_headers_capacity, sizeof(profiler_frame_header));
 
-  monitors.data = 0;
+  monitors.count = 0;
+  monitors.mask = 0;
+  monitors.running = true;
+
   pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
 }
 
 void profiler_teardown() {
+  monitors.running = false;
+
+  for(uint32_t i = 0; i < max_monitors_count; ++i) {
+    pthread_join(monitor_threads[i], NULL);
+  }
+
   labels_teardown(labels_storage);
   free(markers_stack);
   free(samples);
@@ -109,6 +134,9 @@ void profiler_start_frame() {
 
 void profiler_end_frame() {
   max_frame_size = frame_offset > max_frame_size ? frame_offset : max_frame_size;
+
+  update_header_atomic(frame_start, frame_offset);
+
   frame_start += frame_offset;
 
   if (samples_capacity < frame_start || samples_capacity - frame_start < max_frame_size) {
@@ -145,11 +173,61 @@ bool profiler_monitor_start(profiler_monitor *monitor) {
   if (monitors.count >= max_monitors_count)
     return false;
 
-  // TODO think this through
+  /**
+   *  With current implementation there might be a situation when:
+   *  - Monitor A increments the count
+   *  - Monitor B increments the count
+   *  - Reader A updates the mask
+   *  - Profiler submits another frame, but uses mask only with A.
+   *  - Therefore monitor B looses one frame, even though it's in the process of registering itself.
+   *
+   *  This is an okay tradeoff for simplicity sake.
+   */
+
   uint8_t monitor_id = __atomic_fetch_add(&monitors.count, (uint8_t)1, __ATOMIC_RELAXED);
   uint8_t new_monitor_mask = 1 << monitor_id;
 
   __atomic_fetch_or(&monitors.mask, new_monitor_mask, __ATOMIC_RELAXED);
+
+  monitor->framebuffer = calloc(monitors_framebuffer_capacity, sizeof(profiler_sample));
+  monitor->id = monitor_id;
+  monitor->frame_index = frame_header_index;
+
+  return true;
+}
+
+bool profiler_monitor_should_run(profiler_monitor *monitor) {
+  bool running = monitors.running;
+  if (!running) {
+    free(monitor->framebuffer);
+  }
+
+  return running;
+}
+
+bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
+  profiler_frame_header *frame = &frame_headers[monitor->frame_index];
+  uint8_t monitor_mask = 1 << monitor->id;
+  uint8_t disable_mask = ~monitor_mask;
+  uint8_t frame_mask = frame->mask;
+
+  if ((frame_mask & monitor_mask) == 0) {
+    return false;
+  }
+
+  if (frame->count > monitors_framebuffer_capacity) {
+    // TODO resize the buffer?
+    assert(false); // Temporary for catching these issues should they appear.
+    return false;
+  }
+
+  monitor->samples_available = frame->count;
+  memcpy(monitor->framebuffer, &samples[frame->offset], frame->count);
+
+  uint8_t new_frame_mask;
+  do {
+    new_frame_mask = frame_mask & disable_mask;
+  } while(!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 
   return true;
 }

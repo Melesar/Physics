@@ -45,7 +45,9 @@ typedef struct {
 } profiler_frame_header;
 
 typedef struct {
+  profiler_sample *framebuffer;
   uint32_t frame_index;
+  uint32_t samples_available;
   uint8_t id;
 } profiler_monitor;
 
@@ -65,6 +67,7 @@ typedef struct {
   uint32_t mask;
   uint32_t storage_ptr;
 } labels;
+
 
 #define LABELS_STORAGE_FULL 0xFFFFFFFF
 #define INVALID_LABEL (label) { NULL, 0 }
@@ -89,6 +92,8 @@ profiler_marker profiler_start_block(const char *name);
 void profiler_end_block(profiler_marker *marker);
 
 bool profiler_monitor_start(profiler_monitor *monitor);
+bool profiler_monitor_should_run(profiler_monitor *monitor);
+bool profiler_monitor_read_next_frame(profiler_monitor *monitor);
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
 void labels_teardown(labels self);
