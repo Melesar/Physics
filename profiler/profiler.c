@@ -1,14 +1,17 @@
+#ifdef __linux__
+  #define _POSIX_C_SOURCE 199309L // This is to have clock_gettime, which is otherwise not available under -std=c99
+#endif
+
 #include "profiler.h"
 #include "semaphores.h"
 #include <assert.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-
-#define  __USE_POSIX199309 // What??
 #include <time.h>
+
+#define MAX_MONITORS_COUNT 1
 
 labels labels_storage;
 
@@ -27,11 +30,10 @@ uint32_t frame_header_index;
 uint32_t frame_headers_capacity;
 uint32_t frame_headers_mask;
 
-const uint8_t max_monitors_count = 1;
 const uint32_t monitors_framebuffer_capacity = 256;
 
-pthread_t monitor_threads[max_monitors_count];
-semaphore monitor_semaphores[max_monitors_count];
+pthread_t monitor_threads[MAX_MONITORS_COUNT];
+semaphore monitor_semaphores[MAX_MONITORS_COUNT];
 
 struct monitors_t {
   uint8_t count;
@@ -42,7 +44,8 @@ struct monitors_t {
 void* text_file_monitor_run();
 
 static void notify_monitors() {
-  for (uint8_t i = 0; i < max_monitors_count; ++i) {
+  uint8_t count = monitors.count;
+  for (uint8_t i = 0; i < count; ++i) {
     semaphore_post(&monitor_semaphores[i]);
   }
 }
@@ -119,7 +122,7 @@ void profiler_init(profiler_config config) {
 
   pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
 
-  for (uint32_t i = 0; i < max_monitors_count; ++i) {
+  for (uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
     semaphore_init(&monitor_semaphores[i], 0);
   }
 }
@@ -129,11 +132,11 @@ void profiler_teardown() {
 
   notify_monitors();
 
-  for(uint32_t i = 0; i < max_monitors_count; ++i) {
+  for(uint32_t i = 0; i < monitors.count; ++i) {
     pthread_join(monitor_threads[i], NULL);
   }
 
-  for(uint32_t i = 0; i < max_monitors_count; ++i) {
+  for(uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
     semaphore_destroy(&monitor_semaphores[i]);
   }
 
@@ -192,7 +195,7 @@ bool profiler_get_label(uint32_t label_id, label *label) {
 }
 
 bool profiler_monitor_start(profiler_monitor *monitor) {
-  if (monitors.count >= max_monitors_count)
+  if (monitors.count >= MAX_MONITORS_COUNT)
     return false;
 
   /**
