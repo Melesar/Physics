@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) !void {
 
     const banduraLib = try build_bandura(b, options, target, optimize);
 
-    const profiler = try build_profiler(b, options, target, optimize);
+    const profiler = try build_profiler(b, options, target, optimize, false);
     try build_targets.append(b.allocator, profiler);
     if (options.profiling) {
         banduraLib.root_module.linkLibrary(profiler);
@@ -80,7 +80,7 @@ pub fn build(b: *std.Build) !void {
         try build_targets.append(b.allocator, scenario);
     }
 
-    const tests = try build_tests(b, target, optimize);
+    const tests = try build_tests(b, options, target, optimize);
     try build_targets.append(b.allocator, tests);
 
     _ = zcc.createStep(b, "cdb", try build_targets.toOwnedSlice(b.allocator));
@@ -116,12 +116,16 @@ fn build_bandura(b: *std.Build, options: Options, target: std.Build.ResolvedTarg
     return banduraLib;
 }
 
-fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, enable_tests: bool) !*std.Build.Step.Compile {
     const module = b.createModule(.{ .link_libc = true, .target = target, .optimize = optimize });
     var flags = try compilerFlags(b, options, target.result, optimize);
     errdefer flags.deinit(b.allocator);
 
     try flags.append(b.allocator, "-DBND_PROFILING");
+    if (enable_tests) {
+        try flags.append(b.allocator, "-DBND_TESTS");
+        module.addIncludePath(b.path("tests"));
+    }
 
     module.addCSourceFiles(.{
         .files = try collectSources(b, "profiler"),
@@ -138,7 +142,7 @@ fn build_profiler(b: *std.Build, options: Options, target: std.Build.ResolvedTar
     return lib;
 }
 
-fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
     const testsModule = b.createModule(.{
         .link_libc = true,
         .target = target,
@@ -151,7 +155,6 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     errdefer testSources.deinit(b.allocator);
 
     try testSources.appendSlice(b.allocator, try collectSources(b, "tests"));
-    try testSources.append(b.allocator, "profiler/labels.c");
 
     var flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 32);
     errdefer flags.deinit(b.allocator);
@@ -164,10 +167,13 @@ fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         .flags = try flags.toOwnedSlice(b.allocator),
     });
 
+    const profiler = try build_profiler(b, options, target, optimize, true);
     const tests = b.addExecutable(.{
         .name = "bandura_tests",
         .root_module = testsModule,
     });
+
+    tests.linkLibrary(profiler);
 
     const runTests = b.addRunArtifact(tests);
     const testsStep = b.step("test", "Run tests");
