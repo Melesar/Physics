@@ -1,6 +1,6 @@
 # TODO:
 
-- [ ] Compound shapes
-- [ ] Profiler
+- [x] Compound shapes
+- [x] Profiler
 - [ ] GJK + EPA
 - [ ] Replays
