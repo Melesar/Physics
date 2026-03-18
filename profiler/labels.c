@@ -17,7 +17,6 @@ static inline uint32_t hash(label l) {
   return h;
 }
 
-static bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
 
 static inline uint64_t slot_pack(uint32_t offset, uint32_t length) {
   return ((uint64_t) offset << 32) | length;
@@ -52,6 +51,7 @@ static label slot_read(const labels *labels, labels_slot slot) {
   return (label) { labels->storage + offset, (uint8_t)len };
 }
 
+bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
   labels self = { 0 };
