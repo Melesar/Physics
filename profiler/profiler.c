@@ -81,37 +81,6 @@ static void end_block() {
   samples[last_marker.sample_index].time = elapsed_ns;
 }
 
-static void dump() {
-  FILE* f = fopen("profiler_dump.txt", "w");
-  if (!f) {
-    printf("Failed to open dump file\n");
-    return;
-  }
-
-  char buffer[512];
-  const uint32_t step = 4;
-  for (uint32_t i = 0; i < frame_start; i += step) {
-    fprintf(f, "Frame %d:\n", i / step);
-
-    for (uint32_t j = 0; j < step; ++j) {
-      profiler_sample sample = samples[i + j];
-
-      label title = labels_get(&labels_storage, sample.label_id);
-      memcpy(buffer, title.s, title.len);
-      buffer[title.len] = 0;
-
-      uint64_t time_ns = sample.time;
-      double time_ms = time_ns / 1000000.0;
-
-      fprintf(f, "%s: %.5f\n", buffer, time_ms);
-    }
-
-    fprintf(f, "\n");
-  }
-
-  fclose(f);
-}
-
 void profiler_init_default() {
   profiler_init((profiler_config) {
     .samples_memory_size = 1 << 20, // 1 Mb
@@ -156,8 +125,6 @@ void profiler_init(profiler_config config) {
 }
 
 void profiler_teardown() {
-  dump();
-
   monitors.running = false;
 
   notify_monitors();
