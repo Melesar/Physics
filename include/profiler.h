@@ -17,12 +17,12 @@ typedef struct {
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
 
-void profiler_init_default() {}
-void profiler_init(profiler_config config) {}
-void profiler_teardown() {}
+static void profiler_init_default() {}
+static void profiler_init(profiler_config config) {}
+static void profiler_teardown() {}
 
-void profiler_start_frame() {}
-void profiler_end_frame() {}
+static void profiler_start_frame() {}
+static void profiler_end_frame() {}
 
 #else
 
