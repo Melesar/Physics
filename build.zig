@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) !void {
     const binarySources = try collectSources(b, "demos");
     defer b.allocator.free(binarySources);
 
-    const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .static });
+    const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .dynamic });
     for (scenarioSources) |scenarioFile| {
         const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
         const binFlags = try scenarioFlags(b, options, target.result, optimize);
