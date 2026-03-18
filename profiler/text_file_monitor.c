@@ -32,23 +32,22 @@ void* text_file_monitor_run(void *data) {
 
   uint32_t running_count = 0;
   while(profiler_monitor_should_run(&monitor)) {
-    if (!profiler_monitor_read_next_frame(&monitor)) {
-      // Sleep?
-      continue;
+    profiler_monitor_wait_for_frame(&monitor);
+
+    while (profiler_monitor_read_next_frame(&monitor)) {
+      fprintf(f, "Frame %d:\n", running_count++);
+      for(uint32_t sample_index = 0; sample_index < monitor.samples_available; ++sample_index) {
+        profiler_sample sample = monitor.framebuffer[sample_index];
+        char *label = read_label(sample);
+
+        uint64_t time_ns = sample.time;
+        double time_ms = time_ns / 1000000.0;
+
+        fprintf(f, "%s: %.5f\n", label, time_ms);
+      }
+
+      fprintf(f, "\n");
     }
-
-    fprintf(f, "Frame %d:\n", running_count++);
-    for(uint32_t sample_index = 0; sample_index < monitor.samples_available; ++sample_index) {
-      profiler_sample sample = monitor.framebuffer[sample_index];
-      char *label = read_label(sample);
-
-      uint64_t time_ns = sample.time;
-      double time_ms = time_ns / 1000000.0;
-
-      fprintf(f, "%s: %.5f\n", label, time_ms);
-    }
-
-    fprintf(f, "\n");
   }
 
   fclose(f);

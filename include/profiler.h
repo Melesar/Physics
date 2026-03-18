@@ -96,6 +96,7 @@ bool profiler_get_label(uint32_t label_id, label *label);
 bool profiler_monitor_start(profiler_monitor *monitor);
 bool profiler_monitor_should_run(profiler_monitor *monitor);
 bool profiler_monitor_read_next_frame(profiler_monitor *monitor);
+void profiler_monitor_wait_for_frame(const profiler_monitor *monitor);
 
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
 void labels_teardown(labels self);

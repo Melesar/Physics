@@ -1,4 +1,5 @@
 #include "profiler.h"
+#include "semaphores.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,7 +9,6 @@
 
 #define  __USE_POSIX199309 // What??
 #include <time.h>
-
 
 labels labels_storage;
 
@@ -31,6 +31,7 @@ const uint8_t max_monitors_count = 1;
 const uint32_t monitors_framebuffer_capacity = 256;
 
 pthread_t monitor_threads[max_monitors_count];
+semaphore monitor_semaphores[max_monitors_count];
 
 struct monitors_t {
   uint8_t count;
@@ -39,6 +40,12 @@ struct monitors_t {
 } monitors;
 
 void* text_file_monitor_run();
+
+static void notify_monitors() {
+  for (uint8_t i = 0; i < max_monitors_count; ++i) {
+    semaphore_post(&monitor_semaphores[i]);
+  }
+}
 
 static void update_header_atomic(uint32_t offset, uint16_t count) {
   profiler_frame_header updated_header = {
@@ -142,6 +149,10 @@ void profiler_init(profiler_config config) {
   monitors.running = true;
 
   pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
+
+  for (uint32_t i = 0; i < max_monitors_count; ++i) {
+    semaphore_init(&monitor_semaphores[i], 0);
+  }
 }
 
 void profiler_teardown() {
@@ -149,8 +160,14 @@ void profiler_teardown() {
 
   monitors.running = false;
 
+  notify_monitors();
+
   for(uint32_t i = 0; i < max_monitors_count; ++i) {
     pthread_join(monitor_threads[i], NULL);
+  }
+
+  for(uint32_t i = 0; i < max_monitors_count; ++i) {
+    semaphore_destroy(&monitor_semaphores[i]);
   }
 
   labels_teardown(labels_storage);
@@ -168,6 +185,7 @@ void profiler_end_frame() {
   max_frame_size = frame_offset > max_frame_size ? frame_offset : max_frame_size;
 
   update_header_atomic(frame_start, frame_offset);
+  notify_monitors();
 
   frame_start += frame_offset;
 
@@ -267,4 +285,8 @@ bool profiler_monitor_read_next_frame(profiler_monitor *monitor) {
   } while(!__atomic_compare_exchange_n(&frame->mask, &frame_mask, new_frame_mask, true, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 
   return true;
+}
+
+void profiler_monitor_wait_for_frame(const profiler_monitor *monitor) {
+  semaphore_wait(&monitor_semaphores[monitor->id]);
 }
