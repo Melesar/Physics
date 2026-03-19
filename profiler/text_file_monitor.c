@@ -24,6 +24,10 @@ char buffer[MAX_BUFFER_SIZE + 1];
 final_sample *call_tree;
 uint32_t tree_index;
 
+static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
+  return 0;
+}
+
 static char *read_label(profiler_sample sample) {
   label label;
   if (profiler_get_label(sample.label_id, &label)) {
@@ -57,6 +61,9 @@ void* text_file_monitor_run(void *data) {
     profiler_monitor_wait_for_frame(&monitor);
 
     while (profiler_monitor_read_next_frame(&monitor)) {
+      uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+      (void) processed_count;
+
       fprintf(f, "Frame %d:\n", running_count++);
       for(uint32_t sample_index = 0; sample_index < monitor.samples_available; ++sample_index) {
         profiler_sample sample = monitor.framebuffer[sample_index];
@@ -137,6 +144,8 @@ static void simulate_frame() {
 }
 
 void total_count_and_time_is_calculated_correctly() {
+  call_tree = calloc(CALL_TREE_CAPACITY, sizeof(final_sample));
+
   profiler_config config = profiler_default_config();
   config.auto_enable_monitors = false;
 
@@ -152,9 +161,15 @@ void total_count_and_time_is_calculated_correctly() {
   profiler_end_frame();
 
   assert(profiler_monitor_read_next_frame(&monitor));
-  assert(monitor.samples_available == 1);
+  assert(monitor.samples_available == 36);
+
+  uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
+  assert(processed_count == 9);
+
+  assert(!profiler_monitor_read_next_frame(&monitor));
 
   profiler_teardown();
+  free(call_tree);
 }
 
 void text_file_monitor_tests() {

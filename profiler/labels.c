@@ -53,6 +53,10 @@ static label slot_read(const labels *labels, labels_slot slot) {
 
 bool label_is_valid(label l) { return l.s != NULL && l.len != 0; }
 
+bool label_is_equal(label l, const char *string) {
+  return strncmp(l.s, string, l.len);
+}
+
 labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity) {
   labels self = { 0 };
   self.storage = malloc(storage_capacity);

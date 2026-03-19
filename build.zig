@@ -8,11 +8,15 @@ const COMMON_FLAGS = &.{ "-std=c99", "-Wall", "-Wextra", "-Werror=shadow", "-Wer
 const Options = struct {
     diagnostic: bool,
     profiling: bool,
+    installTests: bool,
+    includeDemos: bool,
 
     fn getOptions(b: *std.Build) Options {
         return .{
             .diagnostic = b.option(bool, "diagnostic", "Enable diagnostics") orelse true,
             .profiling = b.option(bool, "profiling", "Enable profiling") orelse false,
+            .installTests = b.option(bool, "install-tests", "Install tests binary") orelse false,
+            .includeDemos = b.option(bool, "include-demos", "Build demo projects") orelse true,
         };
     }
 };
@@ -36,48 +40,50 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(banduraLib);
     try build_targets.append(b.allocator, banduraLib);
 
-    const scenarioSources = try collectSources(b, "demos/scenarios");
-    defer b.allocator.free(scenarioSources);
+    if (options.includeDemos) {
+        const scenarioSources = try collectSources(b, "demos/scenarios");
+        defer b.allocator.free(scenarioSources);
 
-    const binarySources = try collectSources(b, "demos");
-    defer b.allocator.free(binarySources);
+        const binarySources = try collectSources(b, "demos");
+        defer b.allocator.free(binarySources);
 
-    const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .dynamic });
-    for (scenarioSources) |scenarioFile| {
-        const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
-        const binFlags = try scenarioFlags(b, options, target.result, optimize);
-        defer b.allocator.free(binFlags);
+        const raylib = b.dependency("raylib", .{ .target = target, .optimize = optimize, .config = "-DPLATFORM_DESKTOP", .linkage = .dynamic });
+        for (scenarioSources) |scenarioFile| {
+            const scenarioModule = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
+            const binFlags = try scenarioFlags(b, options, target.result, optimize);
+            defer b.allocator.free(binFlags);
 
-        scenarioModule.addCSourceFiles(.{
-            .files = binarySources,
-            .flags = binFlags,
-        });
-        scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = binFlags });
+            scenarioModule.addCSourceFiles(.{
+                .files = binarySources,
+                .flags = binFlags,
+            });
+            scenarioModule.addCSourceFile(.{ .file = b.path(scenarioFile), .flags = binFlags });
 
-        const scenarioName = std.fs.path.stem(scenarioFile);
-        const scenario = b.addExecutable(.{
-            .name = scenarioName,
-            .root_module = scenarioModule,
-        });
+            const scenarioName = std.fs.path.stem(scenarioFile);
+            const scenario = b.addExecutable(.{
+                .name = scenarioName,
+                .root_module = scenarioModule,
+            });
 
-        scenario.addIncludePath(raylib.path("src"));
-        scenario.addIncludePath(raylib.path("examples"));
-        scenario.addIncludePath(b.path("demos/include"));
+            scenario.addIncludePath(raylib.path("src"));
+            scenario.addIncludePath(raylib.path("examples"));
+            scenario.addIncludePath(b.path("demos/include"));
 
-        linkLibraries(scenario, target);
+            linkLibraries(scenario, target);
 
-        scenario.linkLibrary(raylib.artifact("raylib"));
-        scenario.linkLibrary(banduraLib);
+            scenario.linkLibrary(raylib.artifact("raylib"));
+            scenario.linkLibrary(banduraLib);
 
-        b.installArtifact(scenario);
+            b.installArtifact(scenario);
 
-        const runScenario = b.addRunArtifact(scenario);
-        runScenario.step.dependOn(b.getInstallStep());
+            const runScenario = b.addRunArtifact(scenario);
+            runScenario.step.dependOn(b.getInstallStep());
 
-        const runStep = b.step(b.fmt("run-{s}", .{scenarioName}), b.fmt("Run {s} scenario", .{scenarioName}));
-        runStep.dependOn(&runScenario.step);
+            const runStep = b.step(b.fmt("run-{s}", .{scenarioName}), b.fmt("Run {s} scenario", .{scenarioName}));
+            runStep.dependOn(&runScenario.step);
 
-        try build_targets.append(b.allocator, scenario);
+            try build_targets.append(b.allocator, scenario);
+        }
     }
 
     const tests = try build_tests(b, options, target, optimize);
@@ -161,6 +167,7 @@ fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget
 
     try flags.appendSlice(b.allocator, COMMON_FLAGS);
     try flags.appendSlice(b.allocator, &.{ "-DBND_PROFILING", "-DBND_TESTS" });
+    try flags.appendSlice(b.allocator, &.{ "-g", "-O0" });
 
     testsModule.addCSourceFiles(.{
         .files = try testSources.toOwnedSlice(b.allocator),
@@ -168,14 +175,20 @@ fn build_tests(b: *std.Build, options: Options, target: std.Build.ResolvedTarget
     });
 
     const profiler = try build_profiler(b, options, target, optimize, true);
+    testsModule.linkLibrary(profiler);
+
     const tests = b.addExecutable(.{
         .name = "bandura_tests",
         .root_module = testsModule,
     });
 
-    tests.linkLibrary(profiler);
-
     const runTests = b.addRunArtifact(tests);
+
+    if (options.installTests) {
+        b.installArtifact(tests);
+        runTests.step.dependOn(b.getInstallStep());
+    }
+
     const testsStep = b.step("test", "Run tests");
     testsStep.dependOn(&runTests.step);
 

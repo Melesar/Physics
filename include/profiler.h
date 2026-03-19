@@ -105,6 +105,7 @@ labels labels_init(uint32_t storage_capacity, uint32_t slots_capacity);
 void labels_teardown(labels self);
 
 bool label_is_valid(label l);
+bool label_is_equal(label l, const char *string);
 uint32_t labels_store(labels *self, label l);
 label labels_get(labels *self, uint32_t id);
 
