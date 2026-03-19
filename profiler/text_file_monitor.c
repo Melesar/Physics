@@ -90,6 +90,49 @@ static void work() {
 static void simulate_frame() {
   PROFILE_FUNCTION
 
+  {
+    for(int i = 0; i < 10; ++i)
+    {
+      PROFILE_BLOCK("water_the_plant")
+      work();
+
+      if (i == 5 || i == 7) {
+        PROFILE_BLOCK("change_soil")
+        work();
+      }
+    }
+
+    {
+      PROFILE_BLOCK("clean_dishes")
+      work();
+    }
+
+    for(int i = 0; i < 3; ++i) {
+      PROFILE_BLOCK("clean_the_room")
+
+      if (i == 0) {
+        PROFILE_BLOCK("collect_toys")
+        work();
+      }
+
+      {
+        PROFILE_BLOCK("wipe_dust")
+
+        for (int j = 0; j < 4; ++j) {
+          PROFILE_BLOCK("sort_shelf")
+          work();
+        }
+
+        work();
+      }
+
+      {
+        PROFILE_BLOCK("vaccuum")
+        work();
+      }
+    }
+  }
+
   work();
 }
 
