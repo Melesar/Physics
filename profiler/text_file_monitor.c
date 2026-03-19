@@ -169,17 +169,22 @@ void* text_file_monitor_run(void *data) {
 
     while (profiler_monitor_read_next_frame(&monitor)) {
       uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
-      (void) processed_count;
 
       fprintf(f, "Frame %d:\n", running_count++);
-      for(uint32_t sample_index = 0; sample_index < monitor.samples_available; ++sample_index) {
-        profiler_sample sample = monitor.framebuffer[sample_index];
+      for(uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
+        final_sample sample = call_tree[sample_index];
         char *label = read_label(sample.label_id);
 
-        uint64_t time_ns = sample.time;
+        uint32_t parent = sample.parent_index;
+        while(parent != (uint32_t)~0) {
+          fprintf(f, " ");
+          parent = call_tree[parent].parent_index;
+        }
+
+        uint64_t time_ns = sample.total_time;
         double time_ms = time_ns / 1000000.0;
 
-        fprintf(f, "%s: %.5f\n", label, time_ms);
+        fprintf(f, "%d x %s: %.5f\n", sample.call_count, label, time_ms);
       }
 
       fprintf(f, "\n");

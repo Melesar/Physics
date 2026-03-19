@@ -81,7 +81,7 @@ static void end_block() {
   profiler_marker last_marker = markers_stack[--markers_count];
 
   uint64_t elapsed_ns = get_time() - last_marker.start_time;
-  samples[last_marker.sample_index].time = elapsed_ns;
+  samples[frame_start + last_marker.sample_index].time = elapsed_ns;
 }
 
 void profiler_init_default() {
@@ -173,12 +173,12 @@ void profiler_end_frame() {
 profiler_marker profiler_start_block(const char *name) {
   assert(markers_count < markers_capacity);
 
-  uint32_t sample_index = frame_start + frame_offset;
-  profiler_marker marker = { (char*)name, get_time(), sample_index };
+  profiler_marker marker = { (char*)name, get_time(), frame_offset };
   profiler_marker parent_marker = markers_count > 0
     ? markers_stack[markers_count - 1]
     : (profiler_marker) { .sample_index = 0xFFFFFFFF };
 
+  uint32_t sample_index = frame_start + frame_offset;
   samples[sample_index] = (profiler_sample) {
     .label_id = labels_store(&labels_storage, marker_label(marker)),
     .parent_index = parent_marker.sample_index,
