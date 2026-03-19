@@ -85,14 +85,18 @@ static void end_block() {
 }
 
 void profiler_init_default() {
-  profiler_init((profiler_config) {
+  profiler_init(profiler_default_config());
+}
+
+profiler_config profiler_default_config() {
+  return (profiler_config) {
     .samples_memory_size = 1 << 20, // 1 Mb
-    // .samples_memory_size = 1 << 10, // 1024 B
     .labels_slots_capacity = 128,
     .labels_storage_capacity = 1 << 16, // 32 Kb
     .stack_capacity = 512,
     .frame_headers_capacity = 64,
-  });
+    .auto_enable_monitors = true,
+  };
 }
 
 void profiler_init(profiler_config config) {
@@ -120,10 +124,12 @@ void profiler_init(profiler_config config) {
   monitors.mask = 0;
   monitors.running = true;
 
-  pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
-
   for (uint32_t i = 0; i < MAX_MONITORS_COUNT; ++i) {
     semaphore_init(&monitor_semaphores[i], 0);
+  }
+
+  if (config.auto_enable_monitors)  {
+    pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
   }
 }
 

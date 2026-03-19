@@ -10,6 +10,7 @@ typedef struct {
   uint32_t stack_capacity;
   uint32_t samples_memory_size;
   uint32_t frame_headers_capacity;
+  bool auto_enable_monitors;
 } profiler_config;
 
 #ifndef BND_PROFILING
@@ -17,6 +18,7 @@ typedef struct {
 #define PROFILE_BLOCK(name)
 #define PROFILE_FUNCTION
 
+static profiler_config profiler_default_config() {  return (profiler_config) { 0 }; }
 static void profiler_init_default() {}
 static void profiler_init(profiler_config config) {}
 static void profiler_teardown() {}
@@ -81,6 +83,7 @@ profiler_marker MARKER_NAME(marker_, __LINE__) __attribute__((__cleanup__(profil
 
 #define PROFILE_FUNCTION PROFILE_BLOCK(__func__)
 
+profiler_config profiler_default_config();
 void profiler_init_default();
 void profiler_init(profiler_config config);
 void profiler_teardown();

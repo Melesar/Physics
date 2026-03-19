@@ -94,7 +94,10 @@ static void simulate_frame() {
 }
 
 void total_count_and_time_is_calculated_correctly() {
-  profiler_init_default();
+  profiler_config config = profiler_default_config();
+  config.auto_enable_monitors = false;
+
+  profiler_init(config);
 
   profiler_monitor monitor;
   profiler_monitor_start(&monitor);
@@ -104,6 +107,9 @@ void total_count_and_time_is_calculated_correctly() {
   simulate_frame();
 
   profiler_end_frame();
+
+  assert(profiler_monitor_read_next_frame(&monitor));
+  assert(monitor.samples_available == 1);
 
   profiler_teardown();
 }
