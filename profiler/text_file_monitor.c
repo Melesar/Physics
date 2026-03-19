@@ -90,6 +90,15 @@ void* text_file_monitor_run(void *data) {
 
 #include "testing.h"
 
+static bool label_equals(final_sample sample, const char *title) {
+  label l;
+  if (!profiler_get_label(sample.label_id, &l)) {
+    return false;
+  }
+
+  return label_is_equal(l, title);
+}
+
 static void work() {
   usleep(1000);
 }
@@ -127,6 +136,11 @@ static void simulate_frame() {
 
         for (int j = 0; j < 4; ++j) {
           PROFILE_BLOCK("sort_shelf")
+          {
+            PROFILE_BLOCK("vaccuum")
+            work();
+          }
+
           work();
         }
 
@@ -161,10 +175,34 @@ void total_count_and_time_is_calculated_correctly() {
   profiler_end_frame();
 
   assert(profiler_monitor_read_next_frame(&monitor));
-  assert(monitor.samples_available == 36);
+  assert(monitor.samples_available == 48);
 
   uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
-  assert(processed_count == 9);
+  assert(processed_count == 10);
+
+  assert(label_equals(call_tree[0], "simulate_frame"));
+  assert(label_equals(call_tree[1], "water_the_plant"));
+  assert(label_equals(call_tree[2], "change_soil"));
+  assert(label_equals(call_tree[3], "clean_dishes"));
+  assert(label_equals(call_tree[4], "clean_the_room"));
+  assert(label_equals(call_tree[5], "collect_toys"));
+  assert(label_equals(call_tree[6], "wipe_dust"));
+  assert(label_equals(call_tree[7], "sort_shelf"));
+  assert(label_equals(call_tree[8], "vaccum"));
+  assert(label_equals(call_tree[9], "vaccum"));
+
+  assert(call_tree[0].call_count == 1);
+  assert(call_tree[1].call_count == 10);
+  assert(call_tree[2].call_count == 2);
+  assert(call_tree[3].call_count == 1);
+  assert(call_tree[4].call_count == 3);
+  assert(call_tree[5].call_count == 1);
+  assert(call_tree[6].call_count == 3);
+  assert(call_tree[7].call_count == 12);
+  assert(call_tree[8].call_count == 12);
+  assert(call_tree[9].call_count == 3);
+
+  // TODO check total times
 
   assert(!profiler_monitor_read_next_frame(&monitor));
 
