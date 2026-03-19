@@ -22,15 +22,10 @@ typedef struct {
 char buffer[MAX_BUFFER_SIZE + 1];
 
 final_sample *call_tree;
-uint32_t tree_index;
 
-static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
-  return 0;
-}
-
-static char *read_label(profiler_sample sample) {
+static char *read_label(uint32_t label_id) {
   label label;
-  if (profiler_get_label(sample.label_id, &label)) {
+  if (profiler_get_label(label_id, &label)) {
     uint32_t size = label.len < MAX_BUFFER_SIZE ? label.len : MAX_BUFFER_SIZE;
     memcpy(buffer, label.s, size);
     buffer[size] = 0;
@@ -41,13 +36,125 @@ static char *read_label(profiler_sample sample) {
   return "unknown";
 }
 
+static void print_call_tree(final_sample *samples, uint32_t count) {
+  printf("\n");
+
+  for(uint32_t i = 0; i < count; ++i) {
+    final_sample sample = samples[i];
+    uint32_t parent = sample.parent_index;
+    while(parent != (uint32_t)~0) {
+      printf(" ");
+      parent = samples[parent].parent_index;
+    }
+
+    double time = sample.total_time / 1000000.0;
+    printf("%d x %s: %.5f ms\n", sample.call_count, read_label(sample.label_id), time);
+  }
+}
+
+static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, uint32_t parent_index, uint32_t label_id) {
+  for(uint32_t i = parent_index + 1; i < samples_count; ++i) {
+    final_sample sample = samples[i];
+    if (sample.label_id != label_id) {
+      continue;
+    }
+
+    if (sample.parent_index == parent_index) {
+      return i;
+    }
+
+    if (sample.parent_index > parent_index) {
+      // Indirect child - search futher.
+      continue;
+    }
+
+    if (sample.parent_index < parent_index) {
+      // Parent's sibling or further up. There will be no direct children from this point on.
+      break;
+    }
+  }
+
+  return -1;
+}
+
+static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count, final_sample *output, uint32_t available_capacity) {
+  if (samples_count == 0 || available_capacity == 0) {
+    return 0;
+  }
+
+  uint32_t final_count = 1;
+  profiler_sample root = samples[0];
+
+  output[0] = (final_sample) {
+    .label_id = root.label_id,
+    .parent_index = root.parent_index,
+    .call_count = 1,
+    .total_time = root.time,
+  };
+
+  uint32_t src_index = 1;
+  uint32_t dst_current_index = 0;
+  uint32_t dst_free_slot = 1;
+  while(src_index < samples_count) {
+    if (dst_free_slot >= available_capacity) {
+      return final_count;
+    }
+
+    profiler_sample src_sample = samples[src_index];
+    uint32_t src_parent_label = samples[src_sample.parent_index].label_id;
+    uint32_t dst_current_label = output[dst_current_index].label_id;
+
+    if (dst_current_label == src_parent_label) {
+      // src_sample is the direct child of the current sample in the output.
+      int32_t child_index = find_direct_child(output, final_count, dst_current_index, src_sample.label_id);
+      if (child_index < 0) {
+        output[dst_free_slot] = (final_sample) { .label_id = src_sample.label_id, .parent_index = dst_current_index, .total_time = src_sample.time, .call_count = 1 };
+
+        dst_current_index = dst_free_slot;
+        dst_free_slot += 1;
+        final_count += 1;
+      } else {
+        output[child_index].total_time += src_sample.time;
+        output[child_index].call_count += 1;
+        dst_current_index = child_index;
+      }
+
+      src_index += 1;
+      continue;
+    }
+
+    /**
+     *  Now there are two options:
+     *    1) Src item can be a sibling of the dst item.
+     *    2) Src item can be a sibling of the dst item's parent.
+     *  Do figure this out we will walk them both to the root of the tree. If they reach it simultaneosly - they are siblings.
+     */
+    uint32_t src_parent_index = src_sample.parent_index;
+    uint32_t dst_parent_index = output[dst_current_index].parent_index;
+    while(src_parent_index != 0 && dst_parent_index != 0) {
+      src_parent_index = samples[src_parent_index].parent_index;
+      dst_parent_index = output[dst_parent_index].parent_index;
+    }
+
+    if (src_parent_index == 0 && dst_parent_index == 0) {
+      // Current items from src and dst are siblings
+      dst_current_index = output[dst_current_index].parent_index;
+      continue;
+    }
+
+    // Src item is a sibling of the dst item's parent
+    dst_current_index = output[output[dst_current_index].parent_index].parent_index;
+  }
+
+  return final_count;
+}
+
 void* text_file_monitor_run(void *data) {
   FILE *f = fopen("bandura.prof.txt", "w");
   if (!f)
     return NULL;
 
   call_tree = calloc(CALL_TREE_CAPACITY, sizeof(final_sample));
-  tree_index = 0;
 
   profiler_monitor monitor;
   if (!profiler_monitor_start(&monitor)) {
@@ -67,7 +174,7 @@ void* text_file_monitor_run(void *data) {
       fprintf(f, "Frame %d:\n", running_count++);
       for(uint32_t sample_index = 0; sample_index < monitor.samples_available; ++sample_index) {
         profiler_sample sample = monitor.framebuffer[sample_index];
-        char *label = read_label(sample);
+        char *label = read_label(sample.label_id);
 
         uint64_t time_ns = sample.time;
         double time_ms = time_ns / 1000000.0;
@@ -178,8 +285,10 @@ void total_count_and_time_is_calculated_correctly() {
   assert(monitor.samples_available == 48);
 
   uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
-  assert(processed_count == 10);
 
+  print_call_tree(call_tree, processed_count);
+
+  assert(processed_count == 10);
   assert(label_equals(call_tree[0], "simulate_frame"));
   assert(label_equals(call_tree[1], "water_the_plant"));
   assert(label_equals(call_tree[2], "change_soil"));
@@ -188,8 +297,8 @@ void total_count_and_time_is_calculated_correctly() {
   assert(label_equals(call_tree[5], "collect_toys"));
   assert(label_equals(call_tree[6], "wipe_dust"));
   assert(label_equals(call_tree[7], "sort_shelf"));
-  assert(label_equals(call_tree[8], "vaccum"));
-  assert(label_equals(call_tree[9], "vaccum"));
+  assert(label_equals(call_tree[8], "vaccuum"));
+  assert(label_equals(call_tree[9], "vaccuum"));
 
   assert(call_tree[0].call_count == 1);
   assert(call_tree[1].call_count == 10);
