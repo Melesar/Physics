@@ -3,4 +3,4 @@
 zig-out
 
 compile_commands.json
-bandura.prof.txt
+bandura.prof.csv

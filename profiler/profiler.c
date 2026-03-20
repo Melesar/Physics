@@ -41,7 +41,7 @@ struct monitors_t {
   bool running;
 } monitors;
 
-void* text_file_monitor_run();
+void* csv_file_monitor_run();
 
 static void notify_monitors() {
   uint8_t count = monitors.count;
@@ -129,7 +129,7 @@ void profiler_init(profiler_config config) {
   }
 
   if (config.auto_enable_monitors)  {
-    pthread_create(&monitor_threads[0], NULL, &text_file_monitor_run, NULL);
+    pthread_create(&monitor_threads[0], NULL, &csv_file_monitor_run, NULL);
   }
 }
 

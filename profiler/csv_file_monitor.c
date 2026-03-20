@@ -36,21 +36,7 @@ static char *read_label(uint32_t label_id) {
   return "unknown";
 }
 
-static void print_call_tree(final_sample *samples, uint32_t count) {
-  printf("\n");
 
-  for(uint32_t i = 0; i < count; ++i) {
-    final_sample sample = samples[i];
-    uint32_t parent = sample.parent_index;
-    while(parent != (uint32_t)~0) {
-      printf(" ");
-      parent = samples[parent].parent_index;
-    }
-
-    double time = sample.total_time / 1000000.0;
-    printf("%d x %s: %.5f ms\n", sample.call_count, read_label(sample.label_id), time);
-  }
-}
 
 static int32_t find_direct_child(final_sample *samples, uint32_t samples_count, uint32_t parent_index, uint32_t label_id) {
   for(uint32_t i = parent_index + 1; i < samples_count; ++i) {
@@ -149,8 +135,8 @@ static uint32_t process_samples(profiler_sample *samples, uint32_t samples_count
   return final_count;
 }
 
-void* text_file_monitor_run(void *data) {
-  FILE *f = fopen("bandura.prof.txt", "w");
+void* csv_file_monitor_run(void *data) {
+  FILE *f = fopen("bandura.prof.csv", "w");
   if (!f)
     return NULL;
 
@@ -163,6 +149,8 @@ void* text_file_monitor_run(void *data) {
     return NULL;
   }
 
+  fprintf(f, "Frame index,Label,Call count,Total time\n");
+
   uint32_t running_count = 0;
   while(profiler_monitor_should_run(&monitor)) {
     profiler_monitor_wait_for_frame(&monitor);
@@ -170,24 +158,17 @@ void* text_file_monitor_run(void *data) {
     while (profiler_monitor_read_next_frame(&monitor)) {
       uint32_t processed_count = process_samples(monitor.framebuffer, monitor.samples_available, call_tree, CALL_TREE_CAPACITY);
 
-      fprintf(f, "Frame %d:\n", running_count++);
       for(uint32_t sample_index = 0; sample_index < processed_count; ++sample_index) {
         final_sample sample = call_tree[sample_index];
         char *label = read_label(sample.label_id);
 
-        uint32_t parent = sample.parent_index;
-        while(parent != (uint32_t)~0) {
-          fprintf(f, " ");
-          parent = call_tree[parent].parent_index;
-        }
-
         uint64_t time_ns = sample.total_time;
         double time_ms = time_ns / 1000000.0;
 
-        fprintf(f, "%d x %s: %.5f\n", sample.call_count, label, time_ms);
+        fprintf(f, "%d,%s,%d,%.5f\n", running_count, label, sample.call_count, time_ms);
       }
 
-      fprintf(f, "\n");
+      running_count += 1;
     }
   }
 
@@ -201,6 +182,22 @@ void* text_file_monitor_run(void *data) {
 #ifdef BND_TESTS
 
 #include "testing.h"
+
+static void print_call_tree(final_sample *samples, uint32_t count) {
+  printf("\n");
+
+  for(uint32_t i = 0; i < count; ++i) {
+    final_sample sample = samples[i];
+    uint32_t parent = sample.parent_index;
+    while(parent != (uint32_t)~0) {
+      printf(" ");
+      parent = samples[parent].parent_index;
+    }
+
+    double time = sample.total_time / 1000000.0;
+    printf("%d x %s: %.5f ms\n", sample.call_count, read_label(sample.label_id), time);
+  }
+}
 
 static bool label_equals(final_sample sample, const char *title) {
   label l;
@@ -324,7 +321,7 @@ void total_count_and_time_is_calculated_correctly() {
   free(call_tree);
 }
 
-void text_file_monitor_tests() {
+void csv_file_monitor_tests() {
   TESTS_BEGIN("Text file monitor")
     TEST(total_count_and_time_is_calculated_correctly)
   TESTS_END
